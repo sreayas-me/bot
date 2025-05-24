@@ -50,4 +50,13 @@ async def on_message(message):
         await message.reply(f"hi, **{message.author.name}**\n-# {random.choice(tips)}")
     await bot.process_commands(message)
 
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        pass
+    elif isinstance(error, commands.CommandOnCooldown):
+        await ctx.send(f"**{error.command.label}** is on cooldown. Please try again in {round(error.retry_after, 2)} seconds.")
+    else:
+        raise error
+
 bot.run(config['TOKEN'])
