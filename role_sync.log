@@ -1,0 +1,58 @@
+2025-05-24 13:46:03,815 - SyncRoles - INFO - SyncRoles cog initialized
+2025-05-24 13:46:03,815 - SyncRoles - INFO - SyncRoles cog loaded successfully
+2025-05-24 13:46:05,771 - SyncRoles - INFO - Force sync initiated by ks.net for ks.net
+2025-05-24 13:46:05,771 - SyncRoles - INFO - Starting role sync for ks.net (ID: 814226043924643880) in guild 1259717095382319215
+2025-05-24 13:46:06,002 - SyncRoles - INFO - Roles to sync: {'owner'}
+2025-05-24 13:46:06,258 - SyncRoles - INFO - Member roles updated: ks.net in guild 1142088882222022786
+2025-05-24 13:46:06,258 - SyncRoles - INFO - Starting role sync for ks.net (ID: 814226043924643880) in guild 1142088882222022786
+2025-05-24 13:46:06,281 - SyncRoles - INFO - Successfully synced roles for ks.net in manhattan
+2025-05-24 13:46:06,461 - SyncRoles - INFO - Roles to sync: {'owner'}
+2025-05-24 13:46:06,520 - SyncRoles - INFO - Member roles updated: ks.net in guild 1299747094449623111
+2025-05-24 13:46:06,520 - SyncRoles - INFO - Starting role sync for ks.net (ID: 814226043924643880) in guild 1299747094449623111
+2025-05-24 13:46:06,552 - SyncRoles - INFO - Successfully synced roles for ks.net in long_island
+2025-05-24 13:46:06,705 - SyncRoles - INFO - Roles to sync: {'owner'}
+2025-05-24 13:46:06,775 - SyncRoles - INFO - Successfully synced roles for ks.net in long_island
+2025-05-24 13:46:31,452 - SyncRoles - INFO - SyncRoles cog initialized
+2025-05-24 13:46:31,452 - SyncRoles - INFO - SyncRoles cog loaded successfully
+2025-05-24 13:46:34,130 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1259717095382319215
+2025-05-24 13:46:34,130 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1259717095382319215
+2025-05-24 13:46:34,333 - SyncRoles - INFO - Roles to sync: set()
+2025-05-24 13:46:39,674 - SyncRoles - INFO - Member roles updated: tsukamilmao in guild 1259717095382319215
+2025-05-24 13:46:39,674 - SyncRoles - INFO - Starting role sync for tsukamilmao (ID: 837048825859538995) in guild 1259717095382319215
+2025-05-24 13:46:39,854 - SyncRoles - INFO - Roles to sync: {'staff', 'co-owner'}
+2025-05-24 13:46:40,103 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1259717095382319215
+2025-05-24 13:46:40,103 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1259717095382319215
+2025-05-24 13:46:40,337 - SyncRoles - INFO - Roles to sync: {'staff'}
+2025-05-24 13:46:40,607 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1142088882222022786
+2025-05-24 13:46:40,607 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1142088882222022786
+2025-05-24 13:46:40,628 - SyncRoles - INFO - Successfully synced roles for South Bronx#7149 in manhattan
+2025-05-24 13:46:40,800 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1299747094449623111
+2025-05-24 13:46:40,800 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1299747094449623111
+2025-05-24 13:46:40,808 - SyncRoles - INFO - Successfully synced roles for South Bronx#7149 in long_island
+2025-05-24 13:46:40,846 - SyncRoles - INFO - Roles to sync: {'staff'}
+2025-05-24 13:46:41,032 - SyncRoles - INFO - Roles to sync: {'staff'}
+2025-05-24 13:46:46,265 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1259717095382319215
+2025-05-24 13:46:46,265 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1259717095382319215
+2025-05-24 13:46:46,487 - SyncRoles - INFO - Roles to sync: {'staff', 'head mod'}
+2025-05-24 13:46:46,682 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1142088882222022786
+2025-05-24 13:46:46,682 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1142088882222022786
+2025-05-24 13:46:46,691 - SyncRoles - INFO - Successfully synced roles for South Bronx#7149 in manhattan
+2025-05-24 13:46:46,947 - SyncRoles - INFO - Roles to sync: {'staff', 'head mod'}
+2025-05-24 13:46:56,074 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1142088882222022786
+2025-05-24 13:46:56,075 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1142088882222022786
+2025-05-24 13:46:56,287 - SyncRoles - INFO - Roles to sync: {'staff'}
+2025-05-24 13:46:56,654 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1259717095382319215
+2025-05-24 13:46:56,654 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1259717095382319215
+2025-05-24 13:46:56,687 - SyncRoles - INFO - Successfully synced roles for South Bronx#7149 in south_bronx
+2025-05-24 13:46:56,860 - SyncRoles - INFO - Roles to sync: {'staff'}
+2025-05-24 13:47:00,795 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1142088882222022786
+2025-05-24 13:47:00,795 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1142088882222022786
+2025-05-24 13:47:01,161 - SyncRoles - INFO - Roles to sync: set()
+2025-05-24 13:47:01,510 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1259717095382319215
+2025-05-24 13:47:01,510 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1259717095382319215
+2025-05-24 13:47:01,522 - SyncRoles - INFO - Successfully synced roles for South Bronx#7149 in south_bronx
+2025-05-24 13:47:01,748 - SyncRoles - INFO - Member roles updated: South Bronx#7149 in guild 1299747094449623111
+2025-05-24 13:47:01,749 - SyncRoles - INFO - Starting role sync for South Bronx#7149 (ID: 828380019406929962) in guild 1299747094449623111
+2025-05-24 13:47:01,767 - SyncRoles - INFO - Successfully synced roles for South Bronx#7149 in long_island
+2025-05-24 13:47:01,787 - SyncRoles - INFO - Roles to sync: set()
+2025-05-24 13:47:02,034 - SyncRoles - INFO - Roles to sync: set()
