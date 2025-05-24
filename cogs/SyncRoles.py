@@ -8,7 +8,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('role_sync.log')
+        logging.FileHandler('data/logs/sync_roles.log')
     ]
 )
 logger = logging.getLogger('SyncRoles')
