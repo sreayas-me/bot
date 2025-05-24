@@ -16,7 +16,7 @@ intents.reactions = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 async def load_cogs():
-    for file in ["cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans"]:
+    for file in ["cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans", "cogs.Welcoming"]:
         try:
             await bot.load_extension(file)
         except Exception as e:
