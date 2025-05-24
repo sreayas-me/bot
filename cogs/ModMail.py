@@ -32,7 +32,9 @@ class ModMail(commands.Cog):
         try:
             if os.path.exists(self.data_file):
                 with open(self.data_file, 'r') as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    # Convert thread IDs to integers (JSON stores them as strings)
+                    return {k: int(v) for k, v in data.items()}
             return {}
         except Exception as e:
             logger.error(f"Failed to load modmail data: {e}")
@@ -61,7 +63,7 @@ class ModMail(commands.Cog):
         # Check if message is in DMs
         if isinstance(message.channel, discord.DMChannel):
             # Check if it's the first message (new modmail)
-            if message.author.id not in self.active_tickets:
+            if str(message.author.id) not in self.active_tickets:
                 await self.create_new_modmail(message)
             else:
                 await self.forward_to_thread(message)
@@ -75,6 +77,9 @@ class ModMail(commands.Cog):
     async def create_new_modmail(self, user_message):
         """Create a new modmail thread for a user's DM"""
         staff_channel = self.bot.get_channel(self.staff_channel_id)
+        if staff_channel is None:
+            logger.error(f"Staff channel {self.staff_channel_id} not found!")
+            return
         
         # Create initial embed
         embed = discord.Embed(
@@ -87,64 +92,78 @@ class ModMail(commands.Cog):
         embed.add_field(name="Account Created", value=user_message.author.created_at.strftime("%Y-%m-%d %H:%M:%S"))
         
         # Send initial message and create thread
-        staff_msg = await staff_channel.send(embed=embed)
-        thread = await staff_msg.create_thread(
-            name=f"Modmail {user_message.author}",
-            auto_archive_duration=1440
-        )
-        
-        # Store the thread ID
-        self.active_tickets[str(user_message.author.id)] = thread.id
-        self.save_data()
-        
-        # Send confirmation to user
-        user_embed = discord.Embed(
-            title="Modmail Received",
-            description="Your message has been received by our staff team. "
-                        "Please wait for a response. You can send additional "
-                        "messages in this DM and they will be forwarded.",
-            color=0x00ff00
-        )
-        await user_message.author.send(embed=user_embed)
+        try:
+            staff_msg = await staff_channel.send(embed=embed)
+            thread = await staff_msg.create_thread(
+                name=f"Modmail {user_message.author}",
+                auto_archive_duration=1440
+            )
+            
+            # Store the thread ID
+            self.active_tickets[str(user_message.author.id)] = thread.id
+            self.save_data()
+            
+            # Send confirmation to user
+            user_embed = discord.Embed(
+                title="Modmail Received",
+                description="Your message has been received by our staff team. "
+                            "Please wait for a response. You can send additional "
+                            "messages in this DM and they will be forwarded.",
+                color=0x00ff00
+            )
+            await user_message.author.send(embed=user_embed)
+        except Exception as e:
+            logger.error(f"Failed to create modmail: {e}")
+            await user_message.author.send("Failed to create your modmail ticket. Please try again later.")
     
     async def forward_to_thread(self, user_message):
         """Forward subsequent DMs to the existing thread"""
         thread_id = self.active_tickets.get(str(user_message.author.id))
         if not thread_id:
+            logger.error(f"No thread ID found for user {user_message.author.id}")
             return
             
-        thread = self.bot.get_channel(thread_id)
-        if not thread:
-            return
-            
-        # Create embed for the message
-        embed = discord.Embed(
-            description=user_message.content,
-            color=0x7289da,
-            timestamp=user_message.created_at
-        )
-        embed.set_author(name=user_message.author, icon_url=user_message.author.avatar.url)
-        
-        # Handle attachments
-        if user_message.attachments:
-            attachment_urls = []
-            for attachment in user_message.attachments:
-                attachment_urls.append(f"[{attachment.filename}]({attachment.url})")
-            embed.add_field(name="Attachments", value="\n".join(attachment_urls), inline=False)
-        
         try:
+            thread = await self.bot.fetch_channel(thread_id)
+            if thread is None:
+                logger.error(f"Thread {thread_id} not found!")
+                del self.active_tickets[str(user_message.author.id)]
+                self.save_data()
+                return
+                
+            # Create embed for the message
+            embed = discord.Embed(
+                description=user_message.content,
+                color=0x7289da,
+                timestamp=user_message.created_at
+            )
+            embed.set_author(name=user_message.author, icon_url=user_message.author.avatar.url)
+            
+            # Handle attachments
+            if user_message.attachments:
+                attachment_urls = []
+                for attachment in user_message.attachments:
+                    attachment_urls.append(f"[{attachment.filename}]({attachment.url})")
+                embed.add_field(name="Attachments", value="\n".join(attachment_urls), inline=False)
+            
             msg = await thread.send(embed=embed)
             await msg.add_reaction("✅")  # Success reaction
-        except discord.HTTPException:
-            await thread.send("Failed to forward user message")
-            await thread.send(f"User message: {user_message.content[:1900]}")
+        except discord.NotFound:
+            logger.error(f"Thread {thread_id} not found (404)")
+            del self.active_tickets[str(user_message.author.id)]
+            self.save_data()
+            await user_message.author.send("Your previous modmail thread was not found. A new one will be created if you send another message.")
+        except Exception as e:
+            logger.error(f"Failed to forward message: {e}")
+            await user_message.author.send("Failed to forward your message to staff. Please try again later.")
     
     async def handle_staff_reply(self, staff_message):
         """Handle staff replies in modmail threads"""
-        # Get the user ID from the thread name or our active_tickets
+        # Skip if it's a command
         if staff_message.content.startswith("!"):
             return
             
+        # Find the user ID for this thread
         user_id = None
         for uid, tid in self.active_tickets.items():
             if tid == staff_message.channel.id:
@@ -179,9 +198,12 @@ class ModMail(commands.Cog):
         try:
             await user.send(embed=embed)
             await staff_message.add_reaction("✅")  # Success reaction
-        except discord.HTTPException:
+        except discord.Forbidden:
             await staff_message.add_reaction("❌")  # Failure reaction
-            await staff_message.channel.send("Failed to send message to user")
+            await staff_message.channel.send("Failed to send message to user (user has DMs disabled)")
+        except Exception as e:
+            await staff_message.add_reaction("❌")  # Failure reaction
+            await staff_message.channel.send(f"Failed to send message to user: {str(e)}")
     
     @commands.command(name="close", aliases=["closemail", "closemodmail", "cmm"])
     @commands.has_permissions(manage_messages=True)
@@ -217,9 +239,28 @@ class ModMail(commands.Cog):
             del self.active_tickets[user_id]
             self.save_data()
         
+        # Find the original message in the thread's parent channel
+        try:
+            # Get the parent channel
+            parent_channel = self.bot.get_channel(ctx.channel.parent_id)
+            if parent_channel:
+                # Get the thread's starter message
+                starter_message = await parent_channel.fetch_message(ctx.channel.id)
+                if starter_message and starter_message.embeds:
+                    # Edit the original embed to be red
+                    original_embed = starter_message.embeds[0]
+                    edited_embed = original_embed.copy()
+                    edited_embed.color = 0xff0000  # Red color
+                    await starter_message.edit(embed=edited_embed)
+        except Exception as e:
+            logger.error(f"Failed to edit original embed: {e}")
+        
         # Archive thread
         await ctx.send("Closing this modmail ticket...")
-        await ctx.channel.edit(archived=True, locked=True)
+        try:
+            await ctx.channel.edit(archived=True, locked=True)
+        except Exception as e:
+            await ctx.send(f"Failed to archive thread: {e}")
 
 async def setup(bot):
     try:
