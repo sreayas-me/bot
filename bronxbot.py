@@ -8,11 +8,11 @@ with open("data/config.json", "r") as f:
 bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
 
 async def load_cogs():
-    try:
-        await bot.load_extension('cogs.SyncRoles')
-        print("[+] Successfully loaded SyncRoles cog")
-    except Exception as e:
-        print(f"[-] Failed to load SyncRoles cog: {e}")
+    for file in ["cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans"]:
+        try:
+            await bot.load_extension(file)
+        except Exception as e:
+            print(f"Failed to load cog {file}: {e}")
 
 @bot.event
 async def on_ready():
