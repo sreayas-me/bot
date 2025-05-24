@@ -3,6 +3,18 @@ from discord.ext import commands
 import json
 from pathlib import Path
 from datetime import datetime, timedelta
+import logging
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('data/logs/votebans.log')
+    ]
+)
+logger = logging.getLogger('VoteBans')
 
 class VoteBans(commands.Cog):
     def __init__(self, bot):
@@ -19,6 +31,7 @@ class VoteBans(commands.Cog):
         try:
             with open(self.data_path) as f:
                 data = json.load(f)
+                # Backwards compatibility: support old format
                 if "votes" in data and isinstance(data["votes"], dict):
                     new_data = {}
                     for vote_id, vote_info in data["votes"].items():
@@ -31,18 +44,11 @@ class VoteBans(commands.Cog):
                             "jump_url": vote_info.get("jump_url", ""),
                             "reason": vote_info["reason"],
                             "votes": vote_info["votes"],
-                            "advocates": {},
+                            "advocates": vote_info.get("advocates", {}),  # <-- FIXED
                             "completed": vote_info["completed"]
                         }
-                        if str(user_id) in data.get("advocates", {}):
-                            for advocate_id in data["advocates"][str(user_id)]:
-                                advocate = self.bot.get_user(advocate_id)
-                                new_data[user_id]["advocates"][str(advocate_id)] = {
-                                    "reason": "Previous vote",
-                                    "timestamp": datetime.now().isoformat(),
-                                    "username": advocate.name if advocate else "Unknown"
-                                }
                     return new_data
+                # Newer structure is just vote_data directly
                 return data
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
@@ -51,6 +57,7 @@ class VoteBans(commands.Cog):
         self.data_path.parent.mkdir(exist_ok=True)
         with open(self.data_path, "w") as f:
             json.dump(self.vote_data, f, indent=2, default=str)
+
     
     async def is_staff(self, member):
         staff_role = member.guild.get_role(self.staff_role_id)
@@ -173,6 +180,30 @@ class VoteBans(commands.Cog):
             f"Vote started for {user.mention}!\n"
             f"Vote here: {vote_msg.jump_url}"
         )
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        for vote in self.vote_data.values():
+            if not vote.get("completed", True):
+                try:
+                    channel = self.bot.get_channel(vote["channel_id"])
+                    message = await channel.fetch_message(vote["message_id"])
+                    embed = message.embeds[0]
+                    embed.clear_fields()
+
+                    # Rebuild advocate list
+                    advocate_text = []
+                    for advocate_id, advocate_data in vote["advocates"].items():
+                        advocate_text.append(
+                            f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
+                            f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:R>)"
+                        )
+                    if advocate_text:
+                        embed.add_field(name="Advocates", value="\n".join(advocate_text), inline=False)
+
+                    await message.edit(embed=embed)
+                except Exception as e:
+                    print(f"Failed to update message {vote['message_id']}: {e}")
 
     
     @commands.Cog.listener()
@@ -336,4 +367,9 @@ class VoteBans(commands.Cog):
         await ctx.send(embed=embed)
 
 async def setup(bot):
-    await bot.add_cog(VoteBans(bot))
+    try:
+        await bot.add_cog(VoteBans(bot))
+        logger.info("VoteBans cog loaded successfully")
+    except Exception as e:
+        logger.error(f"Failed to load VoteBans cog: {e}")
+        raise e
