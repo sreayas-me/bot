@@ -62,9 +62,12 @@ class VoteBans(commands.Cog):
     async def is_staff(self, member):
         staff_role = member.guild.get_role(self.staff_role_id)
         return staff_role in member.roles if staff_role else False
-    
+
+
+
     @commands.command(name="vban", aliases=["voteban", "vote", "kill", "vb", "ban"])
     async def voteban(self, ctx, user: discord.Member=None, *, reason="No reason provided"):
+
         if not user:
             embed = discord.Embed(
                 title="Vote Ban",
@@ -102,8 +105,7 @@ class VoteBans(commands.Cog):
         # If vote already exists, update advocates and edit embed
         if user_id_str in self.vote_data and not self.vote_data[user_id_str].get("completed", True):
             existing_vote = self.vote_data[user_id_str]
-            
-            # Add this user as an advocate
+
             existing_vote["advocates"][str(ctx.author.id)] = {
                 "reason": reason,
                 "timestamp": datetime.now().isoformat(),
@@ -207,74 +209,142 @@ class VoteBans(commands.Cog):
 
     
     @commands.Cog.listener()
-    async def on_reaction_add(self, reaction, user):
-        if user.bot:
+    async def on_raw_reaction_add(self, payload):
+        if payload.user_id == self.bot.user.id:
             return
-            
+
+
         # Find vote by message_id
-        user_id_str = None
         vote_info = None
+        user_id_str = None
         for uid, data in self.vote_data.items():
-            if uid == "advocates":
-                continue
-            if "message_id" in data and data["message_id"] == reaction.message.id:
-                user_id_str = uid
+            if data.get("message_id") == payload.message_id:
                 vote_info = data
+                user_id_str = uid
                 break
-        
+
         if not vote_info or vote_info.get("completed", True):
             return
-            
-        if str(reaction.emoji) not in ["✅", "❌"]:
+
+        emoji = str(payload.emoji)
+        if emoji not in ["✅", "❌"]:
             return
-            
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
+            return
+
+        member = guild.get_member(payload.user_id)
+        if not member or await self.is_staff(member):
+            return
+
+        channel = self.bot.get_channel(payload.channel_id)
+        if not channel:
+            return
+
         try:
-            channel = self.bot.get_channel(vote_info["channel_id"])
-            message = await channel.fetch_message(vote_info["message_id"])
+            message = await channel.fetch_message(payload.message_id)
         except discord.NotFound:
             return
-        
-        # Check if voter is staff
-        try:
-            voter = await channel.guild.fetch_member(user.id)
-            if await self.is_staff(voter):
-                await message.remove_reaction(reaction.emoji, user)
-                return
-        except discord.NotFound:
-            return
-            
-        # Update votes
-        for emoji in ["✅", "❌"]:
-            if user.id in vote_info["votes"][emoji]:
-                vote_info["votes"][emoji].remove(user.id)
+
+        # Remove user from previous vote
+        for e in ["✅", "❌"]:
+            if payload.user_id in vote_info["votes"][e]:
+                vote_info["votes"][e].remove(payload.user_id)
                 try:
-                    await message.remove_reaction(emoji, user)
+                    await message.remove_reaction(e, member)
                 except discord.HTTPException:
                     pass
-        
-        vote_info["votes"][str(reaction.emoji)].append(user.id)
+
+        vote_info["votes"][emoji].append(payload.user_id)
         self.save_data()
-        
-        # Edit message to update counts
+
+        user_id = payload.user_id  # or any user ID you're checking
+        yes_voters = vote_info["votes"]["✅"]
+        no_voters = vote_info["votes"]["❌"]
+
+        # Add the new vote
+        opposite = "❌" if emoji == "✅" else "✅"
+        if user_id in vote_info["votes"][opposite]:
+            vote_info["votes"][opposite].remove(user_id)
+
+        if user_id not in vote_info["votes"][emoji]:
+            vote_info["votes"][emoji].append(user_id)
+
+        # Update embed vote counts
+        yes = len(vote_info["votes"]["✅"])
+        no = len(vote_info["votes"]["❌"])
         embed = message.embeds[0]
-        yes_votes = len(vote_info["votes"]["✅"])
-        no_votes = len(vote_info["votes"]["❌"])
-        
-        # Update embed description with current counts
         embed.description = (
             f"**Reason:** {vote_info['reason']}\n\n"
-            f"Vote ✅ to ban ({yes_votes}), ❌ to keep ({no_votes})\n"
+            f"Vote ✅ to ban ({yes}), ❌ to keep ({no})\n"
             f"{self.required_votes} votes needed to decide"
         )
-        
-        # Keep existing advocate field if present
         await message.edit(embed=embed)
-        
-        # Check if vote complete
-        total_votes = yes_votes + no_votes
-        if total_votes >= self.required_votes:
+
+        # Complete vote if needed
+        if (yes + no) >= self.required_votes:
             await self.complete_vote(user_id_str, message)
-    
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_remove(self, payload):
+        if payload.user_id == self.bot.user.id:
+            return
+
+        # Find vote by message_id
+        vote_info = None
+        user_id_str = None
+        for uid, data in self.vote_data.items():
+            if data.get("message_id") == payload.message_id:
+                vote_info = data
+                user_id_str = uid
+                break
+
+        if not vote_info or vote_info.get("completed", True):
+            return
+
+        emoji = str(payload.emoji)
+        if emoji not in ["✅", "❌"]:
+            return
+
+        # Remove user from vote list if they exist
+        if payload.user_id in vote_info["votes"][emoji]:
+            vote_info["votes"][emoji].remove(payload.user_id)
+            self.save_data()
+        else:
+            return  # No change needed if they hadn't voted with this emoji
+
+        # Fetch the message to update the embed
+        channel = self.bot.get_channel(payload.channel_id)
+        if not channel:
+            return
+
+        try:
+            message = await channel.fetch_message(payload.message_id)
+        except discord.NotFound:
+            return
+
+        user_id = payload.user_id  # or any user ID you're checking
+        yes_voters = vote_info["votes"]["✅"]
+        no_voters = vote_info["votes"]["❌"]
+
+        if user_id in vote_info["votes"][emoji]:
+            vote_info["votes"][emoji].remove(user_id)
+
+
+
+        # Update embed vote counts
+        yes = len(vote_info["votes"]["✅"])
+        no = len(vote_info["votes"]["❌"])
+        embed = message.embeds[0]
+        embed.description = (
+            f"**Reason:** {vote_info['reason']}\n\n"
+            f"Vote ✅ to ban ({yes}), ❌ to keep ({no})\n"
+            f"{self.required_votes} votes needed to decide"
+        )
+        await message.edit(embed=embed)
+
+
     async def complete_vote(self, user_id_str, message):
         vote_info = self.vote_data[user_id_str]
         vote_info["completed"] = True
