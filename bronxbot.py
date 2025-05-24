@@ -1,5 +1,6 @@
 import discord
 import json
+import random
 from discord.ext import commands
 
 with open("data/config.json", "r") as f:
@@ -18,5 +19,28 @@ async def load_cogs():
 async def on_ready():
     await load_cogs()
     print(f'[?] Logged in as {bot.user.name} (ID: {bot.user.id})')
+
+# remove this if hosting locally, it wont make any sense
+
+tips = [
+    "i was made in 3 hours",
+    "use !help to get started",
+    "use !help <command> for more info",
+    "try !ban",
+    "try !vban",
+    "try the modmail feature if you need help",
+    "did you know this bot is open source?",
+    "this bot is hosted on ks' crusty old pc"   
+]
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+    elif message.content == bot.user.mention:
+        if message.author.id == 828380019406929962:
+            await message.reply(f"hola, **{random.choice(config['OWNER_REPLY'])}**\n-# `{round(bot.latency * 1000, 2)}ms`")
+        await message.reply(f"hi, **{message.author.name}**\n-# {random.choice(tips)}")
+    await bot.process_commands(message)
 
 bot.run(config['TOKEN'])
