@@ -39,7 +39,7 @@ class VoteBans(commands.Cog):
                                 advocate = self.bot.get_user(advocate_id)
                                 new_data[user_id]["advocates"][str(advocate_id)] = {
                                     "reason": "Previous vote",
-                                    "timestamp": datetime.utcnow().isoformat(),
+                                    "timestamp": datetime.now().isoformat(),
                                     "username": advocate.name if advocate else "Unknown"
                                 }
                     return new_data
@@ -83,6 +83,12 @@ class VoteBans(commands.Cog):
             
         if user.bot:
             return await ctx.send("You can't vote ban bots!", delete_after=10)
+
+        # Check if reason is reasonably long
+        if len(reason) < 10:
+            return await ctx.send("Reason must be at least 10 characters long!", delete_after=10)
+        elif len(reason) > 250:
+            return await ctx.send("Reason must be less than 250 characters long!", delete_after=10)
 
         user_id_str = str(user.id)
 
@@ -131,7 +137,7 @@ class VoteBans(commands.Cog):
             title=f"Vote Ban: {user.display_name}",
             description=f"**Reason:** {reason}\n\nVote ✅ to ban, ❌ to keep\n{self.required_votes} votes needed to decide",
             color=0xff0000,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now()
         )
         embed.set_thumbnail(url=user.avatar.url)
         embed.set_footer(text=f"Started by {ctx.author.display_name}")
@@ -154,7 +160,7 @@ class VoteBans(commands.Cog):
             "advocates": {
                 str(ctx.author.id): {
                     "reason": reason,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now().isoformat(),
                     "username": ctx.author.name
                 }
             },
