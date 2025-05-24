@@ -2,6 +2,9 @@ import discord
 from discord.ext import commands
 from discord.utils import get
 import logging
+import json
+import os
+from pathlib import Path
 
 # Set up logging
 logging.basicConfig(
@@ -14,11 +17,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger('ModMail')
 
+# Ensure data directory exists
+Path("data").mkdir(exist_ok=True)
+
 class ModMail(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.active_tickets = {}  # {user_id: thread_id}
         self.staff_channel_id = 1259717946947670099  # Set this in setup
+        self.data_file = "data/modmail.json"
+        self.active_tickets = self.load_data()
+    
+    def load_data(self):
+        """Load active tickets from JSON file"""
+        try:
+            if os.path.exists(self.data_file):
+                with open(self.data_file, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            logger.error(f"Failed to load modmail data: {e}")
+            return {}
+    
+    def save_data(self):
+        """Save active tickets to JSON file"""
+        try:
+            with open(self.data_file, 'w') as f:
+                json.dump(self.active_tickets, f)
+        except Exception as e:
+            logger.error(f"Failed to save modmail data: {e}")
     
     @commands.Cog.listener()
     async def on_ready(self):
@@ -68,7 +94,8 @@ class ModMail(commands.Cog):
         )
         
         # Store the thread ID
-        self.active_tickets[user_message.author.id] = thread.id
+        self.active_tickets[str(user_message.author.id)] = thread.id
+        self.save_data()
         
         # Send confirmation to user
         user_embed = discord.Embed(
@@ -82,7 +109,7 @@ class ModMail(commands.Cog):
     
     async def forward_to_thread(self, user_message):
         """Forward subsequent DMs to the existing thread"""
-        thread_id = self.active_tickets.get(user_message.author.id)
+        thread_id = self.active_tickets.get(str(user_message.author.id))
         if not thread_id:
             return
             
@@ -115,12 +142,13 @@ class ModMail(commands.Cog):
     async def handle_staff_reply(self, staff_message):
         """Handle staff replies in modmail threads"""
         # Get the user ID from the thread name or our active_tickets
-        if staff_message.startswith("!"):
+        if staff_message.content.startswith("!"):
             return
+            
         user_id = None
         for uid, tid in self.active_tickets.items():
             if tid == staff_message.channel.id:
-                user_id = uid
+                user_id = int(uid)
                 break
         
         if not user_id:
@@ -172,7 +200,7 @@ class ModMail(commands.Cog):
         
         if user_id:
             # Notify user
-            user = self.bot.get_user(user_id)
+            user = self.bot.get_user(int(user_id))
             if user:
                 try:
                     embed = discord.Embed(
@@ -187,6 +215,7 @@ class ModMail(commands.Cog):
             
             # Remove from active tickets
             del self.active_tickets[user_id]
+            self.save_data()
         
         # Archive thread
         await ctx.send("Closing this modmail ticket...")
