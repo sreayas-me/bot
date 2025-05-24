@@ -6,7 +6,14 @@ from discord.ext import commands
 with open("data/config.json", "r") as f:
     config = json.load(f)
 
-bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+intents.guilds = True
+intents.reactions = True
+
+
+bot = commands.Bot(command_prefix='!', intents=intents)
 
 async def load_cogs():
     for file in ["cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans"]:
