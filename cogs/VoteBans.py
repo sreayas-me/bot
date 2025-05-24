@@ -68,17 +68,48 @@ class VoteBans(commands.Cog):
             return await ctx.send("You can't vote ban bots!", delete_after=10)
 
         user_id_str = str(user.id)
-        
-        # Check for existing active vote
+
+        # If vote already exists, update advocates and edit embed
         if user_id_str in self.vote_data and not self.vote_data[user_id_str].get("completed", True):
             existing_vote = self.vote_data[user_id_str]
-            return await ctx.send(
-                f"There's already an active vote for {user.mention}!\n"
-                f"Vote here: {existing_vote['jump_url']}",
-                delete_after=15
-            )
             
-        # Create the initial embed
+            # Add this user as an advocate
+            existing_vote["advocates"][str(ctx.author.id)] = {
+                "reason": reason,
+                "timestamp": datetime.utcnow().isoformat(),
+                "username": ctx.author.name
+            }
+
+            # Update embed with new advocate list
+            channel = self.bot.get_channel(existing_vote["channel_id"])
+            message = await channel.fetch_message(existing_vote["message_id"])
+
+            embed = message.embeds[0]
+            embed.clear_fields()
+            
+            # Rebuild the embed fields
+            advocate_text = []
+            for advocate_id, advocate_data in existing_vote["advocates"].items():
+                advocate_text.append(
+                    f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
+                    f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:R>)"
+                )
+            if advocate_text:
+                embed.add_field(
+                    name="Advocates",
+                    value="\n".join(advocate_text),
+                    inline=False
+                )
+
+            await message.edit(embed=embed)
+            self.save_data()
+
+            return await ctx.send(
+                f"You've been added as an advocate for {user.mention}'s vote ban.\n"
+                f"Vote here: {existing_vote['jump_url']}"
+            )
+
+        # Create a new vote embed
         embed = discord.Embed(
             title=f"Vote Ban: {user.display_name}",
             description=f"**Reason:** {reason}\n\nVote ✅ to ban, ❌ to keep\n{self.required_votes} votes needed to decide",
@@ -87,30 +118,14 @@ class VoteBans(commands.Cog):
         )
         embed.set_thumbnail(url=user.avatar.url)
         embed.set_footer(text=f"Started by {ctx.author.display_name}")
-        
-        # Add advocate information if available
-        if user_id_str in self.vote_data:
-            advocates = self.vote_data[user_id_str].get("advocates", {})
-            if advocates:
-                advocate_text = []
-                for advocate_id, advocate_data in advocates.items():
-                    advocate_text.append(
-                        f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
-                        f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:R>)"
-                    )
-                embed.add_field(
-                    name="Previous Advocates",
-                    value="\n".join(advocate_text),
-                    inline=False
-                )
-        
-        # Send to vote channel
+
+        # Send embed to vote channel
         vote_channel = self.bot.get_channel(self.vote_channel_id)
         vote_msg = await vote_channel.send(embed=embed)
         await vote_msg.add_reaction("✅")
         await vote_msg.add_reaction("❌")
-        
-        # Store vote data with jump_url
+
+        # Store vote data
         self.vote_data[user_id_str] = {
             "user_id": user.id,
             "initiator": ctx.author.id,
@@ -119,26 +134,23 @@ class VoteBans(commands.Cog):
             "jump_url": vote_msg.jump_url,
             "reason": reason,
             "votes": {"✅": [], "❌": []},
-            "advocates": {},
+            "advocates": {
+                str(ctx.author.id): {
+                    "reason": reason,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "username": ctx.author.name
+                }
+            },
             "completed": False
         }
-        
-        # Add current initiator as advocate if not first time
-        if user_id_str in self.vote_data:
-            self.vote_data[user_id_str]["advocates"][str(ctx.author.id)] = {
-                "reason": reason,
-                "timestamp": datetime.utcnow().isoformat(),
-                "username": ctx.author.name
-            }
-        
+
         self.save_data()
-        
-        # Reply with jump link that auto-deletes
+
         await ctx.send(
             f"Vote started for {user.mention}!\n"
-            f"Vote here: {vote_msg.jump_url}",
-            delete_after=15
+            f"Vote here: {vote_msg.jump_url}"
         )
+
     
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
@@ -229,7 +241,7 @@ class VoteBans(commands.Cog):
         for advocate_id, advocate_data in vote_info.get("advocates", {}).items():
             advocate_text.append(
                 f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
-                f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:R>)"
+                f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:t>)"
             )
         
         embed.description = (
