@@ -143,7 +143,7 @@ class VoteBans(commands.Cog):
         embed = discord.Embed(
             title=f"Vote Ban: {user.display_name}",
             description=f"**Reason:** {reason}\n\nVote ✅ to ban, ❌ to keep\n{self.required_votes} votes needed to decide",
-            color=0xff0000,
+            color=discord.Colour.random(),
             timestamp=datetime.now()
         )
         embed.set_thumbnail(url=user.avatar.url)
