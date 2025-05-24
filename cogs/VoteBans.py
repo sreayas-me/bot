@@ -19,7 +19,6 @@ class VoteBans(commands.Cog):
         try:
             with open(self.data_path) as f:
                 data = json.load(f)
-                # Migration from old format to new format
                 if "votes" in data and isinstance(data["votes"], dict):
                     new_data = {}
                     for vote_id, vote_info in data["votes"].items():
@@ -29,13 +28,12 @@ class VoteBans(commands.Cog):
                             "initiator": vote_info["initiator"],
                             "message_id": vote_info["message_id"],
                             "channel_id": vote_info["channel_id"],
-                            "jump_url": vote_info["jump_url"],
+                            "jump_url": vote_info.get("jump_url", ""),
                             "reason": vote_info["reason"],
                             "votes": vote_info["votes"],
                             "advocates": {},
                             "completed": vote_info["completed"]
                         }
-                        # Migrate advocates if they exist
                         if str(user_id) in data.get("advocates", {}):
                             for advocate_id in data["advocates"][str(user_id)]:
                                 advocate = self.bot.get_user(advocate_id)
@@ -60,27 +58,32 @@ class VoteBans(commands.Cog):
     
     @commands.command(name="vban", aliases=["voteban", "vote", "kill"])
     async def voteban(self, ctx, user: discord.Member, *, reason="No reason provided"):
-            
         if user.id == ctx.author.id:
-            await ctx.send("You can't vote ban yourself!")
-            return
+            return await ctx.send("You can't vote ban yourself!", delete_after=10)
             
         if await self.is_staff(user) or await self.is_staff(ctx.author):
-            await ctx.send("You can't vote ban (or vote as) a staff member!")
-            return
+            return await ctx.send("You can't vote ban (or vote as) a staff member!", delete_after=10)
             
         if user.bot:
-            await ctx.send("You can't vote ban bots!")
-            return
+            return await ctx.send("You can't vote ban bots!", delete_after=10)
 
         user_id_str = str(user.id)
+        
+        # Check for existing active vote
+        if user_id_str in self.vote_data and not self.vote_data[user_id_str].get("completed", True):
+            existing_vote = self.vote_data[user_id_str]
+            return await ctx.send(
+                f"There's already an active vote for {user.mention}!\n"
+                f"Vote here: {existing_vote['jump_url']}",
+                delete_after=15
+            )
             
-        # Create the embed with advocate information
+        # Create the initial embed
         embed = discord.Embed(
             title=f"Vote Ban: {user.display_name}",
-            description=f"**Reason:** {reason}\n\nVote ✅ to ban, ❌ to keep\n25 votes needed to decide",
+            description=f"**Reason:** {reason}\n\nVote ✅ to ban, ❌ to keep\n{self.required_votes} votes needed to decide",
             color=0xff0000,
-            timestamp=datetime.now()
+            timestamp=datetime.utcnow()
         )
         embed.set_thumbnail(url=user.avatar.url)
         embed.set_footer(text=f"Started by {ctx.author.display_name}")
@@ -92,7 +95,7 @@ class VoteBans(commands.Cog):
                 advocate_text = []
                 for advocate_id, advocate_data in advocates.items():
                     advocate_text.append(
-                        f"• {advocate_data['username']} - {advocate_data['reason']} "
+                        f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
                         f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:R>)"
                     )
                 embed.add_field(
@@ -101,18 +104,19 @@ class VoteBans(commands.Cog):
                     inline=False
                 )
         
-        channel = self.bot.get_channel(self.vote_channel_id)
-        vote_msg = await channel.send(embed=embed)
+        # Send to vote channel
+        vote_channel = self.bot.get_channel(self.vote_channel_id)
+        vote_msg = await vote_channel.send(embed=embed)
         await vote_msg.add_reaction("✅")
         await vote_msg.add_reaction("❌")
         
-        # Store the vote data
+        # Store vote data with jump_url
         self.vote_data[user_id_str] = {
             "user_id": user.id,
             "initiator": ctx.author.id,
             "message_id": vote_msg.id,
+            "channel_id": vote_channel.id,
             "jump_url": vote_msg.jump_url,
-            "channel_id": ctx.channel.id,
             "reason": reason,
             "votes": {"✅": [], "❌": []},
             "advocates": {},
@@ -123,23 +127,30 @@ class VoteBans(commands.Cog):
         if user_id_str in self.vote_data:
             self.vote_data[user_id_str]["advocates"][str(ctx.author.id)] = {
                 "reason": reason,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.utcnow().isoformat(),
                 "username": ctx.author.name
             }
         
         self.save_data()
         
-        await ctx.send(f"You are the first to vote for {user.mention}!\n-# vote [here]({vote_msg.jump_url})")
+        # Reply with jump link that auto-deletes
+        await ctx.send(
+            f"Vote started for {user.mention}!\n"
+            f"Vote here: {vote_msg.jump_url}",
+            delete_after=15
+        )
     
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
         if user.bot:
             return
             
-        # Find the vote by message_id
+        # Find vote by message_id
         user_id_str = None
         vote_info = None
         for uid, data in self.vote_data.items():
+            if uid == "advocates":
+                continue
             if "message_id" in data and data["message_id"] == reaction.message.id:
                 user_id_str = uid
                 vote_info = data
@@ -178,7 +189,23 @@ class VoteBans(commands.Cog):
         vote_info["votes"][str(reaction.emoji)].append(user.id)
         self.save_data()
         
-        total_votes = len(vote_info["votes"]["✅"]) + len(vote_info["votes"]["❌"])
+        # Edit message to update counts
+        embed = message.embeds[0]
+        yes_votes = len(vote_info["votes"]["✅"])
+        no_votes = len(vote_info["votes"]["❌"])
+        
+        # Update embed description with current counts
+        embed.description = (
+            f"**Reason:** {vote_info['reason']}\n\n"
+            f"Vote ✅ to ban ({yes_votes}), ❌ to keep ({no_votes})\n"
+            f"{self.required_votes} votes needed to decide"
+        )
+        
+        # Keep existing advocate field if present
+        await message.edit(embed=embed)
+        
+        # Check if vote complete
+        total_votes = yes_votes + no_votes
         if total_votes >= self.required_votes:
             await self.complete_vote(user_id_str, message)
     
@@ -189,8 +216,6 @@ class VoteBans(commands.Cog):
         
         yes_votes = len(vote_info["votes"]["✅"])
         no_votes = len(vote_info["votes"]["❌"])
-        
-        # Calculate advocate bonus (3 points per advocate)
         advocate_bonus = len(vote_info.get("advocates", {})) * 3
         total_score = yes_votes - no_votes + advocate_bonus
         
@@ -199,22 +224,21 @@ class VoteBans(commands.Cog):
         
         embed = message.embeds[0]
         
-        # Build advocate information
+        # Build final embed
         advocate_text = []
         for advocate_id, advocate_data in vote_info.get("advocates", {}).items():
             advocate_text.append(
-                f"• {advocate_data['username']} - {advocate_data['reason']} "
+                f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
                 f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:R>)"
             )
         
         embed.description = (
             f"**Reason:** {vote_info['reason']}\n\n"
-            f"Vote ✅ to ban, ❌ to keep\n\n"
-            f"**Advocates:**\n" + "\n".join(advocate_text) + "\n\n"
             f"**Voting Complete!**\n"
             f"✅ {yes_votes} votes | ❌ {no_votes} votes\n"
             f"Advocate bonus: +{advocate_bonus}\n"
-            f"**Final Score:** {total_score}\n"
+            f"**Final Score:** {total_score}\n\n"
+            f"**Advocates:**\n" + ("\n".join(advocate_text) if advocate_text else "None")
         )
         
         if total_score >= self.ban_threshold:
@@ -237,17 +261,12 @@ class VoteBans(commands.Cog):
             embed.color = 0x00ff00
         
         await message.edit(embed=embed)
-        
-        try:
-            await message.clear_reactions()
-        except discord.HTTPException:
-            pass
+        await message.clear_reactions()
     
-    @commands.command(name="votestats")
+    @commands.command(name="votestats", aliases=["vs"])
     async def vote_stats(self, ctx, user: discord.Member = None):
         if not user:
-            await ctx.send("Please specify a user to check stats for.")
-            return
+            return await ctx.send("Please specify a user to check stats for.", delete_after=10)
             
         user_id_str = str(user.id)
         embed = discord.Embed(
@@ -266,7 +285,8 @@ class VoteBans(commands.Cog):
                 embed.add_field(
                     name="Current Vote",
                     value=f"✅ {yes_votes} | ❌ {no_votes}\n"
-                         f"Needs {self.required_votes} total votes",
+                         f"Needs {self.required_votes} total votes\n"
+                         f"[Jump to Vote]({vote_info['jump_url']})",
                     inline=False
                 )
             
@@ -275,7 +295,7 @@ class VoteBans(commands.Cog):
                 advocate_text = []
                 for advocate_id, advocate_data in vote_info["advocates"].items():
                     advocate_text.append(
-                        f"• {advocate_data['username']} - {advocate_data['reason']} "
+                        f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
                         f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:R>)"
                     )
                 embed.add_field(
