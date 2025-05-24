@@ -1,1 +1,5 @@
 .venv
+.vscode
+data
+.gitignore
+cogs/__pycache__
