@@ -49,7 +49,6 @@ ROLE_MAPPING = {
 class SyncRoles(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        logger.info("SyncRoles cog initialized")
     
     async def get_target_servers(self, source_guild):
         """Get the other two servers based on the source server"""
@@ -96,7 +95,6 @@ class SyncRoles(commands.Cog):
     
     async def sync_roles(self, member, source_guild):
         """Sync roles from source server to target servers"""
-        logger.info(f"Starting role sync for {member} (ID: {member.id}) in guild {source_guild.id}")
         
         # Get the other two servers
         target_guild1, target_guild2 = await self.get_target_servers(source_guild)
