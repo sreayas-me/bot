@@ -38,8 +38,8 @@ async def on_message(message):
     if message.author.bot:
         return
     elif message.content == bot.user.mention:
-        if message.author.id == 828380019406929962:
-            await message.reply(f"hola, **{random.choice(config['OWNER_REPLY'])}**\n-# `{round(bot.latency * 1000, 2)}ms`")
+        if str(message.author.id) in config['OWNER_IDS']:
+            return await message.reply(f"hola, **{random.choice(config['OWNER_REPLY'])}**\n-# `{round(bot.latency * 1000, 2)}ms`")
         await message.reply(f"hi, **{message.author.name}**\n-# {random.choice(tips)}")
     await bot.process_commands(message)
 
