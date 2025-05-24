@@ -56,8 +56,25 @@ class VoteBans(commands.Cog):
         staff_role = member.guild.get_role(self.staff_role_id)
         return staff_role in member.roles if staff_role else False
     
-    @commands.command(name="vban", aliases=["voteban", "vote", "kill"])
-    async def voteban(self, ctx, user: discord.Member, *, reason="No reason provided"):
+    @commands.command(name="vban", aliases=["voteban", "vote", "kill", "vb", "ban"])
+    async def voteban(self, ctx, user: discord.Member=None, *, reason="No reason provided"):
+        if not user:
+            embed = discord.Embed(
+                title="Vote Ban",
+                description="""
+                **Usage:**
+                `!vban <user> <reason>`
+                > *vb, voteban, vote, kill, ban, vban*
+                
+                **Example:**
+                `!vban ks.net gay`
+                `!vban @ks.net gay`
+                `!vban 814226043924643880 still gay`
+                """,
+                color=discord.Colour.random(),
+                timestamp=datetime.now()
+            )
+            return await ctx.send(embed=embed)
         if user.id == ctx.author.id:
             return await ctx.send("You can't vote ban yourself!", delete_after=10)
             
@@ -76,7 +93,7 @@ class VoteBans(commands.Cog):
             # Add this user as an advocate
             existing_vote["advocates"][str(ctx.author.id)] = {
                 "reason": reason,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now().isoformat(),
                 "username": ctx.author.name
             }
 
@@ -237,20 +254,12 @@ class VoteBans(commands.Cog):
         embed = message.embeds[0]
         
         # Build final embed
-        advocate_text = []
-        for advocate_id, advocate_data in vote_info.get("advocates", {}).items():
-            advocate_text.append(
-                f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
-                f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:t>)"
-            )
-        
         embed.description = (
             f"**Reason:** {vote_info['reason']}\n\n"
             f"**Voting Complete!**\n"
             f"✅ {yes_votes} votes | ❌ {no_votes} votes\n"
             f"Advocate bonus: +{advocate_bonus}\n"
             f"**Final Score:** {total_score}\n\n"
-            f"**Advocates:**\n" + ("\n".join(advocate_text) if advocate_text else "None")
         )
         
         if total_score >= self.ban_threshold:
