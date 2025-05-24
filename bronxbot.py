@@ -16,7 +16,7 @@ intents.reactions = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 async def load_cogs():
-    for file in ["cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans", "cogs.Welcoming"]:
+    for file in ["cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans", "cogs.Welcoming", "cogs.Stats"]:
         try:
             await bot.load_extension(file)
         except Exception as e:
@@ -27,7 +27,7 @@ async def on_ready():
     await load_cogs()
     print(f'[?] Logged in as {bot.user.name} (ID: {bot.user.id})')
 
-# remove this if hosting locally, it wont make any sense
+# FIXME: remove this if hosting locally, it wont make any sense
 
 tips = [
     "i was made in 3 hours",
