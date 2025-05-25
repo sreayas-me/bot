@@ -1,6 +1,7 @@
 import random
 import string
 import asyncio
+import discord
 from discord.ext import commands
 from discord import DMChannel, TextChannel
 
@@ -25,7 +26,7 @@ class Cypher(commands.Cog):
             text = str(text)
         if '\n' in text or len(text) > 50 or any(c in text for c in '+=<>/\\|`~"\''):
             return f"```\n{text}\n```"
-        return text
+        return f"**__{text}__**"
     
     def generate_cipher_mapping(self, key):
         """Generate a cipher mapping based on the key"""
@@ -71,7 +72,7 @@ Please send your KEY now (or in format key:message):```""")
             def dm_check(m):
                 return m.author == ctx.author and isinstance(m.channel, DMChannel)
             
-            # Wait for key in DMs
+            # wait for key in DMs
             key_msg = await self.bot.wait_for('message', check=dm_check, timeout=120)
             
             if key_msg.content.lower() == 'cancel':
@@ -99,7 +100,7 @@ Please send your KEY now (or in format key:message):```""")
     @commands.command(aliases=['secret', 'encrypt'])
     async def cypher(self, ctx, key: str = None, *, text: str = None):
         """Send encrypted messages using a key-based cipher"""
-        # Handle case where no arguments provided
+        # case where no arguments provided
         if not text and not key:
             key, text = await self.process_input(ctx, "encrypt")
             if not key:
@@ -111,11 +112,11 @@ Please send your KEY now (or in format key:message):```""")
         elif not text:
             return await ctx.reply("```Please provide the text to encrypt```", delete_after=10)
         
-        # Extract from codeblocks if present
+        # get that boy from codeblocks if present
         key = self.extract_from_codeblock(key)
         text = self.extract_from_codeblock(text)
         
-        # Validation
+        # check it
         if len(text) > 1900:
             return await ctx.reply("```Text too long (max 1900 chars)```", delete_after=10)
         
@@ -125,45 +126,37 @@ Please send your KEY now (or in format key:message):```""")
         if len(key) < 3:
             return await ctx.reply("```Key too short (min 3 chars)```", delete_after=10)
         
-        # Generate cipher mapping and encrypt
+        # cipher mapping and encrypt
         try:
             encrypt_map, _ = self.generate_cipher_mapping(key)
             encrypted_text = text.translate(encrypt_map)
             
-            # Format output
-            original_display = self.wrap_in_codeblock(text[:1900])
-            encrypted_display = self.wrap_in_codeblock(encrypted_text)
+            embed = discord.Embed(color=0x2b2d31) 
+            embed.add_field(name="Key", value=f"`{key[:50]}`", inline=False)
+            embed.add_field(name="Original", value=self.wrap_in_codeblock(text[:1900]), inline=False)
+            embed.add_field(name="Encrypted", value=self.wrap_in_codeblock(encrypted_text), inline=False)
             
-            # Send to DMs
-            result = (
-                f"**🔐 Encrypted Message**\n"
-                f"**Key:** `{key[:50]}`\n"
-                f"**Original:** {original_display}\n"
-                f"**Encrypted:** {encrypted_display}"
-            )
-            
-            await ctx.author.send(result)
+            await ctx.author.send(embed=embed)
             if isinstance(ctx.channel, TextChannel):
-                await ctx.reply("```✅ Encryption complete - check your DMs!```")
-            
+                await ctx.reply("✅ Encryption complete - check your DMs", mention_author=False)
+        
         except Exception as e:
             await ctx.reply(f"```Encryption failed: {str(e)}```")
 
     @commands.command(aliases=['decrypt'])
     async def decypher(self, ctx, key: str = None, *, text: str = None):
-        """Decrypt encrypted messages using the same key
-        If no arguments are provided, will prompt for them"""
-        # Handle missing arguments
+        """Decrypt encrypted messages using the same key"""
+        # missing arguments
         if not key or not text:
             key, text = await self.process_input(ctx, "decrypt")
             if not key:
                 return
         
-        # Extract from codeblocks if present
+        # from codeblocks if present
         key = self.extract_from_codeblock(key)
         text = self.extract_from_codeblock(text)
         
-        # Validation
+        # check that boy
         if len(text) > 2000:
             return await ctx.reply("```Text too long (max 2000 chars)```")
         
@@ -173,114 +166,99 @@ Please send your KEY now (or in format key:message):```""")
         if len(key) < 3:
             return await ctx.reply("```Key too short (min 3 chars)```")
         
-        # Generate cipher mapping and decrypt
+        # cipher mapping and decrypt
         try:
             _, decrypt_map = self.generate_cipher_mapping(key)
             decrypted_text = text.translate(decrypt_map)
             
-            # Format output
-            encrypted_display = self.wrap_in_codeblock(text[:1900])
-            decrypted_display = self.wrap_in_codeblock(decrypted_text)
+            embed = discord.Embed(color=0x2b2d31)
+            embed.add_field(name="Key", value=f"`{key[:50]}`", inline=False)
+            embed.add_field(name="Encrypted", value=self.wrap_in_codeblock(text[:1900]), inline=False)
+            embed.add_field(name="Decrypted", value=self.wrap_in_codeblock(decrypted_text), inline=False)
             
-            # Send to DMs
-            result = (
-                f"**🔓 Decrypted Message**\n"
-                f"**Key:** `{key[:50]}`\n"
-                f"**Encrypted:** {encrypted_display}\n"
-                f"**Decrypted:** {decrypted_display}"
-            )
-            await ctx.author.send(result)
-            
+            await ctx.author.send(embed=embed)
             if isinstance(ctx.channel, TextChannel):
-                await ctx.reply("```✅ Decryption complete - check your DMs!```")
-            
+                await ctx.reply("✅ Decryption complete - check your DMs", mention_author=False)
+        
         except Exception as e:
             await ctx.reply(f"```Decryption failed: {str(e)} (wrong key?)```")
 
     @commands.command(aliases=['testcipher'])
     async def cipher_test(self, ctx, key: str = None, *, text: str = None):
         """Test the cipher system interactively"""
-        # If no arguments provided, start DM wizard
+        # no arguments provided, start wizard
         if not key:
             key, text = await self.process_input(ctx, "test")
             if not key:
                 return
         
-        # Process with provided arguments
         await self.process_cipher_test(ctx, key, text or "Hello World! This is a test message 123.")
 
     async def process_cipher_test(self, ctx, key, text, user=None):
-        """Process cipher test and send results with automatic cipher detection"""
+        """Process cipher test with embeds"""
         target = user or ctx.author
         
         try:
-            # Extract from codeblocks if present
             key = self.extract_from_codeblock(key)
             text = self.extract_from_codeblock(text)
             
-            # Generate cipher mappings
+            # cipher mappings
             encrypt_map, decrypt_map = self.generate_cipher_mapping(key)
             
-            # Detect if text appears to be already encrypted
+            # if text appears encrypted
             likely_encrypted = self.is_likely_encrypted(text)
             
-            # Process based on detection
+            # base embed
+            embed = discord.Embed(color=0x2b2d31)
+            embed.add_field(name="Key", value=f"`{key}`", inline=False)
+            
             if likely_encrypted:
-                # Double decrypt if input appears encrypted
+                # double decrypt if input appears encrypted
                 decrypted_once = text.translate(decrypt_map)
                 decrypted_twice = decrypted_once.translate(decrypt_map)
-                
-                # Also show what encryption of the decrypted text would look like
                 encrypted_version = decrypted_once.translate(encrypt_map)
                 
-                result = (
-                    f"**🔐 Cipher Test Results (Detected Encrypted Input)**\n"
-                    f"**Key:** `{key}`\n\n"
-                    f"**Original:** {self.wrap_in_codeblock(text)}\n"
-                    f"**After 1st pass:** {self.wrap_in_codeblock(decrypted_once)}\n"
-                    f"**After 2nd pass:** {self.wrap_in_codeblock(decrypted_twice)}\n"
-                    f"**Re-encrypted:** {self.wrap_in_codeblock(encrypted_version)}\n\n"
-                    f"*Note: Input appeared encrypted - showing decryption results*"
-                )
+                embed.add_field(name="Original", value=self.wrap_in_codeblock(text), inline=False)
+                embed.add_field(name="First Decryption", value=self.wrap_in_codeblock(decrypted_once), inline=False)
+                embed.add_field(name="Second Decryption", value=self.wrap_in_codeblock(decrypted_twice), inline=False)
+                embed.add_field(name="Re-encrypted", value=self.wrap_in_codeblock(encrypted_version), inline=False)
+                embed.set_footer(text="Input appeared encrypted - showing decryption results")
             else:
-                # Normal encryption/decryption flow
+                # encryption/decryption flow
                 encrypted = text.translate(encrypt_map)
                 decrypted = encrypted.translate(decrypt_map)
                 success = (decrypted == text)
                 
-                result = (
-                    f"**🔐 Cipher Test Results**\n"
-                    f"**Key:** `{key}`\n"
-                    f"**Original:** {self.wrap_in_codeblock(text)}\n"
-                    f"**Encrypted:** {self.wrap_in_codeblock(encrypted)}\n"  # Fixed typo here
-                    f"**Decrypted:** {self.wrap_in_codeblock(decrypted)}\n\n"
-                    f"**Round-trip:** {'✅ SUCCESS' if success else '❌ FAILED'}"
-                )
+                embed.add_field(name="Original", value=self.wrap_in_codeblock(text), inline=False)
+                embed.add_field(name="Encrypted", value=self.wrap_in_codeblock(encrypted), inline=False)
+                embed.add_field(name="Decrypted", value=self.wrap_in_codeblock(decrypted), inline=False)
+                embed.add_field(name="Result", value="✅ Round-trip successful" if success else "❌ Round-trip failed", inline=False)
             
-            await target.send(result)
+            await target.send(embed=embed)
             if isinstance(ctx.channel, TextChannel):
-                reply_msg = ("```🔍 Test complete (encrypted input detected) - check DMs!```" 
-                            if likely_encrypted 
-                            else "```✅ Test complete - check your DMs!```")
-                await ctx.reply(reply_msg)
+                reply_msg = "🔍 Test complete (encrypted input detected)" if likely_encrypted else "✅ Test complete"
+                await ctx.reply(f"{reply_msg} - check your DMs", mention_author=False)
                 
         except Exception as e:
-            error_msg = f"```❌ Cipher Test Failed\nError: {str(e)}```"
-            await target.send(error_msg)
+            error_embed = discord.Embed(
+                description=f"```❌ Cipher Test Failed\nError: {str(e)}```",
+                color=0xe74c3c
+            )
+            await target.send(embed=error_embed)
             if isinstance(ctx.channel, TextChannel):
-                await ctx.reply("```❌ Test failed - check your DMs for details```")
+                await ctx.reply("❌ Test failed - check your DMs", mention_author=False)
 
     def is_likely_encrypted(self, text):
         """Heuristic to detect if text is likely encrypted"""
-        # Check for high percentage of non-alphanumeric characters
+        # high percentage of non-alphanumeric characters
         non_alpha = sum(1 for c in text if not c.isalnum() and not c.isspace())
         ratio = non_alpha / len(text) if text else 0
         
-        # Check for unusual character distribution
+        # unusual character distribution
         common_chars = sum(1 for c in text.lower() if c in 'etaoin shrdlu')
         uncommon_ratio = 1 - (common_chars / len(text)) if text else 0
         
-        # Likely encrypted if:
+        # encrypted* if:
         # 1. High non-alphanumeric ratio (>40%), or
         # 2. Very uncommon character distribution (>80% uncommon)
         return ratio > 0.4 or uncommon_ratio > 0.8
