@@ -27,7 +27,7 @@ class Help(commands.Cog):
                 if not cmd:
                     return await ctx.reply(f"```no command found for '{command}'```")
                 
-                embed = discord.Embed(color=0x2b2d31)
+                embed = discord.Embed(color=ctx.author.accent_color)
                 embed.set_author(name=f"command help: {cmd.name}", icon_url=self.bot.user.display_avatar.url)
                 
                 description = f"```{cmd.help or 'no description provided'}```\n"
@@ -40,13 +40,13 @@ class Help(commands.Cog):
                 return await ctx.reply(embed=embed)
             
             # Main help menu
-            embed = discord.Embed(color=0x2b2d31)
+            embed = discord.Embed(color=ctx.author.accent_color)
             embed.set_author(name="command list", icon_url=self.bot.user.display_avatar.url)
             
             description = "```use help [command] for more info```\n"
             
             for cog_name, cog in self.bot.cogs.items():
-                if cog_name.lower() in ['jishaku']:  # Skip dev/debug cogs
+                if cog_name.lower() in ['economy']:  # Skip dev/debug cogs
                     continue
                     
                 commands_list = [f"{ctx.prefix}{cmd.name}" for cmd in cog.get_commands()]
