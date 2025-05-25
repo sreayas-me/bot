@@ -60,28 +60,6 @@ class Fun(commands.Cog):
             "```maybe idk```", "```lol no```", "```ask again```"
         ]
         await ctx.reply(f"🎱 {random.choice(responses)}")
-
-    @commands.command()
-    async def rps(self, ctx, choice: str.lower):
-        """rock paper scissors"""
-        valid = ["rock", "paper", "scissors"]
-        if choice not in valid:
-            return await ctx.reply(f"```choose: {', '.join(valid)}```")
-        
-        bot_choice = random.choice(valid)
-        results = {
-            ("rock", "scissors"): "win",
-            ("scissors", "paper"): "win",
-            ("paper", "rock"): "win"
-        }
-        
-        if choice == bot_choice:
-            result = "```tie!```"
-        else:
-            result = "```you win!```" if (choice, bot_choice) in results else "```you lose!```"
-        
-        await ctx.reply(f"**{ctx.author.display_name}**: `{choice}`\n"
-                        f"**bot**: `{bot_choice}`\n{result}")
     
     @commands.command(aliases=['owo'])
     async def owoify(self, ctx, *, text: str):
