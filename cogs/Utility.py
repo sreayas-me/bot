@@ -4,6 +4,7 @@ import json
 from discord.ext import commands
 import logging
 import datetime
+import asyncio
 
 # Set up logging
 logging.basicConfig(
@@ -124,7 +125,70 @@ class Utility(commands.Cog):
         async with self.bot.session.get(f"https://tinyurl.com/api-create.php?url={url}") as resp:
             await ctx.reply(f"```{await resp.text()}```")
     
+    @commands.command(aliases=['dice'])
+    async def roll(self, ctx, dice: str = "1d6"):
+        """roll dice (format: NdM)"""
+        try:
+            rolls, limit = map(int, dice.split('d'))
+            result = ', '.join(str(random.randint(1, limit)) for _ in range(rolls))
+            await ctx.reply(f"```🎲 {result}```")
+        except:
+            await ctx.reply("```invalid format. use NdM (e.g. 2d20)```")
 
+    @commands.command()
+    async def lottery(self, ctx, max_num: int = 100, picks: int = 6):
+        """generate lottery numbers"""
+        if picks > max_num:
+            return await ctx.reply("```picks cannot exceed max number```")
+        nums = random.sample(range(1, max_num+1), picks)
+        await ctx.reply(f"```{' '.join(map(str, sorted(nums)))}```")
+
+    @commands.command(aliases=['color'])
+    async def hexcolor(self, ctx, hex_code: str):
+        """show a color preview"""
+        hex_code = hex_code.strip('#')
+        if len(hex_code) not in (3, 6):
+            return await ctx.reply("```invalid hex code```")
+        url = f"https://singlecolorimage.com/get/{hex_code}/200x200"
+        embed = discord.Embed(color=int(hex_code.ljust(6, '0'), 16))
+        embed.set_image(url=url)
+        await ctx.reply(embed=embed)
+
+    @commands.command(aliases=['stealemoji'])
+    @commands.has_permissions(manage_emojis=True)
+    async def emojisteal(self, ctx, emoji: discord.PartialEmoji):
+        """add an emoji to this server"""
+        async with self.bot.session.get(emoji.url) as resp:
+            if resp.status != 200:
+                return await ctx.reply("```failed to download emoji```")
+            data = await resp.read()
+        try:
+            added = await ctx.guild.create_custom_emoji(
+                name=emoji.name,
+                image=data
+            )
+            await ctx.reply(f"```added emoji: {added}```")
+        except:
+            await ctx.reply("```missing permissions or slot full```")
+
+    @commands.command(aliases=['firstmsg'])
+    async def firstmessage(self, ctx, channel: discord.TextChannel = None):
+        """fetch a channel's first message"""
+        channel = channel or ctx.channel
+        async for msg in channel.history(limit=1, oldest_first=True):
+            await ctx.reply(f"```first message in #{channel.name}```\n{msg.jump_url}")
+
+    @commands.command(aliases=['cleanup'])
+    @commands.has_permissions(manage_messages=True)
+    async def purge(self, ctx, limit: int = 10):
+        """delete recent messages (default: 10)"""
+        if 0 < limit <= 100:
+            await ctx.channel.purge(limit=limit+1)
+            msg = await ctx.send(f"```deleted {limit} messages```")
+            await asyncio.sleep(3)
+            await msg.delete()
+        else:
+            await ctx.reply("```limit must be 1-100```")
 
 async def setup(bot):
     try:
