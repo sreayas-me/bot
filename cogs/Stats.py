@@ -25,12 +25,11 @@ class Stats(commands.Cog):
     async def on_message(self, message):
         if message.author.bot:
             return
-        if message.guild.id == 1259717095382319215:
-            with open("data/stats.json", "r") as f:
-                data = json.load(f)
-                data["messages"] += 1
-            with open("data/stats.json", "w") as f:
-                json.dump(data, f, indent=2)
+        with open("data/stats.json", "r") as f:
+            data = json.load(f)
+            data["stats"][str(message.guild.id)]["messages"] += 1
+        with open("data/stats.json", "w") as f:
+            json.dump(data, f, indent=2)
 
 
     @commands.command(name="stats", aliases=["st"])
@@ -38,28 +37,34 @@ class Stats(commands.Cog):
     async def stats(self, ctx):
         with open("data/stats.json", "r") as f:
             data = json.load(f)
-            dt = data["timestamp"] 
+            dt = data["stats"][str(ctx.guild.id)]["timestamp"] 
             #unix_timestamp = int(dt.timestamp())
 
         embed = discord.Embed(
             description=f"""
-            `messages {data["messages"]}`
-            `members gained {data["gained"]}`
-            `members lost {data["lost"]}`
-            `total g/l {data["gained"] - data["lost"]}`
+            `messages {data["stats"][str(ctx.guild.id)]["messages"]}`
+            `members gained {data["stats"][str(ctx.guild.id)]["gained"]}`
+            `members lost {data["stats"][str(ctx.guild.id)]["lost"]}`
+            `total g/l {data["stats"][str(ctx.guild.id)]["gained"] - data["stats"][str(ctx.guild.id)]["lost"]}`
             """,
             color=discord.Color.random()
         )
         embed.set_thumbnail(url=self.bot.user.avatar.url)
-        embed.timestamp = dt
+        #embed.timestamp = dt
         await ctx.reply(embed=embed)
 
     @commands.command(name="resetstats", aliases=["rst"])
     @commands.is_owner()
     async def resetstats(self, ctx):
+        with open("data/stats.json", "r") as f:
+            data = json.load(f)
+            data["stats"][str(ctx.guild.id)]["messages"] = 0
+            data["stats"][str(ctx.guild.id)]["gained"] = 0
+            data["stats"][str(ctx.guild.id)]["lost"] = 0
+            data["stats"][str(ctx.guild.id)]["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
         with open("data/stats.json", "w") as f:
-            json.dump({"gained": 0, "lost": 0, "messages": 0, "timestamp": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")}, f, indent=2)
-        await ctx.reply("Stats have been reset!")
+            json.dump(data, f, indent=2)
+        await ctx.reply("Stats have been reset for this guild!")
 
 async def setup(bot):
     try:
