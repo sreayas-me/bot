@@ -41,7 +41,7 @@ async def on_member_join(self, member):
         await member.send(embed=embed)
         with open("data/stats.json", "r") as f:
             data = json.load(f)
-            data["stats"][str(member.guild.id)]["gained"] -= 1
+            data["stats"][str(member.guild.id)]["gained"] += 1
             with open("data/stats.json", "w") as f:
                 json.dump(data, f, indent=2)
 
