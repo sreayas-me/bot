@@ -8,7 +8,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('data/logs/sync_roles.log')
+        logging.FileHandler('data/logs/syncroles.log')
     ]
 )
 logger = logging.getLogger('SyncRoles')
@@ -203,7 +203,7 @@ class SyncRoles(commands.Cog):
                 logger.error(f"Missing permissions to edit roles in {target_server}")
             except discord.HTTPException as e:
                 logger.error(f"Error syncing roles in {target_server}: {e}")
-    
+
     @commands.Cog.listener()
     async def on_member_join(self, member):
         """Sync roles when a member joins any server"""
