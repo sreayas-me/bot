@@ -19,22 +19,6 @@ guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
 class Stats(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-    
-
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author.bot:
-            return
-        if isinstance(message.channel, discord.DMChannel):
-            # Check if it's the first message (new modmail)
-            if str(message.author.id) not in self.active_tickets:
-                await self.create_new_modmail(message)
-        if message.guild.id in guilds:
-            with open("data/stats.json", "r") as f:
-                data = json.load(f)
-                data["stats"][str(message.guild.id)]["messages"] += 1
-            with open("data/stats.json", "w") as f:
-                json.dump(data, f, indent=2)
 
 
     @commands.command(name="stats", aliases=["st"])

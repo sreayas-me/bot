@@ -73,6 +73,15 @@ class ModMail(commands.Cog):
               message.channel.parent_id == self.staff_channel_id and
               not message.author.bot):
             await self.handle_staff_reply(message)
+        
+        # Update stats because DPY sucks with multiple on_message events that coincide with each other lol
+        guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
+        if message.guild.id in guilds:
+            with open("data/stats.json", "r") as f:
+                data = json.load(f)
+                data["stats"][str(message.guild.id)]["messages"] += 1
+            with open("data/stats.json", "w") as f:
+                json.dump(data, f, indent=2)
     
     async def create_new_modmail(self, user_message):
         """Create a new modmail thread for a user's DM"""
