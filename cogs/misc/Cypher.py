@@ -221,7 +221,7 @@ Please send your KEY now (or in format key:message):```""")
                 embed.add_field(name="Original", value=self.wrap_in_codeblock(text), inline=False)
                 embed.add_field(name="First Decryption", value=self.wrap_in_codeblock(decrypted_once), inline=False)
                 embed.add_field(name="Second Decryption", value=self.wrap_in_codeblock(decrypted_twice), inline=False)
-                embed.add_field(name="Re-encrypted", value=self.wrap_in_codeblock(encrypted_version), inline=False)
+                embed.add_field(name="Success", value=("✅ Round-trip successful" if encrypted_version == text else "❌ Round-trip failed"), inline=False)
                 embed.set_footer(text="Input appeared encrypted - showing decryption results")
             else:
                 # encryption/decryption flow
