@@ -16,6 +16,76 @@ class Fun(commands.Cog):
         self.active_games = set()
         self.logger = CogLogger(self.__class__.__name__)
 
+    def get_command_help(self) -> list[discord.Embed]:
+        """Get paginated help embeds for this cog"""
+        pages = []
+        
+        # Text Commands Page
+        text_embed = discord.Embed(
+            title="🎲 Fun Commands - Text Transformations",
+            color=discord.Color.blue()
+        )
+        text_commands = ['spongebob', 'tinytext', 'reverse', 'owoify', 'emojify']
+        for cmd_name in text_commands:
+            cmd = self.bot.get_command(cmd_name)
+            if cmd:
+                text_embed.add_field(
+                    name=f"{cmd.name} {cmd.signature}",
+                    value=cmd.help or "No description",
+                    inline=False
+                )
+        pages.append(text_embed)
+
+        # Game Commands Page
+        games_embed = discord.Embed(
+            title="🎲 Fun Commands - Games",
+            color=discord.Color.blue()
+        )
+        game_commands = ['guess', 'typingtest']
+        for cmd_name in game_commands:
+            cmd = self.bot.get_command(cmd_name)
+            if cmd:
+                games_embed.add_field(
+                    name=f"{cmd.name} {cmd.signature}",
+                    value=cmd.help or "No description",
+                    inline=False
+                )
+        pages.append(games_embed)
+
+        # Utility Fun Commands Page
+        util_embed = discord.Embed(
+            title="🎲 Fun Commands - Utilities",
+            color=discord.Color.blue()
+        )
+        util_commands = ['pick', 'ball8', 'flip', 'roll']
+        for cmd_name in util_commands:
+            cmd = self.bot.get_command(cmd_name)
+            if cmd:
+                util_embed.add_field(
+                    name=f"{cmd.name} {cmd.signature}",
+                    value=cmd.help or "No description",
+                    inline=False
+                )
+        pages.append(util_embed)
+
+        # ASCII & Visual Commands Page
+        visual_embed = discord.Embed(
+            title="🎲 Fun Commands - Visual",
+            color=discord.Color.blue()
+        )
+        visual_commands = ['ascii', 'fireworks', 'tableflip']
+        for cmd_name in visual_commands:
+            cmd = self.bot.get_command(cmd_name)
+            if cmd:
+                visual_embed.add_field(
+                    name=f"{cmd.name} {cmd.signature}",
+                    value=cmd.help or "No description",
+                    inline=False
+                )
+        pages.append(visual_embed)
+
+        return pages
+
     # Text transformation commands
     @commands.command(aliases=['mock'])
     async def spongebob(self, ctx, *, text):

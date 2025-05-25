@@ -216,6 +216,60 @@ class Utility(commands.Cog):
         async for msg in channel.history(limit=1, oldest_first=True):
             await ctx.reply(f"```first message in #{channel.name}```\n{msg.jump_url}")
 
+    def get_command_help(self) -> list[discord.Embed]:
+        """Get paginated help embeds for this cog"""
+        pages = []
+        
+        # Server Info Commands Page
+        info_embed = discord.Embed(
+            title="🔧 Utility Commands - Information",
+            color=discord.Color.blue()
+        )
+        info_commands = ['serverinfo', 'userinfo', 'avatar', 'uptime']
+        for cmd_name in info_commands:
+            cmd = self.bot.get_command(cmd_name)
+            if cmd:
+                info_embed.add_field(
+                    name=f"{cmd.name} {cmd.signature}",
+                    value=cmd.help or "No description",
+                    inline=False
+                )
+        pages.append(info_embed)
+
+        # Time Commands Page
+        time_embed = discord.Embed(
+            title="🔧 Utility Commands - Time",
+            color=discord.Color.blue()
+        )
+        time_commands = ['timestamp', 'countdown', 'uptime']
+        for cmd_name in time_commands:
+            cmd = self.bot.get_command(cmd_name)
+            if cmd:
+                time_embed.add_field(
+                    name=f"{cmd.name} {cmd.signature}",
+                    value=cmd.help or "No description",
+                    inline=False
+                )
+        pages.append(time_embed)
+
+        # Misc Utility Commands Page
+        misc_embed = discord.Embed(
+            title="🔧 Utility Commands - Miscellaneous",
+            color=discord.Color.blue()
+        )
+        misc_commands = ['ping', 'calculate', 'tinyurl', 'hexcolor']
+        for cmd_name in misc_commands:
+            cmd = self.bot.get_command(cmd_name)
+            if cmd:
+                misc_embed.add_field(
+                    name=f"{cmd.name} {cmd.signature}",
+                    value=cmd.help or "No description",
+                    inline=False
+                )
+        pages.append(misc_embed)
+
+        return pages
+
 async def setup(bot):
     logger = CogLogger("Utility")
     try:

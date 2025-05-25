@@ -225,7 +225,6 @@ class Economy(commands.Cog):
             )
             await ctx.author.add_roles(role)
         elif item_id == "color":
-            # Send DM to user asking for color
             try:
                 await ctx.author.send("Reply with a hex color code (e.g., #FF0000)")
                 color_msg = await self.bot.wait_for(

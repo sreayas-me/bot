@@ -77,6 +77,17 @@ class Help(commands.Cog):
         """Shows help information for commands"""
         
         if command:
+            # Check if it's a cog first
+            cog = self.bot.get_cog(command.title())
+            if cog and hasattr(cog, 'get_command_help'):
+                pages = cog.get_command_help()
+                if pages:
+                    view = HelpPaginator(pages, ctx.author)
+                    view.update_buttons()
+                    message = await ctx.reply(embed=pages[0], view=view)
+                    view.message = message
+                    return
+
             # Help for specific command
             cmd = self.bot.get_command(command.lower())
             if not cmd:
