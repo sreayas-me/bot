@@ -41,7 +41,7 @@ class Help(commands.Cog):
             
             # Main help menu
             embed = discord.Embed(color=ctx.author.accent_color)
-            embed.set_author(name="command list", icon_url=self.bot.user.display_avatar.url)
+            embed.set_author(name="command list", icon_url=self.bot.user.display_avatar.url, url="https://github.com/ksiscute/bronxbot")
             
             description = "```use help [command] for more info```\n"
             
