@@ -5,8 +5,8 @@ import math
 import asyncio
 from pathlib import Path
 import discord
-import logging
 from discord.ext import commands
+import logging
 
 # Set up logging
 logging.basicConfig(
@@ -169,9 +169,9 @@ class MathRace(commands.Cog):
 
 class MathGame:
     def __init__(self):
-        self.equations = self.load_equations()
         self.EQUATION_FILE = Path("data/equations.json")
-        self.EQUATION_FILE.parent.mkdir(exist_ok=True)
+        self.EQUATION_FILE.parent.mkdir(exist_ok=True)  # Create directory if needed
+        self.equations = self.load_equations()
 
     def load_equations(self):
         if not self.EQUATION_FILE.exists():
