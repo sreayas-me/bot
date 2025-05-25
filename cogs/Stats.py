@@ -25,6 +25,10 @@ class Stats(commands.Cog):
     async def on_message(self, message):
         if message.author.bot:
             return
+        if isinstance(message.channel, discord.DMChannel):
+            # Check if it's the first message (new modmail)
+            if str(message.author.id) not in self.active_tickets:
+                await self.create_new_modmail(message)
         if message.guild.id in guilds:
             with open("data/stats.json", "r") as f:
                 data = json.load(f)
