@@ -8,8 +8,28 @@ class Cypher(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
     
+    def extract_from_codeblock(self, text):
+        """Extract content from codeblocks if present"""
+        if text.startswith('```') and text.endswith('```'):
+            text = text[3:-3].strip()
+            # Remove potential language specifier
+            if '\n' in text:
+                first_line, rest = text.split('\n', 1)
+                if first_line.strip() and not any(c in first_line for c in ' \t\n'):
+                    text = rest
+        return text
+    
+    def wrap_in_codeblock(self, text):
+        """Wrap text in codeblocks if it contains newlines or is long"""
+        if '\n' in text or len(text) > 50:
+            return f"```\n{text}\n```"
+        return text
+    
     def generate_cipher_mapping(self, key):
         """Generate a cipher mapping based on the key"""
+        # Extract key from codeblock if present
+        key = self.extract_from_codeblock(key)
+        
         # Use key as seed for reproducible randomization
         random.seed(key)
         
@@ -26,107 +46,115 @@ class Cypher(commands.Cog):
         
         return encrypt_map, decrypt_map
     
-    @commands.command(aliases=['secret', 'encrypt'])
-    async def cypher(self, ctx, key: str = None, *, text: str = None):
-        """Send encrypted messages using a key-based cipher"""
+    async def process_input(self, ctx, input_type="encrypt"):
+        """Handle interactive input collection"""
+        await ctx.reply("```Please check your DMs!```")
         
-        # Handle case where no arguments provided
-        if not text and not key:
-            await ctx.reply("```Please check your DMs!```")
-            
-            try:
-                await ctx.author.send("""```What do you want to send?
-Usage: cypher [key] [message]
-Example: cypher mykey123 hello world
+        try:
+            action = "encrypt" if input_type == "encrypt" else "decrypt"
+            await ctx.author.send(f"""```What do you want to {action}?
+Usage: {input_type} [key] [message]
+Example: {input_type} mykey123 hello world
 
 You can use a colon to separate the key and message:
 mykey123:hello world (sending key and message at the same time)
 mykey123 (sending just key, I will ask for message after)
 
-Since you didn't provide any arguments, please send your KEY now:```""")
-                
-                def dm_check(m):
-                    return m.author == ctx.author and isinstance(m.channel, ctx.author.dm_channel.__class__)
-                
-                # Wait for key in DMs
-                key_msg = await self.bot.wait_for('message', check=dm_check, timeout=60)
-                
-                if ':' in key_msg.content:
-                    key, text = key_msg.content.split(':', 1)
-                else:
-                    key = key_msg.content
-                    await ctx.author.send("```Now please send your message to encrypt:```")
-                    text_msg = await self.bot.wait_for('message', check=dm_check, timeout=60)
-                    text = text_msg.content
-                    
-            except Exception as e:
-                return await ctx.author.send("```Operation timed out or failed. Please try again.```")
+Please send your KEY now (or in format key:message):```""")
+            
+            def dm_check(m):
+                return m.author == ctx.author and isinstance(m.channel, DMChannel)
+            
+            # Wait for key in DMs
+            key_msg = await self.bot.wait_for('message', check=dm_check, timeout=120)
+            
+            if key_msg.content.lower() == 'cancel':
+                return await ctx.author.send("```❌ Operation cancelled```"), None
+            
+            if ':' in key_msg.content:
+                key, text = key_msg.content.split(':', 1)
+                key = self.extract_from_codeblock(key.strip())
+                text = self.extract_from_codeblock(text.strip())
+            else:
+                key = self.extract_from_codeblock(key_msg.content.strip())
+                await ctx.author.send(f"```Now please send your message to {action}:```")
+                text_msg = await self.bot.wait_for('message', check=dm_check, timeout=120)
+                text = self.extract_from_codeblock(text_msg.content.strip())
+            
+            return key, text
+            
+        except asyncio.TimeoutError:
+            await ctx.author.send("```⌛ Operation timed out```")
+            return None, None
+        except Exception as e:
+            await ctx.author.send(f"```❌ Error: {str(e)}```")
+            return None, None
+    
+    @commands.command(aliases=['secret', 'encrypt'])
+    async def cypher(self, ctx, key: str = None, *, text: str = None):
+        """Send encrypted messages using a key-based cipher"""
+        # Handle case where no arguments provided
+        if not text and not key:
+            key, text = await self.process_input(ctx, "encrypt")
+            if not key:
+                return
         
         elif not key:
-            return await ctx.reply("```Please provide a key```")
+            return await ctx.reply("```Please provide a key```", delete_after=10)
         
         elif not text:
-            await ctx.reply("```Please provide the text to encrypt```")
-            return
+            return await ctx.reply("```Please provide the text to encrypt```", delete_after=10)
+        
+        # Extract from codeblocks if present
+        key = self.extract_from_codeblock(key)
+        text = self.extract_from_codeblock(text)
         
         # Validation
-        if len(text) > 1900:  # Leave room for formatting
-            return await ctx.reply("```Text too long (max 1900 chars to allow for encryption overhead)```")
+        if len(text) > 1900:
+            return await ctx.reply("```Text too long (max 1900 chars)```", delete_after=10)
         
         if len(key) > 50:
-            return await ctx.reply("```Key too long (max 50 chars)```")
+            return await ctx.reply("```Key too long (max 50 chars)```", delete_after=10)
         
         if len(key) < 3:
-            return await ctx.reply("```Key too short (min 3 chars)```")
+            return await ctx.reply("```Key too short (min 3 chars)```", delete_after=10)
         
         # Generate cipher mapping and encrypt
         try:
             encrypt_map, _ = self.generate_cipher_mapping(key)
             encrypted_text = text.translate(encrypt_map)
             
-            # Send encrypted message to DMs
-            embed_content = f"**🔐 Encrypted Message**\n```\nKey: {key}\nOriginal: {text[:100]}{'...' if len(text) > 100 else ''}\nEncrypted: {encrypted_text}\n```"
+            # Format output
+            original_display = self.wrap_in_codeblock(text[:1900])
+            encrypted_display = self.wrap_in_codeblock(encrypted_text)
             
-            await ctx.author.send(embed_content)
+            # Send to DMs
+            result = (
+                f"**🔐 Encrypted Message**\n"
+                f"**Key:** `{key[:50]}`\n"
+                f"**Original:** {original_display}\n"
+                f"**Encrypted:** {encrypted_display}"
+            )
+            
+            await ctx.author.send(result)
+            if isinstance(ctx.channel, TextChannel):
+                await ctx.reply("```✅ Encryption complete - check your DMs!```")
             
         except Exception as e:
             await ctx.reply(f"```Encryption failed: {str(e)}```")
-    
+
     @commands.command(aliases=['decrypt'])
     async def decypher(self, ctx, key: str = None, *, text: str = None):
         """Decrypt encrypted messages using the same key"""
-        
         # Handle missing arguments
         if not key or not text:
-            await ctx.reply("```Please check your DMs!```")
-            
-            try:
-                await ctx.author.send("""```What do you want to send?
-Usage: decypher [key] [message]
-Example: decypher mykey123 hello world
-
-You can use a colon to separate the key and message:
-mykey123:hello world (sending key and message at the same time)
-mykey123 (sending just key, I will ask for message after)
-
-Since you didn't provide any arguments, please send your KEY now:```""")
-                
-                def dm_check(m):
-                    return m.author == ctx.author and isinstance(m.channel, ctx.author.dm_channel.__class__)
-                
-                # Wait for key in DMs
-                key_msg = await self.bot.wait_for('message', check=dm_check, timeout=60)
-                
-                if ':' in key_msg.content:
-                    key, text = key_msg.content.split(':', 1)
-                else:
-                    key = key_msg.content
-                    await ctx.author.send("```Now please send your message to encrypt:```")
-                    text_msg = await self.bot.wait_for('message', check=dm_check, timeout=60)
-                    text = text_msg.content
-                    
-            except Exception as e:
-                return await ctx.author.send("```Operation timed out or failed. Please try again.```")
+            key, text = await self.process_input(ctx, "decrypt")
+            if not key:
+                return
+        
+        # Extract from codeblocks if present
+        key = self.extract_from_codeblock(key)
+        text = self.extract_from_codeblock(text)
         
         # Validation
         if len(text) > 2000:
@@ -143,77 +171,46 @@ Since you didn't provide any arguments, please send your KEY now:```""")
             _, decrypt_map = self.generate_cipher_mapping(key)
             decrypted_text = text.translate(decrypt_map)
             
-            # Send decrypted message to DMs
-            embed_content = f"**🔓 Decrypted Message**\n```\nKey: {key}\nEncrypted: {text[:100]}{'...' if len(text) > 100 else ''}\nDecrypted: {decrypted_text}\n```"
-            await ctx.author.send(embed_content)
+            # Format output
+            encrypted_display = self.wrap_in_codeblock(text[:1900])
+            decrypted_display = self.wrap_in_codeblock(decrypted_text)
+            
+            # Send to DMs
+            result = (
+                f"**🔓 Decrypted Message**\n"
+                f"**Key:** `{key[:50]}`\n"
+                f"**Encrypted:** {encrypted_display}\n"
+                f"**Decrypted:** {decrypted_display}"
+            )
+            await ctx.author.send(result)
+            
+            if isinstance(ctx.channel, TextChannel):
+                await ctx.reply("```✅ Decryption complete - check your DMs!```")
             
         except Exception as e:
             await ctx.reply(f"```Decryption failed: {str(e)} (wrong key?)```")
-    
+
     @commands.command(aliases=['testcipher'])
     async def cipher_test(self, ctx, key: str = None, *, text: str = None):
-        """Test the cipher system interactively
-        Usage: 
-        - cipher_test <key> [message]  (in channel)
-        - cipher_test                  (starts DM wizard)"""
-        
+        """Test the cipher system interactively"""
         # If no arguments provided, start DM wizard
         if not key:
-            await ctx.reply("```Please check your DMs to continue!```")
-            try:
-                # Start interactive DM session
-                await self.process_cipher_test(ctx, key, text)
-            except Exception as e:
-                await ctx.author.send(f"```❌ Error: {str(e)}```")
-                await ctx.reply("```Failed to complete DM interaction. Please try again.```")
-            return
+            key, text = await self.process_input(ctx, "test")
+            if not key:
+                return
         
         # Process with provided arguments
         await self.process_cipher_test(ctx, key, text or "Hello World! This is a test message 123.")
-
-    async def cipher_test_dm_wizard(self, user):
-        """Interactive DM wizard for cipher testing"""
-        def dm_check(m):
-            return m.author == user and isinstance(m.channel, user.dm_channel.__class__)
-        
-        # Step 1: Get key
-        await user.send("""```🔐 Cipher Test Wizard
-    Please send your encryption KEY (or type 'cancel' to abort):
-    You can include your message after a colon like:
-    mykey123:Hello world```""")
-        
-        try:
-            # Wait for key input
-            key_msg = await self.bot.wait_for('message', check=dm_check, timeout=120)
-            if key_msg.content.lower() == 'cancel':
-                return await user.send("```❌ Operation cancelled```")
-            
-            # Parse key and message
-            if ':' in key_msg.content:
-                key, text = key_msg.content.split(':', 1)
-                text = text.strip()
-            else:
-                key = key_msg.content
-                # Step 2: Get message if not provided
-                await user.send("""```✉ Now please send your MESSAGE to encrypt
-    (or type 'sample' to use default test message):```""")
-                text_msg = await self.bot.wait_for('message', check=dm_check, timeout=120)
-                text = "Hello World! This is a test message 123." if text_msg.content.lower() == 'sample' else text_msg.content
-        
-            # Process the cipher test
-            await self.process_cipher_test(None, key, text, user=user)
-            
-        except asyncio.TimeoutError:
-            await user.send("```⌛ Timeout: You took too long to respond```")
-        except Exception as e:
-            await user.send(f"```❌ Error: {str(e)}```")
-            raise
 
     async def process_cipher_test(self, ctx, key, text, user=None):
         """Process cipher test and send results with automatic cipher detection"""
         target = user or ctx.author
         
         try:
+            # Extract from codeblocks if present
+            key = self.extract_from_codeblock(key)
+            text = self.extract_from_codeblock(text)
+            
             # Generate cipher mappings
             encrypt_map, decrypt_map = self.generate_cipher_mapping(key)
             
@@ -230,13 +227,13 @@ Since you didn't provide any arguments, please send your KEY now:```""")
                 encrypted_version = decrypted_once.translate(encrypt_map)
                 
                 result = (
-                    f"```🔐 Cipher Test Results (Detected Encrypted Input)\n"
-                    f"Key: {key}\n\n"
-                    f"Original:       {text}\n"
-                    f"After 1st pass: {decrypted_once}\n"
-                    f"After 2nd pass: {decrypted_twice}\n"
-                    f"Re-encrypted:   {encrypted_version}\n\n"
-                    f"Note: Input appeared encrypted - showing decryption results```"
+                    f"**🔐 Cipher Test Results (Detected Encrypted Input)**\n"
+                    f"**Key:** `{key}`\n\n"
+                    f"**Original:** {self.wrap_in_codeblock(text)}\n"
+                    f"**After 1st pass:** {self.wrap_in_codeblock(decrypted_once)}\n"
+                    f"**After 2nd pass:** {self.wrap_in_codeblock(decrypted_twice)}\n"
+                    f"**Re-encrypted:** {self.wrap_in_codeblock(encrypted_version)}\n\n"
+                    f"*Note: Input appeared encrypted - showing decryption results*"
                 )
             else:
                 # Normal encryption/decryption flow
@@ -245,24 +242,25 @@ Since you didn't provide any arguments, please send your KEY now:```""")
                 success = (decrypted == text)
                 
                 result = (
-                    f"```🔐 Cipher Test Results\n"
-                    f"Key: {key}\n"
-                    f"Original:  {text}\n"
-                    f"Encrypted: {encrypted}\n"
-                    f"Decrypted: {decrypted}\n\n"
-                    f"Round-trip: {'✅ SUCCESS' if success else '❌ FAILED'}```"
+                    f"**🔐 Cipher Test Results**\n"
+                    f"**Key:** `{key}`\n"
+                    f"**Original:** {self.wrap_in_codeblock(text)}\n"
+                    f"**Encrypted:** {self.wrap_in_codeblock(encrypted)}\n"
+                    f"**Decrypted:** {self.wrap_in_codeblock(decrypted)}\n\n"
+                    f"**Round-trip:** {'✅ SUCCESS' if success else '❌ FAILED'}"
                 )
             
             await target.send(result)
-            if ctx and hasattr(ctx, 'reply') and isinstance(ctx.channel, TextChannel):  # More robust check for ctx
+            if isinstance(ctx.channel, TextChannel):
                 reply_msg = ("```🔍 Test complete (encrypted input detected) - check DMs!```" 
                             if likely_encrypted 
                             else "```✅ Test complete - check your DMs!```")
-                await ctx.reply(reply_msg)       
+                await ctx.reply(reply_msg)
+                
         except Exception as e:
             error_msg = f"```❌ Cipher Test Failed\nError: {str(e)}```"
             await target.send(error_msg)
-            if ctx and hasattr(ctx, 'reply'):
+            if isinstance(ctx.channel, TextChannel):
                 await ctx.reply("```❌ Test failed - check your DMs for details```")
 
     def is_likely_encrypted(self, text):
