@@ -36,6 +36,11 @@ class Stats(commands.Cog):
     async def stats(self, ctx):
         with open("data/stats.json", "r") as f:
             data = json.load(f)
+
+            timestamp_str = data["timestamp"].replace('Z', '+00:00')
+            dt = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S%z")
+            unix_timestamp = int(dt.timestamp())
+
         embed = discord.Embed(
             description=f"""
             `messages {data["messages"]}`
@@ -46,7 +51,7 @@ class Stats(commands.Cog):
             color=discord.Color.random()
         )
         embed.set_thumbnail(url=self.bot.user.avatar.url)
-        embed.set_footer(text="stats since " + data["timestamp"].split("T")[0], icon_url=ctx.guild.icon.url)
+        embed.set_footer(text=f"stats since <t:{unix_timestamp}:R>", icon_url=ctx.guild.icon.url)
         await ctx.reply(embed=embed)
 
     @commands.command(name="resetstats", aliases=["rst"])
