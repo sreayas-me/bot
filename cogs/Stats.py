@@ -47,7 +47,7 @@ class Stats(commands.Cog):
             `members gained {data["gained"]}`
             `members lost {data["lost"]}`
             `total g/l {data["gained"] - data["lost"]}`
-            `last updated <t:{unix_timestamp}:R>`
+            `last updated` <t:{unix_timestamp}:R>
             """,
             color=discord.Color.random()
         )
