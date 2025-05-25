@@ -132,7 +132,6 @@ class CogLoader:
         
         print(f"\n{summary_color}[SUMMARY] Loaded {success_count}/{len(results)} cogs ({error_count} errors)\033[0m")
 
-# Bot events
 @bot.event
 async def on_ready():
     """Called when the bot is ready"""
@@ -166,38 +165,6 @@ async def on_ready():
         name=f"with {len(bot.guilds)} servers | .help"
     )
     await bot.change_presence(activity=activity)
-
-@bot.event
-async def on_message(message: discord.Message):
-    """Handle message events"""
-    if message.author.bot:
-        return
-    
-    tips = [
-        "I was made in 3 hours", 
-        "Zhang Yong", 
-        "Use .help to get started",
-        "Try .help <command> for more info", 
-        "Try the modmail feature if you need help",
-        "Did you know this bot is open source?", 
-        "This bot is hosted on KS's crusty old PC",
-        ".md gets smarter over time, so try it out!", 
-        ".jackpot is fun with friends"
-    ]
-    
-    if message.content == bot.user.mention:
-        if str(message.author.id) in config['OWNER_IDS']:
-            response = random.choice(config['OWNER_REPLY'])
-        else:
-            response = random.choice(tips)
-        
-        await message.reply(
-            f"Hi, **{message.author.name}**\n"
-            f"-# {response}\n"
-            f"`{round(bot.latency * 1000, 2)}ms`"
-        )
-    
-    await bot.process_commands(message)
 
 @bot.event
 async def on_command_error(ctx: commands.Context, error: Exception):
