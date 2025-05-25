@@ -88,6 +88,29 @@ class Multiplayer(commands.Cog):
         if opponent.bot:
             return await ctx.reply("Bots can't play slots!")
 
+        # Send challenge message
+        challenge_msg = await ctx.reply(
+            f"🎰 **{opponent.mention}**, {ctx.author.mention} challenged you to a SLOT BATTLE!\n"
+            "React with ✅ to accept within 30 seconds!"
+        )
+        await challenge_msg.add_reaction("✅")
+
+        # Check if opponent accepts
+        def check(reaction, user):
+            return (
+                user == opponent and
+                str(reaction.emoji) == "✅" and
+                reaction.message.id == challenge_msg.id
+            )
+
+        try:
+            await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
+        except asyncio.TimeoutError:
+            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+
+        # Delete the challenge message after acceptance
+        await challenge_msg.delete()
+
         emojis = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
         values = {
             "🍒": 10,
@@ -193,6 +216,29 @@ class Multiplayer(commands.Cog):
         if opponent.bot:
             return await ctx.reply("```bots can't play dice games```")
         
+        # Send challenge message
+        challenge_msg = await ctx.reply(
+            f"🎲 **{opponent.mention}**, {ctx.author.mention} challenged you to a DICE BATTLE!\n"
+            "React with ✅ to accept within 30 seconds!"
+        )
+        await challenge_msg.add_reaction("✅")
+
+        # Check if opponent accepts
+        def check(reaction, user):
+            return (
+                user == opponent and
+                str(reaction.emoji) == "✅" and
+                reaction.message.id == challenge_msg.id
+            )
+
+        try:
+            await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
+        except asyncio.TimeoutError:
+            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+
+        # Delete the challenge message after acceptance
+        await challenge_msg.delete()
+
         rolls = {
             ctx.author: random.randint(1, 100),
             opponent: random.randint(1, 100)
@@ -216,7 +262,27 @@ class Multiplayer(commands.Cog):
             return await ctx.reply("```you can't play against yourself```")
         if opponent.bot:
             return await ctx.reply("```bots can't count properly```")
-        
+
+        # Send challenge message
+        challenge_msg = await ctx.reply(
+            f":100: **{opponent.mention}**, {ctx.author.mention} challenged you to 21!\n"
+            "React with ✅ to accept within 30 seconds!"
+        )
+        await challenge_msg.add_reaction("✅")
+
+        # Check if opponent accepts
+        def check(reaction, user):
+            return (
+                user == opponent and
+                str(reaction.emoji) == "✅" and
+                reaction.message.id == challenge_msg.id
+            )
+
+        try:
+            await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
+        except asyncio.TimeoutError:
+            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+
         current = 0
         players = [ctx.author, opponent]
         turn = 0
@@ -245,18 +311,41 @@ class Multiplayer(commands.Cog):
         await ctx.reply(f"💀 `{loser.display_name} said 21 and loses!`")
     
     @commands.command(aliases=['rps3'])
-    async def rockpaperscissors3(self, ctx, opponent: discord.Member):
+    async def rockpaperscissors3(self, ctx, opponent: discord.Member, games:int=3):
         """Best 2 out of 3 rock-paper-scissors
 
         Usage: .rockpaperscissors3 [user]
         """
         if opponent == ctx.author:
             return await ctx.reply("```you can't play against yourself```")
+        if opponent.bot:
+            return await ctx.reply("```bots can't play rock-paper-scissors```")
         
+        # Send challenge message
+        challenge_msg = await ctx.reply(
+            f":rock: **{opponent.mention}**, {ctx.author.mention} challenged you to a best out of {games} rock paper scissors game!\n"
+            "React with ✅ to accept within 30 seconds!"
+        )
+        await challenge_msg.add_reaction("✅")
+
+        # Check if opponent accepts
+        def check(reaction, user):
+            return (
+                user == opponent and
+                str(reaction.emoji) == "✅" and
+                reaction.message.id == challenge_msg.id
+            )
+
+        try:
+            await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
+        except asyncio.TimeoutError:
+            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+        await challenge_msg.delete()
+
         wins = {ctx.author: 0, opponent: 0}
         choices = ['rock', 'paper', 'scissors']
         
-        for round_num in range(1, 4):
+        for round_num in range(1, games+1):
             await ctx.reply(f"```round {round_num} - first to 2 wins```")
             
             # Get both players' choices simultaneously
@@ -310,6 +399,27 @@ class Multiplayer(commands.Cog):
         if opponent.bot:
             return await ctx.reply("```bots can't handle dice math```")
         
+        # Send challenge message
+        challenge_msg = await ctx.reply(
+            f"🎲 **{opponent.mention}**, {ctx.author.mention} challenged you to a yacht dice game!\n"
+            "React with ✅ to accept within 30 seconds!"
+        )
+        await challenge_msg.add_reaction("✅")
+
+        # Check if opponent accepts
+        def check(reaction, user):
+            return (
+                user == opponent and
+                str(reaction.emoji) == "✅" and
+                reaction.message.id == challenge_msg.id
+            )
+
+        try:
+            await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
+        except asyncio.TimeoutError:
+            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+        await challenge_msg.delete()
+
         async def play_round(player):
             rolls = [random.randint(1, 6) for _ in range(5)]
             await player.send(f"```your dice: {' '.join(map(str, rolls))}```")
@@ -341,6 +451,27 @@ class Multiplayer(commands.Cog):
         if opponent.bot:
             return await ctx.reply("```bots don't gamble```")
         
+        # Send challenge message
+        challenge_msg = await ctx.reply(
+            f"🃏 **{opponent.mention}**, {ctx.author.mention} challenged you to a hand of blackjack!\n"
+            "React with ✅ to accept within 30 seconds!"
+        )
+        await challenge_msg.add_reaction("✅")
+
+        # Check if opponent accepts
+        def check(reaction, user):
+            return (
+                user == opponent and
+                str(reaction.emoji) == "✅" and
+                reaction.message.id == challenge_msg.id
+            )
+
+        try:
+            await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
+        except asyncio.TimeoutError:
+            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+        await challenge_msg.delete()
+
         async def calculate_hand(hand):
             total = sum(min(card, 10) for card in hand)
             if 1 in hand and total <= 11:
@@ -403,6 +534,31 @@ class Multiplayer(commands.Cog):
         """Race to solve math problems
 
         Usage: .mathrace <user> [difficulty]"""
+        if opponent == ctx.author:
+            return await ctx.reply("```you can't race against yourself```")
+        if opponent.bot:
+            return await ctx.reply("```bots can't race```")
+        
+        # Send challenge message
+        challenge_msg = await ctx.reply(
+            f":heavy_division_sign: **{opponent.mention}**, {ctx.author.mention} challenged you to a math race!\n"
+            "React with ✅ to accept within 30 seconds!"
+        )
+        await challenge_msg.add_reaction("✅")
+
+        # Check if opponent accepts
+        def check(reaction, user):
+            return (
+                user == opponent and
+                str(reaction.emoji) == "✅" and
+                reaction.message.id == challenge_msg.id
+            )
+
+        try:
+            await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
+        except asyncio.TimeoutError:
+            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+        await challenge_msg.delete()
         ops = ['+', '-', '*']
         a = random.randint(1, difficulty)
         b = random.randint(1, difficulty)
