@@ -3,3 +3,5 @@ data
 .gitignore
 cogs/__pycache__
 .vscode
+cogs/bronx/__pycache__
+cogs/misc/__pycache__

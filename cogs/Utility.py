@@ -127,16 +127,6 @@ class Utility(commands.Cog):
             url = f'https://{url}'
         async with self.bot.session.get(f"https://tinyurl.com/api-create.php?url={url}") as resp:
             await ctx.reply(f"```{await resp.text()}```")
-    
-    @commands.command(aliases=['dice'])
-    async def roll(self, ctx, dice: str = "1d6"):
-        """roll dice (format: NdM)"""
-        try:
-            rolls, limit = map(int, dice.split('d'))
-            result = ', '.join(str(random.randint(1, limit)) for _ in range(rolls))
-            await ctx.reply(f"```🎲 {result}```")
-        except:
-            await ctx.reply("```invalid format. use NdM (e.g. 2d20)```")
 
     @commands.command()
     async def lottery(self, ctx, max_num: int = 100, picks: int = 6):
