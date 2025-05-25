@@ -97,8 +97,35 @@ Since you didn't provide any arguments, please send your KEY now:```""")
         
         # Handle missing arguments
         if not key or not text:
-            return await ctx.reply("""```Usage: decypher [key] [encrypted_text]
-Example: decypher mykey123  encrypted_message_here```""")
+            await ctx.reply("```Please check your DMs!```")
+            
+            try:
+                await ctx.author.send("""```What do you want to send?
+Usage: decypher [key] [message]
+Example: decypher mykey123 hello world
+
+You can use a colon to separate the key and message:
+mykey123:hello world (sending key and message at the same time)
+mykey123 (sending just key, I will ask for message after)
+
+Since you didn't provide any arguments, please send your KEY now:```""")
+                
+                def dm_check(m):
+                    return m.author == ctx.author and isinstance(m.channel, ctx.author.dm_channel.__class__)
+                
+                # Wait for key in DMs
+                key_msg = await self.bot.wait_for('message', check=dm_check, timeout=60)
+                
+                if ':' in key_msg.content:
+                    key, text = key_msg.content.split(':', 1)
+                else:
+                    key = key_msg.content
+                    await ctx.author.send("```Now please send your message to encrypt:```")
+                    text_msg = await self.bot.wait_for('message', check=dm_check, timeout=60)
+                    text = text_msg.content
+                    
+            except Exception as e:
+                return await ctx.author.send("```Operation timed out or failed. Please try again.```")
         
         # Validation
         if len(text) > 2000:
