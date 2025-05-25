@@ -149,24 +149,24 @@ Since you didn't provide any arguments, please send your KEY now:```""")
             await ctx.reply(f"```Decryption failed: {str(e)} (wrong key?)```")
     
     @commands.command(aliases=['testcipher'])
-    async def cipher_test(self, ctx, key: str = None):
+    async def cipher_test(self, ctx, key: str = None, *, text: str = None):
         """Test the cipher with a sample message"""
         if not key:
             return await ctx.reply("```Usage: cipher_test [key]```")
-        
-        test_message = "Hello World! This is a test message 123."
+        if not text:
+            text = "Hello World! This is a test message 123."
         
         try:
             encrypt_map, decrypt_map = self.generate_cipher_mapping(key)
-            encrypted = test_message.translate(encrypt_map)
+            encrypted = text.translate(encrypt_map)
             decrypted = encrypted.translate(decrypt_map)
             
             result = f"""```🧪 Cipher Test Results
 Key: {key}
-Original:  {test_message}
+Original:  {text}
 Encrypted: {encrypted}
 Decrypted: {decrypted}
-Success: {test_message == decrypted}```"""
+Success: {text == decrypted}```"""
             
             await ctx.author.send(result)
             await ctx.reply("```Test results sent to your DMs```")
