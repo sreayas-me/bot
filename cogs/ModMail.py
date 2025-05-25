@@ -51,30 +51,24 @@ class ModMail(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         print(f"ModMail cog ready. Logged in as {self.bot.user}")
-        # Initialize staff channel ID (replace with your channel ID)
         self.staff_channel_id = 1259717946947670099
     
     @commands.Cog.listener()
     async def on_message(self, message):
-        # Ignore messages from bots
         if message.author.bot:
             return
             
-        # Check if message is in DMs
         if isinstance(message.channel, discord.DMChannel):
-            # Check if it's the first message (new modmail)
             if str(message.author.id) not in self.active_tickets:
                 await self.create_new_modmail(message)
             else:
                 await self.forward_to_thread(message)
-        
-        # Check if message is in a modmail thread and from staff
+    
         elif (isinstance(message.channel, discord.Thread) and 
               message.channel.parent_id == self.staff_channel_id and
               not message.author.bot):
             await self.handle_staff_reply(message)
         
-        # Update stats because DPY sucks with multiple on_message events that coincide with each other lol
         guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
         if message.guild.id in guilds:
             with open("data/stats.json", "r") as f:
@@ -90,7 +84,6 @@ class ModMail(commands.Cog):
             logger.error(f"Staff channel {self.staff_channel_id} not found!")
             return
         
-        # Create initial embed
         embed = discord.Embed(
             title=f"New Modmail from {user_message.author}",
             description=user_message.content,
@@ -100,7 +93,6 @@ class ModMail(commands.Cog):
         embed.add_field(name="User ID", value=user_message.author.id)
         embed.add_field(name="Account Created", value=user_message.author.created_at.strftime("%Y-%m-%d %H:%M:%S"))
         
-        # Send initial message and create thread
         try:
             staff_msg = await staff_channel.send(embed=embed)
             thread = await staff_msg.create_thread(
@@ -108,11 +100,9 @@ class ModMail(commands.Cog):
                 auto_archive_duration=1440
             )
             
-            # Store the thread ID
             self.active_tickets[str(user_message.author.id)] = thread.id
             self.save_data()
             
-            # Send confirmation to user
             user_embed = discord.Embed(
                 title="Modmail Received",
                 description="Your message has been received by our staff team. "
@@ -140,7 +130,6 @@ class ModMail(commands.Cog):
                 self.save_data()
                 return
                 
-            # Create embed for the message
             embed = discord.Embed(
                 description=user_message.content,
                 color=0x7289da,
@@ -148,7 +137,6 @@ class ModMail(commands.Cog):
             )
             embed.set_author(name=user_message.author, icon_url=user_message.author.avatar.url)
             
-            # Handle attachments
             if user_message.attachments:
                 attachment_urls = []
                 for attachment in user_message.attachments:
@@ -156,7 +144,7 @@ class ModMail(commands.Cog):
                 embed.add_field(name="Attachments", value="\n".join(attachment_urls), inline=False)
             
             msg = await thread.send(embed=embed)
-            await msg.add_reaction("✅")  # Success reaction
+            await msg.add_reaction("✅")  
         except discord.NotFound:
             logger.error(f"Thread {thread_id} not found (404)")
             del self.active_tickets[str(user_message.author.id)]
@@ -168,11 +156,9 @@ class ModMail(commands.Cog):
     
     async def handle_staff_reply(self, staff_message):
         """Handle staff replies in modmail threads"""
-        # Skip if it's a command
         if staff_message.content.startswith("!"):
             return
             
-        # Find the user ID for this thread
         user_id = None
         for uid, tid in self.active_tickets.items():
             if tid == staff_message.channel.id:
@@ -186,7 +172,6 @@ class ModMail(commands.Cog):
         if not user:
             return
             
-        # Create embed for the user
         embed = discord.Embed(
             description=staff_message.content,
             color=0x7289da,
@@ -197,7 +182,6 @@ class ModMail(commands.Cog):
             icon_url=staff_message.author.avatar.url
         )
         
-        # Handle attachments
         if staff_message.attachments:
             attachment_urls = []
             for attachment in staff_message.attachments:
@@ -206,12 +190,12 @@ class ModMail(commands.Cog):
         
         try:
             await user.send(embed=embed)
-            await staff_message.add_reaction("✅")  # Success reaction
+            await staff_message.add_reaction("✅")  
         except discord.Forbidden:
-            await staff_message.add_reaction("❌")  # Failure reaction
+            await staff_message.add_reaction("❌")  
             await staff_message.channel.send("Failed to send message to user (user has DMs disabled)")
         except Exception as e:
-            await staff_message.add_reaction("❌")  # Failure reaction
+            await staff_message.add_reaction("❌")  
             await staff_message.channel.send(f"Failed to send message to user: {str(e)}")
     
     @commands.command(name="open", aliases=["openmail", "openmodmail", "omm", "mods"])
@@ -230,7 +214,6 @@ class ModMail(commands.Cog):
             await ctx.send("This command can only be used in modmail threads")
             return
             
-        # Find the user ID for this thread
         user_id = None
         for uid, tid in self.active_tickets.items():
             if tid == ctx.channel.id:
@@ -238,7 +221,6 @@ class ModMail(commands.Cog):
                 break
         
         if user_id:
-            # Notify user
             user = self.bot.get_user(int(user_id))
             if user:
                 try:
@@ -252,27 +234,21 @@ class ModMail(commands.Cog):
                 except discord.HTTPException:
                     pass
             
-            # Remove from active tickets
             del self.active_tickets[user_id]
             self.save_data()
         
-        # Find the original message in the thread's parent channel
         try:
-            # Get the parent channel
             parent_channel = self.bot.get_channel(ctx.channel.parent_id)
             if parent_channel:
-                # Get the thread's starter message
                 starter_message = await parent_channel.fetch_message(ctx.channel.id)
                 if starter_message and starter_message.embeds:
-                    # Edit the original embed to be red
                     original_embed = starter_message.embeds[0]
                     edited_embed = original_embed.copy()
-                    edited_embed.color = 0xff0000  # Red color
+                    edited_embed.color = 0xff0000 
                     await starter_message.edit(embed=edited_embed)
         except Exception as e:
             logger.error(f"Failed to edit original embed: {e}")
         
-        # Archive thread
         await ctx.send("Closing this modmail ticket...")
         try:
             await ctx.channel.edit(archived=True, locked=True)
