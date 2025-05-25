@@ -164,7 +164,7 @@ class ModMail(commands.Cog):
         "helper": 1362671155730972733,
         "staff": 1259728436377817100
     }
-    
+
     async def handle_staff_reply(self, staff_message):
         """Handle staff replies in modmail threads"""
         if staff_message.content.startswith("!"):
@@ -202,7 +202,7 @@ class ModMail(commands.Cog):
             timestamp=staff_message.created_at
         )
         embed.set_author(
-            name=f"{staff_message.author} ({staffrank})",
+            name=f"{staff_message.author} ({staffrank.capitalize()})",
             icon_url=avatar_url
         )
         
