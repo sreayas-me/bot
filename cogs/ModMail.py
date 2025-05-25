@@ -205,6 +205,12 @@ class ModMail(commands.Cog):
             await staff_message.add_reaction("❌")  # Failure reaction
             await staff_message.channel.send(f"Failed to send message to user: {str(e)}")
     
+    @commands.command(name="open", aliases=["openmail", "openmodmail", "omm", "mods"])
+    async def open_modmail(self, ctx):
+        """Open a new modmail thread"""
+        await self.create_new_modmail(ctx.message)
+        await ctx.message.add_reaction("✅")
+
     @commands.command(name="close", aliases=["closemail", "closemodmail", "cmm"])
     @commands.has_permissions(manage_messages=True)
     async def close_modmail(self, ctx):
