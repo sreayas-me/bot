@@ -18,9 +18,9 @@ bot.remove_command('help')
 
 async def load_cogs():
     for file in [
-        "cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans", "cogs.Welcoming",
-        "cogs.Stats", "cogs.Utility", "cogs.MathRace", "cogs.Multiplayer",
-        "cogs.Help", "cogs.Fun", "cogs.TicTacToe", "cogs.Cypher"
+        "cogs.ModMail", "cogs.SyncRoles", "cogs.bronx.VoteBans", "cogs.bronx.Welcoming",
+        "cogs.bronx.Stats", "cogs.Utility", "cogs.misc.MathRace", "cogs.Multiplayer",
+        "cogs.Help", "cogs.Fun", "cogs.misc.TicTacToe", "cogs.misc.Cypher"
     ]:
         try:
             await bot.load_extension(file)
