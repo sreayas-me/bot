@@ -57,7 +57,7 @@ def generate_problem(diff):
         elif choice == 'limit':
             return "lim(x→0) sin(x)/x", 1
         else:
-            base = random.randint(2, 5)
+            base = random.randint(2, 5)ngga 
             power = random.randint(1, 3)
             num = base ** power
             return f"log_{base}({num})", power
@@ -727,11 +727,10 @@ class Multiplayer(commands.Cog):
 
     @commands.command(aliases=['mathduel', 'md', 'math'])
     async def mathrace(self, ctx, opponent: discord.Member = None, difficulty: int = 5):
-
         """Race to solve advanced math problems
-        Difficulty levels: easy, medium, hard, extreme, impossible
-        Example: .mathrace @User extreme"""
-        
+        Difficulty levels: 1–10 (higher is harder)
+        Example: .mathrace @User 6"""
+
         # Help command
         if (isinstance(difficulty, str) and difficulty.lower() == "help") or not opponent:
             examples = {
@@ -752,15 +751,10 @@ class Multiplayer(commands.Cog):
             )
 
             for level, example in examples.items():
-                embed.add_field(
-                    name=f"Level {level}",
-                    value=example,
-                    inline=False
-                )
+                embed.add_field(name=f"Level {level}", value=example, inline=False)
 
             embed.set_footer(text="Usage: .mathrace @user [1-10]\nYou can also use `.mathrace help`")
             return await ctx.send(embed=embed)
-
 
         # Validate opponent
         if opponent == ctx.author:
@@ -798,7 +792,20 @@ class Multiplayer(commands.Cog):
             ))
         await challenge_msg.delete()
 
-        # Generate problem based on difficulty
+        # Map number to category
+        def map_difficulty(diff: int):
+            if diff <= 2:
+                return "easy"
+            elif diff <= 4:
+                return "medium"
+            elif diff <= 6:
+                return "hard"
+            elif diff <= 8:
+                return "extreme"
+            else:
+                return "impossible"
+
+        # Problem generator
         def generate_problem(diff):
             diff = diff.lower()
             if diff == "easy":
@@ -806,9 +813,8 @@ class Multiplayer(commands.Cog):
                 b = random.randint(1, 10)
                 op = random.choice(['+', '-', '*'])
                 return f"{a} {op} {b}", eval(f"{a}{op}{b}")
-            
+
             elif diff == "medium":
-                # Algebra problems
                 problem_type = random.choice(['linear', 'quadratic', 'integral'])
                 if problem_type == 'linear':
                     a = random.randint(2, 5)
@@ -823,13 +829,12 @@ class Multiplayer(commands.Cog):
                         round((-b + (b**2 - 4*a*c)**0.5)/(2*a), 2),
                         round((-b - (b**2 - 4*a*c)**0.5)/(2*a), 2)
                     ]
-                else:  # integral
+                else:
                     a = random.randint(1, 3)
                     b = random.randint(1, 3)
                     return f"∫({a}x + {b}) dx", f"{a/2}x² + {b}x + C"
-            
+
             elif diff == "hard":
-                # Calculus problems
                 problem_type = random.choice(['derivative', 'limit', 'log'])
                 if problem_type == 'derivative':
                     a = random.randint(2, 4)
@@ -837,64 +842,61 @@ class Multiplayer(commands.Cog):
                     return f"d/dx ({a}x³ + {b}x²)", f"{3*a}x² + {2*b}x"
                 elif problem_type == 'limit':
                     return "lim(x→0) (sin(x)/x)", 1
-                else:  # log
+                else:
                     base = random.randint(2, 5)
                     num = base ** random.randint(1, 3)
                     return f"log_{base}({num})", round(math.log(num, base))
-            
+
             elif diff == "extreme":
-                # Advanced math
                 problem_type = random.choice(['matrix', 'complex', 'diffeq'])
                 if problem_type == 'matrix':
                     return "[[1,2],[3,4]] determinant", -2
                 elif problem_type == 'complex':
                     return "(3 + 4i) * (1 - 2i)", "11 - 2i"
-                else:  # diffeq
+                else:
                     return "dy/dx = 2y", "y = Ce^(2x)"
-            
-            else:  # impossible
-                # Graduate-level problems
+
+            else:
                 problem_type = random.choice(['laplace', 'fourier', 'tensor'])
                 if problem_type == 'laplace':
                     return "L{e^(at)}", "1/(s-a)"
                 elif problem_type == 'fourier':
                     return "F{δ(t)}", 1
-                else:  # tensor
+                else:
                     return "R_μν - ½Rg_μν = 8πT_μν", "Einstein field equations"
 
+        # Generate problem
         try:
-            problem, answer = get_or_generate_problem(difficulty)        
-        except:
+            category = map_difficulty(difficulty)
+            problem, answer = generate_problem(category)
+        except Exception as e:
             return await ctx.send(embed=discord.Embed(
-                description="Invalid difficulty! Use easy, medium, hard, extreme, or impossible",
+                description="Something went wrong generating the problem!",
                 color=discord.Color.red()
             ))
 
         # Send problem
         await ctx.send(embed=discord.Embed(
-            description=f"**{difficulty.capitalize()} Math Problem:**\n```{problem}```",
+            description=f"**Level {difficulty} Math Problem:**\n```{problem}```",
             color=discord.Color.blue()
         ))
 
         # Check answers
         def check_answer(msg):
             try:
-                # For numerical answers
                 if isinstance(answer, (int, float)):
                     return (
                         msg.author in [ctx.author, opponent] and
                         msg.channel == ctx.channel and
-                        msg.content.replace('.', '', 1).isdigit() and
+                        msg.content.replace('.', '', 1).replace('-', '', 1).isdigit() and
                         abs(float(msg.content) - answer) < 0.01
                     )
-                # For list answers (multiple solutions)
                 elif isinstance(answer, list):
                     return (
                         msg.author in [ctx.author, opponent] and
                         msg.channel == ctx.channel and
                         any(abs(float(msg.content) - ans) < 0.01 for ans in answer)
                     )
-                # For string answers
                 else:
                     return (
                         msg.author in [ctx.author, opponent] and
