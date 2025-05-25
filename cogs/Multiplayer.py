@@ -107,8 +107,6 @@ class Multiplayer(commands.Cog):
             await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
         except asyncio.TimeoutError:
             return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
-
-        # Delete the challenge message after acceptance
         await challenge_msg.delete()
 
         emojis = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
@@ -235,8 +233,6 @@ class Multiplayer(commands.Cog):
             await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
         except asyncio.TimeoutError:
             return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
-
-        # Delete the challenge message after acceptance
         await challenge_msg.delete()
 
         rolls = {
@@ -282,6 +278,7 @@ class Multiplayer(commands.Cog):
             await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
         except asyncio.TimeoutError:
             return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+        await challenge_msg.delete()
 
         current = 0
         players = [ctx.author, opponent]
