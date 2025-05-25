@@ -61,7 +61,7 @@ class Fun(commands.Cog):
         result = text.translate(mapping)
         await ctx.reply(f"```{result}```")
 
-    @commands.command(aliases=['textflip', 'flip'])
+    @commands.command(aliases=['textflip', 'tf'])
     async def reverse(self, ctx, *, text: str):
         """ʇxǝʇ ruoy esreveɹ"""
         if len(text) > 500:
@@ -129,7 +129,7 @@ class Fun(commands.Cog):
         await ctx.reply(f"🎱 ```{response}```")
 
     # Enhanced games
-    @commands.command(aliases=['coin'])
+    @commands.command(aliases=['coin', 'cf'])
     async def flip(self, ctx):
         """flip a coin and see the result"""
         if random.random() < 0.001:  # 0.1% chance
