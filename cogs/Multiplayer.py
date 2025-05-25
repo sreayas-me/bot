@@ -4,6 +4,20 @@ import json
 from discord.ext import commands
 import logging
 import asyncio
+import math
+from pathlib import Path
+
+EQUATIONS_FILE = Path("data/equations.json")
+
+def load_equations():
+    with open(EQUATIONS_FILE, "r") as f:
+        return json.load(f)
+
+def save_equation(diff, problem, answer):
+    data = load_equations()
+    data[str(diff)].append({"problem": problem, "answer": answer})
+    with open(EQUATIONS_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
 # Set up logging
 logging.basicConfig(
@@ -16,12 +30,70 @@ logging.basicConfig(
 )
 logger = logging.getLogger('Multiplayer')
 
+def generate_problem(diff):
+    if diff <= 2:
+        a, b = random.randint(1, 10), random.randint(1, 10)
+        op = random.choice(['+', '-', '*'])
+        return f"{a} {op} {b}", eval(f"{a}{op}{b}")
+    elif diff <= 4:
+        a = random.randint(2, 5)
+        b = random.randint(5, 20)
+        c = random.randint(1, 10)
+        return f"{a}x + {b} = {c}", round((c - b)/a, 2)
+    elif diff <= 6:
+        a = random.randint(1, 3)
+        b = random.randint(-5, 5)
+        c = random.randint(-10, 10)
+        return f"{a}x² + {b}x + {c} = 0", [
+            round((-b + (b**2 - 4*a*c)**0.5)/(2*a), 2),
+            round((-b - (b**2 - 4*a*c)**0.5)/(2*a), 2)
+        ]
+    elif diff <= 8:
+        types = ['derivative', 'limit', 'log']
+        choice = random.choice(types)
+        if choice == 'derivative':
+            a = random.randint(1, 5)
+            return f"d/dx({a}x^2)", f"{2*a}x"
+        elif choice == 'limit':
+            return "lim(x→0) sin(x)/x", 1
+        else:
+            base = random.randint(2, 5)
+            power = random.randint(1, 3)
+            num = base ** power
+            return f"log_{base}({num})", power
+    elif diff <= 10:
+        types = ['matrix', 'complex', 'diffeq']
+        choice = random.choice(types)
+        if choice == 'matrix':
+            return "[[1,2],[3,4]] determinant", -2
+        elif choice == 'complex':
+            return "(3 + 4i) * (1 - 2i)", "11 - 2i"
+        else:
+            return "dy/dx = 2y", "y = Ce^(2x)"
+    else:
+        raise ValueError("Invalid difficulty range")
+
+
+def get_or_generate_problem(diff):
+    data = load_equations()
+    existing = data.get(str(diff), [])
+
+    # 50% chance to reuse a problem if any exist
+    if existing and random.random() < 0.5:
+        chosen = random.choice(existing)
+        return chosen["problem"], chosen["answer"]
+
+    # Generate new problem
+    problem, answer = generate_problem(diff)
+    save_equation(diff, problem, answer)
+    return problem, answer
+
 class Multiplayer(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.ongoing_jackpots = set()
 
-    @commands.command()
+    @commands.command(aliases=['jp'])
     async def jackpot(self, ctx):
         """Start a jackpot! $25 entry, winner takes all. React with 🎉 to join within 15 seconds."""
         if ctx.channel.id in self.ongoing_jackpots:
@@ -91,9 +163,14 @@ class Multiplayer(commands.Cog):
         )
         await ctx.send(embed=result_embed)
 
-    @commands.command(aliases=['slotfight', 'slotsduel'])
-    async def slotbattle(self, ctx, opponent: discord.Member):
+    @commands.command(aliases=['slotfight', 'slotsduel', 'sb'])
+    async def slotbattle(self, ctx, opponent: discord.Member = None):
         """Challenge someone to a slot battle! Winner takes all, or the house wins if both lose."""
+        if not opponent:
+            return await ctx.reply(embed=discord.Embed(
+                description="You need to mention someone to challenge them to a slot battle!",
+                color=discord.Color.red()
+            ))
         if opponent == ctx.author:
             return await ctx.reply(embed=discord.Embed(
                 description="You can't battle yourself!",
@@ -205,9 +282,14 @@ class Multiplayer(commands.Cog):
                 discord.Color.red()
         )
         await msg.edit(embed=result_embed)
-    @commands.command(aliases=['dicebattle'])
-    async def rollfight(self, ctx, opponent: discord.Member):
+    @commands.command(aliases=['dicebattle', 'db'])
+    async def rollfight(self, ctx, opponent: discord.Member = None):
         """Challenge someone to a dice duel (highest roll wins)"""
+        if not opponent:
+            return await ctx.reply(embed=discord.Embed(
+                description="You need to mention someone to challenge them to a dice battle!",
+                color=discord.Color.red()
+            ))
         if opponent == ctx.author:
             return await ctx.reply(embed=discord.Embed(
                 description="You can't challenge yourself!",
@@ -258,15 +340,20 @@ class Multiplayer(commands.Cog):
         )
         await ctx.send(embed=result_embed)
 
-    @commands.command(aliases=['21game'])
-    async def twentyone(self, ctx, opponent: discord.Member):
+    @commands.command(aliases=['21game', '21'])
+    async def twentyone(self, ctx, opponent: discord.Member = None):
         """Take turns counting to 21 (who says 21 loses)"""
-        if opponent == ctx.author:
+        if not opponent:
+            return await ctx.reply(embed=discord.Embed(
+                description="You need to mention someone to challenge them to a game of 21!",
+                color=discord.Color.red()
+            ))
+        elif opponent == ctx.author:
             return await ctx.reply(embed=discord.Embed(
                 description="You can't play against yourself!",
                 color=discord.Color.red()
             ))
-        if opponent.bot:
+        elif opponent.bot:
             return await ctx.reply(embed=discord.Embed(
                 description="Bots can't count properly",
                 color=discord.Color.red()
@@ -334,9 +421,14 @@ class Multiplayer(commands.Cog):
             color=discord.Color.red()
         ))
 
-    @commands.command(aliases=['rps3'])
-    async def rockpaperscissors3(self, ctx, opponent: discord.Member, games:int=3):
+    @commands.command(aliases=['rps3', 'rps'])
+    async def rockpaperscissors3(self, ctx, opponent: discord.Member=None, games:int=3):
         """Best 2 out of 3 rock-paper-scissors"""
+        if not opponent:
+            return await ctx.reply(embed=discord.Embed(
+                description=f"You need to mention someone to challenge them to a best out of {games} RPS!",
+                color=discord.Color.red()
+            ))
         if opponent == ctx.author:
             return await ctx.reply(embed=discord.Embed(
                 description="You can't play against yourself!",
@@ -438,12 +530,22 @@ class Multiplayer(commands.Cog):
             color=discord.Color.green()
         ))
 
-    @commands.command(aliases=['yacht'])
-    async def yachtdice(self, ctx, opponent: discord.Member):
+    @commands.command(aliases=['yacht', 'yd'])
+    async def yachtdice(self, ctx, opponent: discord.Member=None):
         """Play a simplified Yacht dice game"""
+        if not opponent:
+            return await ctx.reply(embed=discord.Embed(
+                description="You need to mention someone to challenge them to a yacht dice game!",
+                color=discord.Color.red()
+            ))
         if opponent.bot:
             return await ctx.reply(embed=discord.Embed(
                 description="Bots can't handle dice math",
+                color=discord.Color.red()
+            ))
+        if opponent == ctx.author:
+            return await ctx.reply(embed=discord.Embed(
+                description="You can't play against yourself!",
                 color=discord.Color.red()
             ))
         
@@ -503,9 +605,14 @@ class Multiplayer(commands.Cog):
         
         await ctx.send(embed=result_embed)
 
-    @commands.command(aliases=['21'])
-    async def blackjack(self, ctx, opponent: discord.Member):
+    @commands.command(aliases=['bj'])
+    async def blackjack(self, ctx, opponent: discord.Member=None):
         """Play simplified Blackjack against someone"""
+        if not opponent:
+            return await ctx.reply(embed=discord.Embed(
+                description="You need to mention someone to challenge them in blackjack!",
+                color=discord.Color.red()
+            ))
         if opponent == ctx.author:
             return await ctx.reply(embed=discord.Embed(
                 description="You can't play against yourself!",
@@ -618,9 +725,44 @@ class Multiplayer(commands.Cog):
         
         await ctx.send(embed=result_embed)
 
-    @commands.command(aliases=['mathduel'])
-    async def mathrace(self, ctx, opponent: discord.Member, difficulty: int = 10):
-        """Race to solve math problems"""
+    @commands.command(aliases=['mathduel', 'md'])
+    async def mathrace(self, ctx, opponent: discord.Member = None, difficulty: int = 5):
+
+        """Race to solve advanced math problems
+        Difficulty levels: easy, medium, hard, extreme, impossible
+        Example: .mathrace @User extreme"""
+        
+        # Help command
+        if (isinstance(difficulty, str) and difficulty.lower() == "help") or not opponent:
+            examples = {
+                "1 - Very Easy": "`3 + 5`",
+                "3 - Easy Algebra": "`3x + 5 = 20` (solve for x)",
+                "5 - Calculus Intro": "`∫(2x dx) from 0 to 3`",
+                "7 - Advanced Calculus": "`lim(x→∞) (1 + 1/x)^x`",
+                "9 - Quantum Mechanics": "`∇²ψ + (8π²m/h²)(E - V)ψ = 0` (Schrödinger equation)",
+                "10 - Theoretical Math": "`ζ(s) = Σ(1/n^s) for n=1 to ∞` (Riemann Zeta function)"
+            }
+
+            embed = discord.Embed(
+                title="Math Race Help",
+                description="Challenge someone to solve advanced math problems!\n"
+                            "Choose a difficulty from **1 (easiest)** to **10 (hardest)**.\n\n"
+                            "**Difficulty Examples:**",
+                color=discord.Color.blue()
+            )
+
+            for level, example in examples.items():
+                embed.add_field(
+                    name=f"Level {level}",
+                    value=example,
+                    inline=False
+                )
+
+            embed.set_footer(text="Usage: .mathrace @user [1-10]\nYou can also use `.mathrace help`")
+            return await ctx.send(embed=embed)
+
+
+        # Validate opponent
         if opponent == ctx.author:
             return await ctx.reply(embed=discord.Embed(
                 description="You can't race against yourself!",
@@ -631,9 +773,10 @@ class Multiplayer(commands.Cog):
                 description="Bots can't race",
                 color=discord.Color.red()
             ))
-        
+
+        # Challenge message
         embed = discord.Embed(
-            description=f"🧮 **{opponent.mention}**, {ctx.author.mention} challenged you to a Math Race!\nReact with ✅ to accept within 30 seconds!",
+            description=f"🧮 **{opponent.mention}**, {ctx.author.mention} challenged you to a {difficulty} Math Race!\nReact with ✅ to accept within 30 seconds!",
             color=discord.Color.blue()
         )
         challenge_msg = await ctx.send(embed=embed)
@@ -655,30 +798,116 @@ class Multiplayer(commands.Cog):
             ))
         await challenge_msg.delete()
 
-        ops = ['+', '-', '*']
-        a = random.randint(1, difficulty)
-        b = random.randint(1, difficulty)
-        op = random.choice(ops)
-        problem = f"{a} {op} {b}"
-        answer = eval(problem)
-        
+        # Generate problem based on difficulty
+        def generate_problem(diff):
+            diff = diff.lower()
+            if diff == "easy":
+                a = random.randint(1, 10)
+                b = random.randint(1, 10)
+                op = random.choice(['+', '-', '*'])
+                return f"{a} {op} {b}", eval(f"{a}{op}{b}")
+            
+            elif diff == "medium":
+                # Algebra problems
+                problem_type = random.choice(['linear', 'quadratic', 'integral'])
+                if problem_type == 'linear':
+                    a = random.randint(2, 5)
+                    b = random.randint(5, 20)
+                    c = random.randint(1, 10)
+                    return f"{a}x + {b} = {c}", round((c - b)/a, 2)
+                elif problem_type == 'quadratic':
+                    a = random.randint(1, 3)
+                    b = random.randint(-5, 5)
+                    c = random.randint(-10, 10)
+                    return f"{a}x² + {b}x + {c} = 0", [
+                        round((-b + (b**2 - 4*a*c)**0.5)/(2*a), 2),
+                        round((-b - (b**2 - 4*a*c)**0.5)/(2*a), 2)
+                    ]
+                else:  # integral
+                    a = random.randint(1, 3)
+                    b = random.randint(1, 3)
+                    return f"∫({a}x + {b}) dx", f"{a/2}x² + {b}x + C"
+            
+            elif diff == "hard":
+                # Calculus problems
+                problem_type = random.choice(['derivative', 'limit', 'log'])
+                if problem_type == 'derivative':
+                    a = random.randint(2, 4)
+                    b = random.randint(1, 3)
+                    return f"d/dx ({a}x³ + {b}x²)", f"{3*a}x² + {2*b}x"
+                elif problem_type == 'limit':
+                    return "lim(x→0) (sin(x)/x)", 1
+                else:  # log
+                    base = random.randint(2, 5)
+                    num = base ** random.randint(1, 3)
+                    return f"log_{base}({num})", round(math.log(num, base))
+            
+            elif diff == "extreme":
+                # Advanced math
+                problem_type = random.choice(['matrix', 'complex', 'diffeq'])
+                if problem_type == 'matrix':
+                    return "[[1,2],[3,4]] determinant", -2
+                elif problem_type == 'complex':
+                    return "(3 + 4i) * (1 - 2i)", "11 - 2i"
+                else:  # diffeq
+                    return "dy/dx = 2y", "y = Ce^(2x)"
+            
+            else:  # impossible
+                # Graduate-level problems
+                problem_type = random.choice(['laplace', 'fourier', 'tensor'])
+                if problem_type == 'laplace':
+                    return "L{e^(at)}", "1/(s-a)"
+                elif problem_type == 'fourier':
+                    return "F{δ(t)}", 1
+                else:  # tensor
+                    return "R_μν - ½Rg_μν = 8πT_μν", "Einstein field equations"
+
+        try:
+            problem, answer = get_or_generate_problem(difficulty)        
+        except:
+            return await ctx.send(embed=discord.Embed(
+                description="Invalid difficulty! Use easy, medium, hard, extreme, or impossible",
+                color=discord.Color.red()
+            ))
+
+        # Send problem
         await ctx.send(embed=discord.Embed(
-            description=f"**Solve this first:** `{problem}`",
+            description=f"**{difficulty.capitalize()} Math Problem:**\n```{problem}```",
             color=discord.Color.blue()
         ))
-        
-        def check(m):
-            return (
-                m.author in [ctx.author, opponent] and
-                m.channel == ctx.channel and
-                m.content.isdigit() and
-                int(m.content) == answer
-            )
-        
+
+        # Check answers
+        def check_answer(msg):
+            try:
+                # For numerical answers
+                if isinstance(answer, (int, float)):
+                    return (
+                        msg.author in [ctx.author, opponent] and
+                        msg.channel == ctx.channel and
+                        msg.content.replace('.', '', 1).isdigit() and
+                        abs(float(msg.content) - answer) < 0.01
+                    )
+                # For list answers (multiple solutions)
+                elif isinstance(answer, list):
+                    return (
+                        msg.author in [ctx.author, opponent] and
+                        msg.channel == ctx.channel and
+                        any(abs(float(msg.content) - ans) < 0.01 for ans in answer)
+                    )
+                # For string answers
+                else:
+                    return (
+                        msg.author in [ctx.author, opponent] and
+                        msg.channel == ctx.channel and
+                        msg.content.lower().replace(" ", "") == str(answer).lower().replace(" ", "")
+                    )
+            except:
+                return False
+
         try:
-            msg = await self.bot.wait_for('message', check=check, timeout=15)
+            msg = await self.bot.wait_for('message', check=check_answer, timeout=45)
             await ctx.send(embed=discord.Embed(
-                description=f"🏆 **{msg.author.display_name} solved it first!**",
+                description=f"🏆 **{msg.author.display_name} solved it first!**\nAnswer: `{answer}`",
                 color=discord.Color.green()
             ))
         except asyncio.TimeoutError:
