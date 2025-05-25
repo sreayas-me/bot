@@ -15,8 +15,10 @@ intents.reactions = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+#bot.remove_command('help')
+
 async def load_cogs():
-    for file in ["cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans", "cogs.Welcoming", "cogs.Stats"]:
+    for file in ["cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans", "cogs.Welcoming", "cogs.Stats", "cogs.Utility"]: # cogs.Help
         try:
             await bot.load_extension(file)
         except Exception as e:
