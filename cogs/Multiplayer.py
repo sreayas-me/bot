@@ -6,6 +6,8 @@ import logging
 import asyncio
 import math
 from pathlib import Path
+import os
+from fractions import Fraction
 
 EQUATIONS_FILE = Path("data/equations.json")
 
@@ -19,6 +21,101 @@ def save_equation(diff, problem, answer):
     with open(EQUATIONS_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+EQUATION_FILE = "data/equations.json"
+
+class MathGame:
+    def __init__(self):
+        self.equations = self.load_equations()
+
+    def load_equations(self):
+        if not os.path.exists(EQUATION_FILE):
+            with open(EQUATION_FILE, 'w') as f:
+                json.dump({str(i): [] for i in range(1, 11)}, f, indent=4)
+        with open(EQUATION_FILE, 'r') as f:
+            return json.load(f)
+
+    def save_equation(self, diff, problem, answer):
+        entry = {"problem": problem, "answer": answer}
+        self.equations[str(diff)].append(entry)
+        with open(EQUATION_FILE, 'w') as f:
+            json.dump(self.equations, f, indent=4)
+
+    def generate_problem(self, diff):
+        # Check if a stored problem exists
+        existing = self.equations.get(str(diff), [])
+        if existing:
+            chosen = random.choice(existing)
+            return chosen["problem"], chosen["answer"]
+
+        # Otherwise, generate a new one
+        if diff <= 2:
+            a, b = random.randint(1, 10), random.randint(1, 10)
+            op = random.choice(['+', '-', '*'])
+            problem = f"{a} {op} {b}"
+            answer = eval(f"{a}{op}{b}")
+        
+        elif diff <= 4:
+            a = random.randint(2, 5)
+            b = random.randint(5, 20)
+            c = random.randint(1, 10)
+            problem = f"{a}x + {b} = {c}"
+            answer = round((c - b) / a, 2)
+        
+        elif diff <= 6:
+            a = random.randint(1, 3)
+            b = random.randint(-5, 5)
+            c = random.randint(-10, 10)
+            problem = f"{a}x² + {b}x + {c} = 0"
+            discriminant = b**2 - 4*a*c
+            if discriminant >= 0:
+                root1 = round((-b + math.sqrt(discriminant)) / (2 * a), 2)
+                root2 = round((-b - math.sqrt(discriminant)) / (2 * a), 2)
+                answer = [root1, root2]
+            else:
+                real_part = round(-b / (2 * a), 2)
+                imag_part = round(math.sqrt(-discriminant) / (2 * a), 2)
+                root1 = f"{real_part} + {imag_part}i"
+                root2 = f"{real_part} - {imag_part}i"
+                answer = [root1, root2]
+        
+        elif diff <= 8:
+            choice = random.choice(['derivative', 'integral', 'limit'])
+            if choice == 'derivative':
+                coeff = random.randint(1, 5)
+                power = random.randint(2, 4)
+                problem = f"d/dx ({coeff}x^{power})"
+                answer = f"{coeff * power}x^{power - 1}"
+            elif choice == 'integral':
+                coeff = random.randint(1, 5)
+                problem = f"∫({coeff}x dx)"
+                answer = f"{coeff / 2}x² + C"
+            else:
+                problem = "lim(x→0) sin(x)/x"
+                answer = 1
+        
+        elif diff <= 10:
+            choice = random.choice(['matrix', 'complex', 'diffeq'])
+            if choice == 'matrix':
+                a, b = random.randint(1, 5), random.randint(1, 5)
+                c, d = random.randint(1, 5), random.randint(1, 5)
+                problem = f"Det of [[{a}, {b}], [{c}, {d}]]"
+                answer = a * d - b * c
+            elif choice == 'complex':
+                a, b = random.randint(1, 5), random.randint(1, 5)
+                c, d = random.randint(1, 5), random.randint(1, 5)
+                problem = f"({a}+{b}i) * ({c}+{d}i)"
+                real = a * c - b * d
+                imag = a * d + b * c
+                answer = f"{real}+{imag}i"
+            else:
+                coeff = random.randint(2, 5)
+                problem = f"Solve: dy/dx = {coeff}y"
+                answer = f"y = Ce^({coeff}x)"
+
+        # Save and return the new problem
+        self.save_equation(diff, problem, answer)
+        return problem, answer
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -29,64 +126,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger('Multiplayer')
-
-def generate_problem(diff):
-    if diff <= 2:
-        a, b = random.randint(1, 10), random.randint(1, 10)
-        op = random.choice(['+', '-', '*'])
-        return f"{a} {op} {b}", eval(f"{a}{op}{b}")
-    elif diff <= 4:
-        a = random.randint(2, 5)
-        b = random.randint(5, 20)
-        c = random.randint(1, 10)
-        return f"{a}x + {b} = {c}", round((c - b)/a, 2)
-    elif diff <= 6:
-        a = random.randint(1, 3)
-        b = random.randint(-5, 5)
-        c = random.randint(-10, 10)
-        return f"{a}x² + {b}x + {c} = 0", [
-            round((-b + (b**2 - 4*a*c)**0.5)/(2*a), 2),
-            round((-b - (b**2 - 4*a*c)**0.5)/(2*a), 2)
-        ]
-    elif diff <= 8:
-        types = ['derivative', 'limit', 'log']
-        choice = random.choice(types)
-        if choice == 'derivative':
-            a = random.randint(1, 5)
-            return f"d/dx({a}x^2)", f"{2*a}x"
-        elif choice == 'limit':
-            return "lim(x→0) sin(x)/x", 1
-        else:
-            base = random.randint(2, 5)
-            power = random.randint(1, 3)
-            num = base ** power
-            return f"log_{base}({num})", power
-    elif diff <= 10:
-        types = ['matrix', 'complex', 'diffeq']
-        choice = random.choice(types)
-        if choice == 'matrix':
-            return "[[1,2],[3,4]] determinant", -2
-        elif choice == 'complex':
-            return "(3 + 4i) * (1 - 2i)", "11 - 2i"
-        else:
-            return "dy/dx = 2y", "y = Ce^(2x)"
-    else:
-        raise ValueError("Invalid difficulty range")
-
-
-def get_or_generate_problem(diff):
-    data = load_equations()
-    existing = data.get(str(diff), [])
-
-    # 50% chance to reuse a problem if any exist
-    if existing and random.random() < 0.5:
-        chosen = random.choice(existing)
-        return chosen["problem"], chosen["answer"]
-
-    # Generate new problem
-    problem, answer = generate_problem(diff)
-    save_equation(diff, problem, answer)
-    return problem, answer
 
 class Multiplayer(commands.Cog):
     def __init__(self, bot):
@@ -732,7 +771,7 @@ class Multiplayer(commands.Cog):
         Example: .mathrace @User 6"""
 
         # Help command
-        if (isinstance(difficulty, str) and difficulty.lower() == "help") or not opponent:
+        if (isinstance(difficulty, str) and difficulty.lower()) == "help" or not opponent:
             examples = {
                 "1 - Very Easy": "`3 + 5`",
                 "3 - Easy Algebra": "`3x + 5 = 20` (solve for x)",
@@ -768,6 +807,13 @@ class Multiplayer(commands.Cog):
                 color=discord.Color.red()
             ))
 
+        # Validate difficulty
+        if not 1 <= difficulty <= 10:
+            return await ctx.reply(embed=discord.Embed(
+                description="Difficulty must be between 1 and 10",
+                color=discord.Color.red()
+            ))
+
         # Challenge message
         embed = discord.Embed(
             description=f"🧮 **{opponent.mention}**, {ctx.author.mention} challenged you to a difficulty {difficulty} Math Race!\nReact with ✅ to accept within 30 seconds!",
@@ -792,131 +838,63 @@ class Multiplayer(commands.Cog):
             ))
         await challenge_msg.delete()
 
-        # Map number to category
-        def map_difficulty(diff: int):
-            if diff <= 2:
-                return "easy"
-            elif diff <= 4:
-                return "medium"
-            elif diff <= 6:
-                return "hard"
-            elif diff <= 8:
-                return "extreme"
-            else:
-                return "impossible"
-
-        # Problem generator
-        def generate_problem(diff):
-            diff = diff.lower()
-            if diff == "easy":
-                a = random.randint(1, 10)
-                b = random.randint(1, 10)
-                op = random.choice(['+', '-', '*'])
-                return f"{a} {op} {b}", eval(f"{a}{op}{b}")
-
-            elif diff == "medium":
-                problem_type = random.choice(['linear', 'quadratic', 'integral'])
-                if problem_type == 'linear':
-                    a = random.randint(2, 5)
-                    b = random.randint(5, 20)
-                    c = random.randint(1, 10)
-                    return f"{a}x + {b} = {c}", round((c - b)/a, 2)
-                elif problem_type == 'quadratic':
-                    a = random.randint(1, 3)
-                    b = random.randint(-5, 5)
-                    c = random.randint(-10, 10)
-                    return f"{a}x² + {b}x + {c} = 0", [
-                        round((-b + (b**2 - 4*a*c)**0.5)/(2*a), 2),
-                        round((-b - (b**2 - 4*a*c)**0.5)/(2*a), 2)
-                    ]
-                else:
-                    a = random.randint(1, 3)
-                    b = random.randint(1, 3)
-                    return f"∫({a}x + {b}) dx", f"{a/2}x² + {b}x + C"
-
-            elif diff == "hard":
-                problem_type = random.choice(['derivative', 'limit', 'log'])
-                if problem_type == 'derivative':
-                    a = random.randint(2, 4)
-                    b = random.randint(1, 3)
-                    return f"d/dx ({a}x³ + {b}x²)", f"{3*a}x² + {2*b}x"
-                elif problem_type == 'limit':
-                    return "lim(x→0) (sin(x)/x)", 1
-                else:
-                    base = random.randint(2, 5)
-                    num = base ** random.randint(1, 3)
-                    return f"log_{base}({num})", round(math.log(num, base))
-
-            elif diff == "extreme":
-                problem_type = random.choice(['matrix', 'complex', 'diffeq'])
-                if problem_type == 'matrix':
-                    return "[[1,2],[3,4]] determinant", -2
-                elif problem_type == 'complex':
-                    return "(3 + 4i) * (1 - 2i)", "11 - 2i"
-                else:
-                    return "dy/dx = 2y", "y = Ce^(2x)"
-
-            else:
-                problem_type = random.choice(['laplace', 'fourier', 'tensor'])
-                if problem_type == 'laplace':
-                    return "L{e^(at)}", "1/(s-a)"
-                elif problem_type == 'fourier':
-                    return "F{δ(t)}", 1
-                else:
-                    return "R_μν - ½Rg_μν = 8πT_μν", "Einstein field equations"
-
         # Generate problem
-        try:
-            category = map_difficulty(difficulty)
-            problem, answer = generate_problem(category)
-        except Exception as e:
-            return await ctx.send(embed=discord.Embed(
-                description="Something went wrong generating the problem!",
-                color=discord.Color.red()
-            ))
+        game = MathGame()
+        problem, answer = game.generate_problem(difficulty)
 
         # Send problem
-        await ctx.send(embed=discord.Embed(
-            description=f"**Level {difficulty} Math Problem:**\n```{problem}```",
+        embed = discord.Embed(
+            title=f"🧮 Math Race (Difficulty {difficulty})",
+            description=f"**Problem:**\n```{problem}```",
             color=discord.Color.blue()
-        ))
+        )
+        embed.set_footer(text=f"You have {45*difficulty} seconds to answer!")
+        await ctx.send(embed=embed)
 
         # Check answers
         def check_answer(msg):
+            if msg.author not in [ctx.author, opponent] or msg.channel != ctx.channel:
+                return False
+            
             try:
+                user_answer = msg.content.strip().lower().replace(" ", "")
+                correct_answer = str(answer).lower().replace(" ", "")
+                
+                # Handle numeric answers with tolerance
                 if isinstance(answer, (int, float)):
-                    return (
-                        msg.author in [ctx.author, opponent] and
-                        msg.channel == ctx.channel and
-                        msg.content.replace('.', '', 1).replace('-', '', 1).isdigit() and
-                        abs(float(msg.content) - answer) < 0.01
-                    )
+                    try:
+                        return abs(float(user_answer) - float(answer)) < 0.01
+                    except:
+                        return False
+                # Handle list of answers (quadratic equations)
                 elif isinstance(answer, list):
-                    return (
-                        msg.author in [ctx.author, opponent] and
-                        msg.channel == ctx.channel and
-                        any(abs(float(msg.content) - ans) < 0.01 for ans in answer)
-                    )
+                    try:
+                        return any(abs(float(user_answer) - float(ans)) < 0.01 for ans in answer)
+                    except:
+                        return False
+                # Handle string answers
                 else:
-                    return (
-                        msg.author in [ctx.author, opponent] and
-                        msg.channel == ctx.channel and
-                        msg.content.lower().replace(" ", "") == str(answer).lower().replace(" ", "")
-                    )
+                    return user_answer == correct_answer
             except:
                 return False
 
         try:
             msg = await self.bot.wait_for('message', check=check_answer, timeout=45*difficulty)
-            await ctx.send(embed=discord.Embed(
-                description=f"🏆 **{msg.author.display_name} solved it first!**\nAnswer: `{answer}`",
+            winner = msg.author
+            embed = discord.Embed(
+                title="🏆 Winner!",
+                description=f"**{winner.mention} solved it first!**\n\n**Problem:**```{problem}```\n**Answer:**```{answer}```",
                 color=discord.Color.green()
-            ))
+            )
+            embed.set_footer(text=f"Answered in {round((msg.created_at - ctx.message.created_at).total_seconds(), 1)} seconds")
+            await ctx.send(embed=embed)
         except asyncio.TimeoutError:
-            await ctx.send(embed=discord.Embed(
-                description=f"⌛ Time's up! The answer was: `{answer}`",
+            embed = discord.Embed(
+                title="⌛ Time's Up!",
+                description=f"**No one solved the problem in time!**\n\n**Problem:**```{problem}```\n**Answer:**```{answer}```",
                 color=discord.Color.red()
-            ))
+            )
+            await ctx.send(embed=embed)
 
 async def setup(bot):
     try:

@@ -40,7 +40,9 @@ async def on_message(message):
         "use .help <command> for more info",
         "try the modmail feature if you need help",
         "did you know this bot is open source?",
-        "this bot is hosted on ks' crusty old pc"
+        "this bot is hosted on ks' crusty old pc",
+        ".md gets smarter over time, so try it out!",
+        ".jackpot is fun with friends"
     ]
     if message.author.bot:
         return
