@@ -151,19 +151,66 @@ class Fun(commands.Cog):
 
     @commands.command(aliases=['slots'])
     async def slotmachine(self, ctx):
-        """play slot machine"""
+        """Play slot machine with animations and payouts
+
+        Possible payouts:
+        🍒: 10
+        🍋: 20
+        🍊: 30
+        🍇: 50
+        7️⃣: 100
+        💎: 200"""
         emojis = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
-        slots = [random.choice(emojis) for _ in range(3)]
+        values = {
+            "🍒": 10,
+            "🍋": 20,
+            "🍊": 30,
+            "🍇": 50,
+            "7️⃣": 100,
+            "💎": 200
+        }
+        
+        # Initial spinning animation
+        msg = await ctx.reply("🎰 | 🎰 | 🎰\n```Spinning...```")
+        
+        # First spin (partial animation)
+        await asyncio.sleep(1)
+        first_slot = random.choice(emojis)
+        await msg.edit(content=f"🎰 | 🎰 | 🎰\n```Spinning... {first_slot}```")
+        
+        # Second spin (partial animation)
+        await asyncio.sleep(1)
+        second_slot = random.choice(emojis)
+        await msg.edit(content=f"{first_slot} | 🎰 | 🎰\n```Spinning... {second_slot}```")
+        
+        # Final spin
+        await asyncio.sleep(1)
+        third_slot = random.choice(emojis)
+        slots = [first_slot, second_slot, third_slot]
         result = " | ".join(slots)
         
+        # Calculate winnings
         if slots[0] == slots[1] == slots[2]:
             outcome = "```JACKPOT!```"
-        elif slots[0] == slots[1] or slots[1] == slots[2]:
-            outcome = "```almost!```"
+            winnings = values[slots[0]] * 10  # 10x multiplier for jackpot
+        elif slots[0] == slots[1] or slots[1] == slots[2] or slots[0] == slots[2]:
+            outcome = "```Winner!```"
+            # Find the matching pair
+            if slots[0] == slots[1]:
+                winnings = values[slots[0]] * 2
+            elif slots[1] == slots[2]:
+                winnings = values[slots[1]] * 2
+            else:
+                winnings = values[slots[0]] * 2
         else:
-            outcome = "```you lost```"
+            outcome = "```You lost```"
+            winnings = 0
         
-        await ctx.reply(f"🎰 {result}\n{outcome}")
+        # Add payout information if won
+        if winnings > 0:
+            outcome += f"\nYou won ${winnings}!"
+        
+        await msg.edit(content=f"🎰 {result}\n{outcome}")
     
     @commands.command()
     @commands.has_permissions(manage_channels=True)
@@ -289,13 +336,17 @@ class Fun(commands.Cog):
             return await ctx.reply(f"```available: {', '.join(arts.keys())}```")
         await ctx.reply(f"```{arts[name.lower()]}```")
     
-    @commands.command(aliases=['typerace'])
+    @commands.command(aliases=['typerace', 'tt'])
     async def typingtest(self, ctx):
         """start a typing speed test"""
         sentences = [
             "The quick brown fox jumps over the lazy dog",
             "Discord bots are awesome",
-            "Python is better than JavaScript"
+            "tsukami has alot of melanin on his bones",
+            "south bronx is a pretty cool server despite the vanity",
+            "there is no such thing as a free lunch",
+            "a man is not complete until he is dead",
+            "you are what you eat unless you eat yourself, then you are you what you are you are",
         ]
         sentence = random.choice(sentences)
         start = time.time()
