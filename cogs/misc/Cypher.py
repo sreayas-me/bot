@@ -161,7 +161,7 @@ Since you didn't provide any arguments, please send your KEY now:```""")
             await ctx.reply("```Please check your DMs to continue!```")
             try:
                 # Start interactive DM session
-                await self.cipher_test_dm_wizard(ctx.author)
+                await self.process_cipher_test(ctx, key, text)
             except Exception as e:
                 await ctx.author.send(f"```❌ Error: {str(e)}```")
                 await ctx.reply("```Failed to complete DM interaction. Please try again.```")
@@ -209,38 +209,75 @@ Since you didn't provide any arguments, please send your KEY now:```""")
             raise
 
     async def process_cipher_test(self, ctx, key, text, user=None):
-        """Process cipher test and send results"""
+        """Process cipher test and send results with automatic cipher detection"""
         target = user or ctx.author
         
         try:
             # Generate cipher mappings
             encrypt_map, decrypt_map = self.generate_cipher_mapping(key)
             
-            # Process the text
-            encrypted = text.translate(encrypt_map)
-            decrypted = encrypted.translate(decrypt_map)
-            success = (decrypted == text)
+            # Detect if text appears to be already encrypted
+            likely_encrypted = self.is_likely_encrypted(text)
             
-            # Build results
-            result = (
-                f"```🔐 Cipher Test Results\n"
-                f"Key: {key}\n"
-                f"Original:  {text}\n"
-                f"Encrypted: {encrypted}\n"
-                f"Decrypted: {decrypted}\n\n"
-                f"Round-trip: {'✅ SUCCESS' if success else '❌ FAILED'}```"
-            )
+            # Process based on detection
+            if likely_encrypted:
+                # Double decrypt if input appears encrypted
+                decrypted_once = text.translate(decrypt_map)
+                decrypted_twice = decrypted_once.translate(decrypt_map)
+                
+                # Also show what encryption of the decrypted text would look like
+                encrypted_version = decrypted_once.translate(encrypt_map)
+                
+                result = (
+                    f"```🔐 Cipher Test Results (Detected Encrypted Input)\n"
+                    f"Key: {key}\n\n"
+                    f"Original:       {text}\n"
+                    f"After 1st pass: {decrypted_once}\n"
+                    f"After 2nd pass: {decrypted_twice}\n"
+                    f"Re-encrypted:   {encrypted_version}\n\n"
+                    f"Note: Input appeared encrypted - showing decryption results```"
+                )
+            else:
+                # Normal encryption/decryption flow
+                encrypted = text.translate(encrypt_map)
+                decrypted = encrypted.translate(decrypt_map)
+                success = (decrypted == text)
+                
+                result = (
+                    f"```🔐 Cipher Test Results\n"
+                    f"Key: {key}\n"
+                    f"Original:  {text}\n"
+                    f"Encrypted: {encrypted}\n"
+                    f"Decrypted: {decrypted}\n\n"
+                    f"Round-trip: {'✅ SUCCESS' if success else '❌ FAILED'}```"
+                )
             
             await target.send(result)
-            if ctx:
-                await ctx.reply("```✅ Test complete - check your DMs!```")
-                
+            if ctx and hasattr(ctx, 'reply'):  # More robust check for ctx
+                reply_msg = ("```🔍 Test complete (encrypted input detected) - check DMs!```" 
+                            if likely_encrypted 
+                            else "```✅ Test complete - check your DMs!```")
+                await ctx.reply(reply_msg)       
         except Exception as e:
             error_msg = f"```❌ Cipher Test Failed\nError: {str(e)}```"
             await target.send(error_msg)
-            if ctx:
+            if ctx and hasattr(ctx, 'reply'):
                 await ctx.reply("```❌ Test failed - check your DMs for details```")
-            raise
+
+    def is_likely_encrypted(self, text):
+        """Heuristic to detect if text is likely encrypted"""
+        # Check for high percentage of non-alphanumeric characters
+        non_alpha = sum(1 for c in text if not c.isalnum() and not c.isspace())
+        ratio = non_alpha / len(text) if text else 0
+        
+        # Check for unusual character distribution
+        common_chars = sum(1 for c in text.lower() if c in 'etaoin shrdlu')
+        uncommon_ratio = 1 - (common_chars / len(text)) if text else 0
+        
+        # Likely encrypted if:
+        # 1. High non-alphanumeric ratio (>40%), or
+        # 2. Very uncommon character distribution (>80% uncommon)
+        return ratio > 0.4 or uncommon_ratio > 0.8
 
 async def setup(bot):
     await bot.add_cog(Cypher(bot))
