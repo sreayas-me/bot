@@ -3,25 +3,26 @@ import sys
 from datetime import datetime
 
 class CogLogger:
-    """Custom logger class for Discord bot cogs"""
-    
+    """Modified version for more transparent usage"""
     def __init__(self, name: str, level: int = logging.INFO):
-        self.logger = logging.getLogger(f"bronxbot.{name}")
-        self.logger.setLevel(level)
+        self._logger = logging.getLogger(f"bronxbot.{name}")
+        self._logger.setLevel(level)
         
-        if not self.logger.handlers:
-            console_handler = logging.StreamHandler(sys.stdout)
-            console_handler.setLevel(level)
-            
+        if not self._logger.handlers:
+            handler = logging.StreamHandler(sys.stdout)
             formatter = ColoredFormatter(
                 '[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
-            console_handler.setFormatter(formatter)
-            
-            self.logger.addHandler(console_handler)
-            
-            self.logger.propagate = False
+            handler.setFormatter(formatter)
+            self._logger.addHandler(handler)
+    
+    # Delegate logging methods to make usage cleaner
+    def info(self, msg, *args, **kwargs):
+        self._logger.info(msg, *args, **kwargs)
+    
+    def error(self, msg, *args, **kwargs):
+        self._logger.error(msg, *args, **kwargs)
 
 class ColoredFormatter(logging.Formatter):
     """Custom formatter that adds colors to log levels"""
