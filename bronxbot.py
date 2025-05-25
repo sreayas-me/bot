@@ -31,23 +31,17 @@ async def on_ready():
 
 # FIXME: remove this if hosting locally, it wont make any sense
 
-tips = [
-    "i was made in 3 hours",
-    "Zhang Yong",
-    "use .help to get started",
-    "use .help <command> for more info",
-    "try the modmail feature if you need help",
-    "did you know this bot is open source?",
-    "this bot is hosted on ks' crusty old pc",
-    f"try .{random.choice(bot.commands)}",
-    f"try .{random.choice(bot.commands)}",
-    f"try .{random.choice(bot.commands)}",
-    f"try .{random.choice(bot.commands)}",
-    f"try .{random.choice(bot.commands)}"
-]
-
 @bot.event
 async def on_message(message):
+    tips = [
+        "i was made in 3 hours",
+        "Zhang Yong",
+        "use .help to get started",
+        "use .help <command> for more info",
+        "try the modmail feature if you need help",
+        "did you know this bot is open source?",
+        "this bot is hosted on ks' crusty old pc"
+    ]
     if message.author.bot:
         return
     elif message.content == bot.user.mention:
