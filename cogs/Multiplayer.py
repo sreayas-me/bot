@@ -907,7 +907,7 @@ class Multiplayer(commands.Cog):
                 return False
 
         try:
-            msg = await self.bot.wait_for('message', check=check_answer, timeout=45)
+            msg = await self.bot.wait_for('message', check=check_answer, timeout=45*difficulty)
             await ctx.send(embed=discord.Embed(
                 description=f"🏆 **{msg.author.display_name} solved it first!**\nAnswer: `{answer}`",
                 color=discord.Color.green()
