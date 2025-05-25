@@ -1,4 +1,5 @@
 import discord
+import random
 import json
 from discord.ext import commands
 import logging
@@ -23,7 +24,14 @@ async def on_member_join(self, member):
     """Sync roles when a member joins any server"""
     logger.info(f"[+] Member joined: {member} in guild {member.guild.id}")
     await self.sync_roles(member, member.guild)
+
+    randomEmoji = random.choice(member.guild.emojis)
+
+    greeting = ["hi", "yo", "hola", "bonjour", "hhhjhhhiiiiii", "haiiiiii :3", "haaaaaaaiiiiiii", "hello", "hhiihihihiihihi"]
+
     if member.guild.id == 1259717095382319215:
+        channel = member.guild.get_channel(1368768246475391037)
+        await channel.send(f"{random.choice(greeting)} {member.mention} {randomEmoji}")
         embed = discord.Embed(
             description="welcome to South Bronx...\n-# [Main Server](https://discord.gg/furryporn) |  [Backup Server](https://discord.gg/W563EnFwed) | [Appeal Server](https://discord.gg/6Th9dsw6rM)",
             color=discord.Color.random()
@@ -33,7 +41,7 @@ async def on_member_join(self, member):
         await member.send(embed=embed)
         with open("data/stats.json", "r") as f:
             data = json.load(f)
-            data["gained"] -= 1
+            data["stats"][str(member.guild.id)]["gained"] -= 1
             with open("data/stats.json", "w") as f:
                 json.dump(data, f, indent=2)
 
@@ -43,7 +51,7 @@ async def on_member_remove(self, member):
     if member.guild.id == 1259717095382319215:
         with open("data/stats.json", "r") as f:
             data = json.load(f)
-            data["lost"] -= 1
+            data["stats"][str(member.guild.id)]["lost"] -= 1
             with open("data/stats.json", "w") as f:
                 json.dump(data, f, indent=2)
 
