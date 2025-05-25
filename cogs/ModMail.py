@@ -60,7 +60,7 @@ class ModMail(commands.Cog):
         guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
         
         if isinstance(message.channel, discord.DMChannel):
-            if str(message.author.id) not in self.active_tickets:
+            if str(message.author.id) not in self.active_tickets and "help" in message.content.lower():
                 await self.create_new_modmail(message)
             else:
                 await self.forward_to_thread(message)
