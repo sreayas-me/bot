@@ -45,7 +45,7 @@ class SyncRoles(commands.Cog):
     
     async def get_target_servers(self, source_guild):
         """Get the other two servers based on the source server"""
-        self.logger.debug(f"Getting target servers for guild ID: {source_guild.id}")
+        self.logger.info(f"Getting target servers for guild ID: {source_guild.id}")
         
         guilds = {
             "south_bronx": 1259717095382319215,
@@ -69,7 +69,7 @@ class SyncRoles(commands.Cog):
         else:
             targets = (guilds["south_bronx"], guilds["manhattan"])
         
-        self.logger.debug(f"Found target servers: {[g.id if g else None for g in targets]}")
+        self.logger.info(f"Found target servers: {[g.id if g else None for g in targets]}")
         return targets
     
     async def get_member_in_guild(self, member_id, guild):
@@ -77,7 +77,7 @@ class SyncRoles(commands.Cog):
         try:
             return await guild.fetch_member(member_id)
         except discord.NotFound:
-            self.logger.debug(f"Member {member_id} not found in guild {guild.id}")
+            self.logger.info(f"Member {member_id} not found in guild {guild.id}")
             return None
         except discord.Forbidden:
             self.logger.warning(f"Missing permissions to fetch members in guild {guild.id}")
@@ -112,7 +112,7 @@ class SyncRoles(commands.Cog):
             self.logger.warning(f"Unknown source guild ID: {source_guild.id}")
             return
         
-        self.logger.debug(f"Source server identified as: {source_server}")
+        self.logger.info(f"Source server identified as: {source_server}")
         
         # Get the roles the member has in the source server
         source_roles = {role.id for role in member.roles}
@@ -122,14 +122,14 @@ class SyncRoles(commands.Cog):
         for role_name, role_id in ROLE_MAPPING[source_server].items():
             if role_id and role_id in source_roles:
                 roles_to_add.add(role_name)
-                self.logger.debug(f"Found mapped role: {role_name} (ID: {role_id})")
+                self.logger.info(f"Found mapped role: {role_name} (ID: {role_id})")
         
         self.logger.info(f"Roles to sync: {roles_to_add}")
         
         # Sync to target servers
         for target_member, target_guild in [(target_member1, target_guild1), (target_member2, target_guild2)]:
             if not target_member:
-                self.logger.debug(f"Skipping guild {target_guild.id} - member not found")
+                self.logger.info(f"Skipping guild {target_guild.id} - member not found")
                 continue
             
             # Determine target server name
@@ -145,7 +145,7 @@ class SyncRoles(commands.Cog):
                 self.logger.warning(f"Unknown target guild ID: {target_guild.id}")
                 continue
             
-            self.logger.debug(f"Syncing to target server: {target_server}")
+            self.logger.info(f"Syncing to target server: {target_server}")
             
             # Get current roles to avoid removing non-synced roles
             current_roles = {role.id for role in target_member.roles}
@@ -158,7 +158,7 @@ class SyncRoles(commands.Cog):
                     continue
                 
                 if role_name not in roles_to_add and int(role_id) in current_roles:
-                    self.logger.debug(f"Removing role: {role_name} (ID: {role_id})")
+                    self.logger.info(f"Removing role: {role_name} (ID: {role_id})")
                     new_roles.discard(int(role_id))
                     changes_made = True
             
@@ -166,16 +166,16 @@ class SyncRoles(commands.Cog):
             for role_name in roles_to_add:
                 role_id = ROLE_MAPPING[target_server].get(role_name)
                 if not role_id:  # Skip if role doesn't exist in target server
-                    self.logger.debug(f"Skipping {role_name} - no mapping in target server")
+                    self.logger.info(f"Skipping {role_name} - no mapping in target server")
                     continue
                 
                 if int(role_id) not in current_roles:
-                    self.logger.debug(f"Adding role: {role_name} (ID: {role_id})")
+                    self.logger.info(f"Adding role: {role_name} (ID: {role_id})")
                     new_roles.add(int(role_id))
                     changes_made = True
             
             if not changes_made:
-                self.logger.debug("No role changes needed")
+                self.logger.info("No role changes needed")
                 continue
             
             # Convert role IDs back to role objects
@@ -208,8 +208,8 @@ class SyncRoles(commands.Cog):
         """Sync roles when a member's roles are updated"""
         if before.roles != after.roles:
             self.logger.info(f"Member roles updated: {after} in guild {after.guild.id}")
-            self.logger.debug(f"Before roles: {[r.id for r in before.roles]}")
-            self.logger.debug(f"After roles: {[r.id for r in after.roles]}")
+            self.logger.info(f"Before roles: {[r.id for r in before.roles]}")
+            self.logger.info(f"After roles: {[r.id for r in after.roles]}")
             await self.sync_roles(after, after.guild)
     
     @commands.command(name="forcesync", aliases=["sync"])
