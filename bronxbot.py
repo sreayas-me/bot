@@ -27,12 +27,6 @@ async def on_ready():
     await load_cogs()
     print(f'[?] Logged in as {bot.user.name} (ID: {bot.user.id})')
 
-@bot.command(name="emoji", aliases=["em"])
-async def emoji(ctx):
-    """Get a random emoji from the server"""
-    emoji = random.choice(ctx.guild.emojis)
-    await ctx.reply(emoji)
-
 # FIXME: remove this if hosting locally, it wont make any sense
 
 tips = [
