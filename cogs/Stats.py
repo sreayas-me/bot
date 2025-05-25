@@ -3,7 +3,7 @@ import json
 from discord.ext import commands
 import logging
 import datetime
-from dateutil.parser import parse 
+#from dateutil.parser import parse 
 
 # Set up logging
 logging.basicConfig(
@@ -38,8 +38,8 @@ class Stats(commands.Cog):
     async def stats(self, ctx):
         with open("data/stats.json", "r") as f:
             data = json.load(f)
-            dt = parse(data["timestamp"])  # Handles 'Z' and other formats
-            unix_timestamp = int(dt.timestamp())
+            dt = data["timestamp"] 
+            #unix_timestamp = int(dt.timestamp())
 
         embed = discord.Embed(
             description=f"""
@@ -47,11 +47,11 @@ class Stats(commands.Cog):
             `members gained {data["gained"]}`
             `members lost {data["lost"]}`
             `total g/l {data["gained"] - data["lost"]}`
-            `last updated` <t:{unix_timestamp}:R>
             """,
             color=discord.Color.random()
         )
         embed.set_thumbnail(url=self.bot.user.avatar.url)
+        embed.timestamp = dt
         await ctx.reply(embed=embed)
 
     @commands.command(name="resetstats", aliases=["rst"])
