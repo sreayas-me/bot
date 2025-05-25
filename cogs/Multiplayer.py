@@ -19,6 +19,64 @@ logger = logging.getLogger('Multiplayer')
 class Multiplayer(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.ongoing_jackpots = set()
+
+    @commands.command()
+    async def jackpot(self, ctx):
+        """Start a jackpot! $25 entry, winner takes all. React with ✅ to join within 15 seconds."""
+        
+        if ctx.channel.id in self.ongoing_jackpots:
+            return await ctx.reply("🚨 A jackpot is already running in this channel!")
+        
+        self.ongoing_jackpots.add(ctx.channel.id)
+        
+        # Send the initial jackpot message
+        jackpot_msg = await ctx.send(
+            f"🎰 **JACKPOT STARTED!** 🎰\n"
+            f"Hosted by: {ctx.author.mention}\n"
+            f"Entry: **$25**\n"
+            f"React with ✅ within **15 seconds** to join!\n\n"
+            f"Current pot: **$25** (1 player)"
+        )
+        
+        await jackpot_msg.add_reaction("✅")
+        
+        participants = [ctx.author]
+        
+        await asyncio.sleep(15)
+        
+        # Remove channel from ongoing jackpots
+        self.ongoing_jackpots.discard(ctx.channel.id)
+        
+        try:
+            jackpot_msg = await ctx.channel.fetch_message(jackpot_msg.id)
+        except discord.NotFound:
+            return await ctx.send("❌ Jackpot message was deleted. Game cancelled.")
+        
+        reaction = next((r for r in jackpot_msg.reactions if str(r.emoji) == "✅"), None)
+        if not reaction:
+            return await ctx.send("❌ No one joined the jackpot. Game cancelled.")
+        
+        async for user in reaction.users():
+            if not user.bot and user not in participants:
+                participants.append(user)
+        
+        if len(participants) == 1:
+            return await ctx.send(f"❌ Only {ctx.author.mention} joined. Refunded $25.")
+        
+        # Calculate pot and winner
+        pot = len(participants) * 25
+        winner = random.choice(participants)
+        win_chance = 25 / pot * 100 
+        
+        # Announce the winner
+        await ctx.send(
+            f"🎉 **JACKPOT RESULTS** 🎉\n"
+            f"Total entries: **{len(participants)}**\n"
+            f"Total pot: **${pot}**\n"
+            f"Winner: {winner.mention} (had a **{win_chance:.1f}%** chance)\n\n"
+            f"🏆 **{winner.display_name} takes ALL!** 🏆"
+        )
 
     @commands.command(aliases=['slotfight', 'slotsduel'])
     async def slotbattle(self, ctx, opponent: discord.Member):
