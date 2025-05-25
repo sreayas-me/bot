@@ -20,6 +20,110 @@ class Multiplayer(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    @commands.command(aliases=['slotfight', 'slotsduel'])
+    async def slotbattle(self, ctx, opponent: discord.Member):
+        """Challenge someone to a slot battle! Winner takes all, or the house wins if both lose.
+
+        Usage: .slotbattle [user]"""
+        if opponent == ctx.author:
+            return await ctx.reply("You can't battle yourself!")
+        if opponent.bot:
+            return await ctx.reply("Bots can't play slots!")
+
+        emojis = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
+        values = {
+            "🍒": 10,
+            "🍋": 20,
+            "🍊": 30,
+            "🍇": 50,
+            "7️⃣": 100,
+            "💎": 200
+        }
+
+        # Initial challenge message
+        await ctx.reply(f"🎰 **{ctx.author.display_name}** challenges **{opponent.display_name}** to a **SLOT BATTLE!** 🎰")
+
+        # Function to generate spinning animation frames
+        async def spinning_slots(player_name):
+            frames = []
+            for _ in range(3):  # 3 animation frames
+                frame = " | ".join([random.choice(emojis) for _ in range(3)])
+                frames.append(f"**{player_name}**\n🎰 {frame}")
+            return frames
+
+        # Generate spinning animations for both players
+        p1_frames = await spinning_slots(ctx.author.display_name)
+        p2_frames = await spinning_slots(opponent.display_name)
+
+        # Send initial spinning message
+        msg = await ctx.send(
+            f"{p1_frames[0]}\n"
+            f"{p2_frames[0]}\n"
+            "```Spinning...```"
+        )
+
+        # Animation sequence
+        for i in range(1, 3):
+            await asyncio.sleep(1.5)  # Time between spins
+            await msg.edit(
+                content=(
+                    f"{p1_frames[i]}\n"
+                    f"{p2_frames[i]}\n"
+                    "```Spinning...```"
+                )
+            )
+
+        # Final results
+        async def get_final_result(player):
+            slots = [random.choice(emojis) for _ in range(3)]
+            result = " | ".join(slots)
+            
+            if slots[0] == slots[1] == slots[2]:  # JACKPOT
+                win_amount = values[slots[0]] * 10
+                win_status = "**JACKPOT!**"
+            elif slots[0] == slots[1] or slots[1] == slots[2]:
+                win_amount = values[slots[1]] * 2
+                win_status = "**Winner!**"
+            else:
+                win_amount = 0
+                win_status = "Lost"
+            
+            return {
+                "name": player.display_name,
+                "slots": slots,
+                "result": result,
+                "win_amount": win_amount,
+                "win_status": win_status,
+                "display": f"**{player.display_name}**\n🎰 {result}"
+            }
+
+        # Get final results
+        results = await asyncio.gather(
+            get_final_result(ctx.author),
+            get_final_result(opponent)
+        )
+        player1, player2 = results
+        total_pot = player1["win_amount"] + player2["win_amount"]
+
+        # Determine outcome
+        if player1["win_amount"] > player2["win_amount"]:
+            outcome = f"🏆 **{player1['name']} WINS ${total_pot}!**"
+        elif player2["win_amount"] > player1["win_amount"]:
+            outcome = f"🏆 **{player2['name']} WINS ${total_pot}!**"
+        elif player1["win_amount"] > 0:
+            outcome = f"🤝 **Tie! Both win ${player1['win_amount']}.**"
+        else:
+            outcome = "🏦 **The house wins! Both players lose.**"
+
+        # Final display
+        await msg.edit(
+            content=(
+                f"{player1['display']} ({player1['win_status']})\n"
+                f"{player2['display']} ({player2['win_status']})\n\n"
+                f"{outcome}"
+            )
+        )
+
     @commands.command(aliases=['dicebattle'])
     async def rollfight(self, ctx, opponent: discord.Member):
         """Challenge someone to a dice duel (highest roll wins)
@@ -202,11 +306,11 @@ class Multiplayer(commands.Cog):
             await ctx.send(f"{player.mention}'s turn")
             while True:
                 def check(m):
-                    return m.author == player and m.channel == ctx.channel and m.content.lower() in ['hit', 'stand']
+                    return m.author == player and m.channel == ctx.channel and m.content.lower() in ['hit', 'stand', 'h', 's']
                 
                 try:
                     msg = await self.bot.wait_for('message', check=check, timeout=30)
-                    if msg.content.lower() == 'stand':
+                    if msg.content.lower() in ['stand', 's']:
                         break
                     
                     hands[player].append(draw_card())
