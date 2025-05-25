@@ -12,13 +12,16 @@ intents.members = True
 intents.guilds = True
 intents.reactions = True
 
-
-bot = commands.Bot(command_prefix='.', intents=intents)
-
+# Switch to AutoShardedBot for sharding support
+bot = commands.AutoShardedBot(command_prefix='.', intents=intents)
 bot.remove_command('help')
 
 async def load_cogs():
-    for file in ["cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans", "cogs.Welcoming", "cogs.Stats", "cogs.Utility", "cogs.MathRace", "cogs.Multiplayer", "cogs.Help", "cogs.Fun"]: # cogs.Help
+    for file in [
+        "cogs.ModMail", "cogs.SyncRoles", "cogs.VoteBans", "cogs.Welcoming",
+        "cogs.Stats", "cogs.Utility", "cogs.MathRace", "cogs.Multiplayer",
+        "cogs.Help", "cogs.Fun"
+    ]:
         try:
             await bot.load_extension(file)
         except Exception as e:
@@ -28,28 +31,25 @@ async def load_cogs():
 async def on_ready():
     await load_cogs()
     print(f'[?] Logged in as {bot.user.name} (ID: {bot.user.id})')
-
-# FIXME: remove this if hosting locally, it wont make any sense
+    print(f"[!] Shards: {bot.shard_count}, Latency: {round(bot.latency * 1000, 2)}ms")
 
 @bot.event
 async def on_message(message):
     tips = [
-        "i was made in 3 hours",
-        "Zhang Yong",
-        "use .help to get started",
-        "use .help <command> for more info",
-        "try the modmail feature if you need help",
-        "did you know this bot is open source?",
-        "this bot is hosted on ks' crusty old pc",
-        ".md gets smarter over time, so try it out!",
-        ".jackpot is fun with friends"
+        "i was made in 3 hours", "Zhang Yong", "use .help to get started",
+        "use .help <command> for more info", "try the modmail feature if you need help",
+        "did you know this bot is open source?", "this bot is hosted on ks' crusty old pc",
+        ".md gets smarter over time, so try it out!", ".jackpot is fun with friends"
     ]
+
     if message.author.bot:
         return
+
     elif message.content == bot.user.mention:
         if str(message.author.id) in config['OWNER_IDS']:
             return await message.reply(f"hola, **{random.choice(config['OWNER_REPLY'])}**\n-# `{round(bot.latency * 1000, 2)}ms`")
         await message.reply(f"hi, **{message.author.name}**\n-# {random.choice(tips)}")
+
     await bot.process_commands(message)
 
 @bot.event
