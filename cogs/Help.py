@@ -131,7 +131,7 @@ class Help(commands.Cog):
         
         for cog_name, cog in sorted_cogs:
             # Skip certain cogs
-            if cog_name.lower() in ['help', 'jishaku', 'dev']:
+            if cog_name.lower() in ['help', 'jishaku', 'dev', 'moderation', 'giveaway']:
                 continue
             
             # Get visible commands

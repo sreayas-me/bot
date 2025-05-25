@@ -10,7 +10,6 @@ class Economy(commands.Cog):
         self.logger = logging.getLogger(f"bronxbot.{self.__class__.__name__}")
         self.logger.info(f"Initializing {self.__class__.__name__} cog")
         self.currency = "💰"
-        self.logger.debug(f"Currency symbol set to: {self.currency}")
 
     @commands.command(name="balance", aliases=["bal"])
     async def check_balance(self, ctx, member: discord.Member = None):
