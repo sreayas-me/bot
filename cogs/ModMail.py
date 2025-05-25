@@ -154,11 +154,33 @@ class ModMail(commands.Cog):
             logger.error(f"Failed to forward message: {e}")
             await user_message.author.send("Failed to forward your message to staff. Please try again later.")
     
+    staffroles = {
+        "owner": 1281553341100457995,
+        "co-owner": 1262995584231669770,
+        "admin": 1292612655261155428,
+        "head mod": 1259718732163321906,
+        "mod": 1266510089683079330,
+        "trial mod": 1259718795556028446,
+        "helper": 1362671155730972733,
+        "staff": 1259728436377817100
+    }
+    
     async def handle_staff_reply(self, staff_message):
         """Handle staff replies in modmail threads"""
         if staff_message.content.startswith("!"):
             return
-            
+        
+        staffrank = None
+        author_role_ids = {role.id for role in staff_message.author.roles}
+        
+        for role_name, role_id in self.staffroles.items():
+            if role_id in author_role_ids:
+                staffrank = role_name
+                break  # This takes the first match (if you want highest role, dictionary order matters)
+        
+        if not staffrank:
+            return
+
         user_id = None
         for uid, tid in self.active_tickets.items():
             if tid == staff_message.channel.id:
@@ -171,15 +193,17 @@ class ModMail(commands.Cog):
         user = self.bot.get_user(user_id)
         if not user:
             return
-            
+        
+        avatar_url = staff_message.author.avatar.url if staff_message.author.avatar else staff_message.author.default_avatar.url
+        
         embed = discord.Embed(
             description=staff_message.content,
             color=0x7289da,
             timestamp=staff_message.created_at
         )
         embed.set_author(
-            name=f"{staff_message.author} (Staff)",
-            icon_url=staff_message.author.avatar.url
+            name=f"{staff_message.author} ({staffrank})",
+            icon_url=avatar_url
         )
         
         if staff_message.attachments:
