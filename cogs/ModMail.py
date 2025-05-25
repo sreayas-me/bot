@@ -57,7 +57,8 @@ class ModMail(commands.Cog):
     async def on_message(self, message):
         if message.author.bot:
             return
-            
+        guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
+        
         if isinstance(message.channel, discord.DMChannel):
             if str(message.author.id) not in self.active_tickets:
                 await self.create_new_modmail(message)
@@ -69,8 +70,8 @@ class ModMail(commands.Cog):
               not message.author.bot):
             await self.handle_staff_reply(message)
         
-        guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
-        if message.guild.id in guilds:
+        
+        elif message.guild.id in guilds:
             with open("data/stats.json", "r") as f:
                 data = json.load(f)
                 data["stats"][str(message.guild.id)]["messages"] += 1
