@@ -85,7 +85,6 @@ Since you didn't provide any arguments, please send your KEY now:```""")
             # Send encrypted message to DMs
             embed_content = f"**🔐 Encrypted Message**\n```\nKey: {key}\nOriginal: {text[:100]}{'...' if len(text) > 100 else ''}\nEncrypted: {encrypted_text}\n```"
             
-            await ctx.reply("```Message encrypted and sent to your DMs```")
             await ctx.author.send(embed_content)
             
         except Exception as e:
@@ -144,8 +143,6 @@ Since you didn't provide any arguments, please send your KEY now:```""")
             
             # Send decrypted message to DMs
             embed_content = f"**🔓 Decrypted Message**\n```\nKey: {key}\nEncrypted: {text[:100]}{'...' if len(text) > 100 else ''}\nDecrypted: {decrypted_text}\n```"
-            
-            await ctx.reply("```Message decrypted and sent to your DMs```")
             await ctx.author.send(embed_content)
             
         except Exception as e:
