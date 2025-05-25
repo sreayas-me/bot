@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timedelta
 import logging
+import asyncio
 
 # Set up logging
 logging.basicConfig(
@@ -27,6 +28,14 @@ class VoteBans(commands.Cog):
         self.data_path = Path("data/votebans.json")
         self.vote_data = self.load_data()
         
+        # Rate limiting control
+        self.message_edit_queue = asyncio.Queue()
+        self.last_edit_time = {}
+        self.edit_cooldown = 2.0  # 2 seconds between edits per message
+        
+        # Start the message edit processor
+        self.bot.loop.create_task(self.process_message_edits())
+        
     def load_data(self):
         try:
             with open(self.data_path) as f:
@@ -44,30 +53,98 @@ class VoteBans(commands.Cog):
                             "jump_url": vote_info.get("jump_url", ""),
                             "reason": vote_info["reason"],
                             "votes": vote_info["votes"],
-                            "advocates": vote_info.get("advocates", {}),  # <-- FIXED
+                            "advocates": vote_info.get("advocates", {}),
                             "completed": vote_info["completed"]
                         }
                     return new_data
                 # Newer structure is just vote_data directly
                 return data
-        except (FileNotFoundError, json.JSONDecodeError):
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not load vote data: {e}")
             return {}
     
     def save_data(self):
-        self.data_path.parent.mkdir(exist_ok=True)
-        with open(self.data_path, "w") as f:
-            json.dump(self.vote_data, f, indent=2, default=str)
+        try:
+            self.data_path.parent.mkdir(exist_ok=True)
+            with open(self.data_path, "w") as f:
+                json.dump(self.vote_data, f, indent=2, default=str)
+        except Exception as e:
+            logger.error(f"Failed to save vote data: {e}")
 
-    
+    async def process_message_edits(self):
+        """Process message edits with rate limiting to avoid API limits"""
+        while True:
+            try:
+                message_id, embed_data = await self.message_edit_queue.get()
+                
+                # Check if we need to wait due to rate limiting
+                current_time = asyncio.get_event_loop().time()
+                if message_id in self.last_edit_time:
+                    time_since_last = current_time - self.last_edit_time[message_id]
+                    if time_since_last < self.edit_cooldown:
+                        await asyncio.sleep(self.edit_cooldown - time_since_last)
+                
+                # Attempt to edit the message
+                try:
+                    channel = self.bot.get_channel(embed_data['channel_id'])
+                    if channel:
+                        message = await channel.fetch_message(message_id)
+                        await message.edit(embed=embed_data['embed'])
+                        self.last_edit_time[message_id] = asyncio.get_event_loop().time()
+                except discord.NotFound:
+                    logger.warning(f"Message {message_id} not found for editing")
+                    # Clean up vote data for missing messages
+                    self.cleanup_missing_vote(message_id)
+                except discord.HTTPException as e:
+                    logger.error(f"HTTP error editing message {message_id}: {e}")
+                    # Wait longer on HTTP errors
+                    await asyncio.sleep(5)
+                except Exception as e:
+                    logger.error(f"Unexpected error editing message {message_id}: {e}")
+                
+            except Exception as e:
+                logger.error(f"Error in message edit processor: {e}")
+                await asyncio.sleep(1)
+
+    def cleanup_missing_vote(self, message_id):
+        """Remove vote data for messages that no longer exist"""
+        for user_id, vote_data in list(self.vote_data.items()):
+            if vote_data.get("message_id") == message_id:
+                logger.info(f"Cleaning up vote data for missing message {message_id}")
+                vote_data["completed"] = True
+                self.save_data()
+                break
+
+    async def queue_message_edit(self, message_id, channel_id, embed):
+        """Queue a message edit to avoid rate limits"""
+        await self.message_edit_queue.put((message_id, {
+            'channel_id': channel_id,
+            'embed': embed
+        }))
+
     async def is_staff(self, member):
+        """Check if member has staff role"""
+        if not member:
+            return False
         staff_role = member.guild.get_role(self.staff_role_id)
         return staff_role in member.roles if staff_role else False
 
-
+    async def safe_fetch_message(self, channel, message_id):
+        """Safely fetch a message with error handling"""
+        try:
+            return await channel.fetch_message(message_id)
+        except discord.NotFound:
+            logger.warning(f"Message {message_id} not found")
+            return None
+        except discord.Forbidden:
+            logger.error(f"No permission to fetch message {message_id}")
+            return None
+        except discord.HTTPException as e:
+            logger.error(f"HTTP error fetching message {message_id}: {e}")
+            return None
 
     @commands.command(name="vban", aliases=["voteban", "vote", "kill", "vb", "ban"])
     async def voteban(self, ctx, user: discord.Member=None, *, reason="No reason provided"):
-
         if not user:
             embed = discord.Embed(
                 title="Vote Ban",
@@ -85,6 +162,8 @@ class VoteBans(commands.Cog):
                 timestamp=datetime.now()
             )
             return await ctx.send(embed=embed)
+
+        # Validation checks
         if user.id == ctx.author.id:
             return await ctx.send("You can't vote ban yourself!", delete_after=10)
             
@@ -94,7 +173,7 @@ class VoteBans(commands.Cog):
         if user.bot:
             return await ctx.send("You can't vote ban bots!", delete_after=10)
 
-        # Check if reason is reasonably long
+        # Check reason length
         if len(reason) < 10:
             return await ctx.send("Reason must be at least 10 characters long!", delete_after=10)
         elif len(reason) > 250:
@@ -102,10 +181,11 @@ class VoteBans(commands.Cog):
 
         user_id_str = str(user.id)
 
-        # If vote already exists, update advocates and edit embed
+        # If vote already exists, update advocates
         if user_id_str in self.vote_data and not self.vote_data[user_id_str].get("completed", True):
             existing_vote = self.vote_data[user_id_str]
 
+            # Add advocate
             existing_vote["advocates"][str(ctx.author.id)] = {
                 "reason": reason,
                 "timestamp": datetime.now().isoformat(),
@@ -113,27 +193,41 @@ class VoteBans(commands.Cog):
             }
 
             # Update embed with new advocate list
-            channel = self.bot.get_channel(existing_vote["channel_id"])
-            message = await channel.fetch_message(existing_vote["message_id"])
+            embed = discord.Embed(
+                title=f"Vote Ban: {user.display_name}",
+                description=f"**Reason:** {existing_vote['reason']}\n\nVote ✅ to ban, ❌ to keep\n{self.required_votes} votes needed to decide",
+                color=discord.Colour.random(),
+                timestamp=datetime.now()
+            )
+            embed.set_thumbnail(url=user.avatar.url if user.avatar else user.default_avatar.url)
+            embed.set_footer(text=f"Started by {ctx.author.display_name}")
 
-            embed = message.embeds[0]
-            embed.clear_fields()
-            
-            # Rebuild the embed fields
+            # Add advocates field
             advocate_text = []
             for advocate_id, advocate_data in existing_vote["advocates"].items():
-                advocate_text.append(
-                    f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
-                    f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:R>)"
-                )
+                try:
+                    timestamp = int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())
+                    advocate_text.append(
+                        f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
+                        f"(<t:{timestamp}:R>)"
+                    )
+                except (ValueError, KeyError):
+                    advocate_text.append(f"• **{advocate_data.get('username', 'Unknown')}** - \"{advocate_data.get('reason', 'No reason')}\"")
+
             if advocate_text:
                 embed.add_field(
                     name="Advocates",
-                    value="\n".join(advocate_text),
+                    value="\n".join(advocate_text[:10]),  # Limit to prevent embed size issues
                     inline=False
                 )
 
-            await message.edit(embed=embed)
+            # Queue the message edit
+            await self.queue_message_edit(
+                existing_vote["message_id"], 
+                existing_vote["channel_id"], 
+                embed
+            )
+            
             self.save_data()
 
             return await ctx.send(
@@ -148,14 +242,21 @@ class VoteBans(commands.Cog):
             color=discord.Colour.random(),
             timestamp=datetime.now()
         )
-        embed.set_thumbnail(url=user.avatar.url)
+        embed.set_thumbnail(url=user.avatar.url if user.avatar else user.default_avatar.url)
         embed.set_footer(text=f"Started by {ctx.author.display_name}")
 
         # Send embed to vote channel
         vote_channel = self.bot.get_channel(self.vote_channel_id)
-        vote_msg = await vote_channel.send(embed=embed)
-        await vote_msg.add_reaction("✅")
-        await vote_msg.add_reaction("❌")
+        if not vote_channel:
+            return await ctx.send("Vote channel not found!", delete_after=10)
+
+        try:
+            vote_msg = await vote_channel.send(embed=embed)
+            await vote_msg.add_reaction("✅")
+            await vote_msg.add_reaction("❌")
+        except discord.HTTPException as e:
+            logger.error(f"Failed to send vote message: {e}")
+            return await ctx.send("Failed to create vote! Please try again later.", delete_after=10)
 
         # Store vote data
         self.vote_data[user_id_str] = {
@@ -185,34 +286,109 @@ class VoteBans(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        for vote in self.vote_data.values():
+        """Restore vote embeds on bot restart"""
+        logger.info("Restoring vote embeds...")
+        restored_count = 0
+        
+        for user_id, vote in list(self.vote_data.items()):
             if not vote.get("completed", True):
                 try:
                     channel = self.bot.get_channel(vote["channel_id"])
-                    message = await channel.fetch_message(vote["message_id"])
-                    embed = message.embeds[0]
-                    embed.clear_fields()
+                    if not channel:
+                        logger.warning(f"Vote channel {vote['channel_id']} not found, marking vote as completed")
+                        vote["completed"] = True
+                        continue
 
-                    # Rebuild advocate list
+                    message = await self.safe_fetch_message(channel, vote["message_id"])
+                    if not message:
+                        logger.warning(f"Vote message {vote['message_id']} not found, marking vote as completed")
+                        vote["completed"] = True
+                        continue
+
+                    # Rebuild embed with current data
+                    user = self.bot.get_user(vote["user_id"])
+                    user_name = user.display_name if user else f"User {vote['user_id']}"
+                    
+                    embed = discord.Embed(
+                        title=f"Vote Ban: {user_name}",
+                        description=f"**Reason:** {vote['reason']}\n\nVote ✅ to ban, ❌ to keep\n{self.required_votes} votes needed to decide",
+                        color=discord.Colour.random(),
+                        timestamp=datetime.now()
+                    )
+                    
+                    if user and user.avatar:
+                        embed.set_thumbnail(url=user.avatar.url)
+                    
+                    # Add advocate information
                     advocate_text = []
-                    for advocate_id, advocate_data in vote["advocates"].items():
-                        advocate_text.append(
-                            f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
-                            f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:R>)"
-                        )
+                    for advocate_id, advocate_data in vote.get("advocates", {}).items():
+                        try:
+                            timestamp = int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())
+                            advocate_text.append(
+                                f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
+                                f"(<t:{timestamp}:R>)"
+                            )
+                        except (ValueError, KeyError):
+                            advocate_text.append(f"• **{advocate_data.get('username', 'Unknown')}** - \"{advocate_data.get('reason', 'No reason')}\"")
+
                     if advocate_text:
-                        embed.add_field(name="Advocates", value="\n".join(advocate_text), inline=False)
+                        embed.add_field(name="Advocates", value="\n".join(advocate_text[:10]), inline=False)
 
-                    await message.edit(embed=embed)
+                    await self.queue_message_edit(vote["message_id"], vote["channel_id"], embed)
+                    restored_count += 1
+                    
                 except Exception as e:
-                    print(f"Failed to update message {vote['message_id']}: {e}")
+                    logger.error(f"Failed to restore vote message {vote.get('message_id', 'unknown')}: {e}")
+                    vote["completed"] = True
 
-    
+        if restored_count > 0:
+            self.save_data()
+            logger.info(f"Restored {restored_count} vote embeds")
+
+    async def update_vote_embed(self, vote_info, message):
+        """Update vote embed with current vote counts"""
+        yes_votes = len(vote_info["votes"]["✅"])
+        no_votes = len(vote_info["votes"]["❌"])
+        
+        # Get user info
+        user = self.bot.get_user(vote_info["user_id"])
+        user_name = user.display_name if user else f"User {vote_info['user_id']}"
+        
+        embed = discord.Embed(
+            title=f"Vote Ban: {user_name}",
+            description=(
+                f"**Reason:** {vote_info['reason']}\n\n"
+                f"Vote ✅ to ban ({yes_votes}), ❌ to keep ({no_votes})\n"
+                f"{self.required_votes} votes needed to decide"
+            ),
+            color=discord.Colour.random(),
+            timestamp=datetime.now()
+        )
+        
+        if user and user.avatar:
+            embed.set_thumbnail(url=user.avatar.url)
+        
+        # Add advocates if any
+        advocate_text = []
+        for advocate_id, advocate_data in vote_info.get("advocates", {}).items():
+            try:
+                timestamp = int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())
+                advocate_text.append(
+                    f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
+                    f"(<t:{timestamp}:R>)"
+                )
+            except (ValueError, KeyError):
+                advocate_text.append(f"• **{advocate_data.get('username', 'Unknown')}** - \"{advocate_data.get('reason', 'No reason')}\"")
+
+        if advocate_text:
+            embed.add_field(name="Advocates", value="\n".join(advocate_text[:10]), inline=False)
+        
+        await self.queue_message_edit(message.id, message.channel.id, embed)
+
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
         if payload.user_id == self.bot.user.id:
             return
-
 
         # Find vote by message_id
         vote_info = None
@@ -242,48 +418,30 @@ class VoteBans(commands.Cog):
         if not channel:
             return
 
-        try:
-            message = await channel.fetch_message(payload.message_id)
-        except discord.NotFound:
+        message = await self.safe_fetch_message(channel, payload.message_id)
+        if not message:
             return
 
-        # Remove user from previous vote
-        for e in ["✅", "❌"]:
-            if payload.user_id in vote_info["votes"][e]:
-                vote_info["votes"][e].remove(payload.user_id)
-                try:
-                    await message.remove_reaction(e, member)
-                except discord.HTTPException:
-                    pass
+        # Remove user from opposite vote and add to current
+        opposite = "❌" if emoji == "✅" else "✅"
+        if payload.user_id in vote_info["votes"][opposite]:
+            vote_info["votes"][opposite].remove(payload.user_id)
+            try:
+                await message.remove_reaction(opposite, member)
+            except discord.HTTPException:
+                pass
 
-        vote_info["votes"][emoji].append(payload.user_id)
+        if payload.user_id not in vote_info["votes"][emoji]:
+            vote_info["votes"][emoji].append(payload.user_id)
+
         self.save_data()
 
-        user_id = payload.user_id  # or any user ID you're checking
-        yes_voters = vote_info["votes"]["✅"]
-        no_voters = vote_info["votes"]["❌"]
-
-        # Add the new vote
-        opposite = "❌" if emoji == "✅" else "✅"
-        if user_id in vote_info["votes"][opposite]:
-            vote_info["votes"][opposite].remove(user_id)
-
-        if user_id not in vote_info["votes"][emoji]:
-            vote_info["votes"][emoji].append(user_id)
-
-        # Update embed vote counts
-        yes = len(vote_info["votes"]["✅"])
-        no = len(vote_info["votes"]["❌"])
-        embed = message.embeds[0]
-        embed.description = (
-            f"**Reason:** {vote_info['reason']}\n\n"
-            f"Vote ✅ to ban ({yes}), ❌ to keep ({no})\n"
-            f"{self.required_votes} votes needed to decide"
-        )
-        await message.edit(embed=embed)
+        # Update embed
+        await self.update_vote_embed(vote_info, message)
 
         # Complete vote if needed
-        if (yes + no) >= self.required_votes:
+        total_votes = len(vote_info["votes"]["✅"]) + len(vote_info["votes"]["❌"])
+        if total_votes >= self.required_votes:
             await self.complete_vote(user_id_str, message)
 
     @commands.Cog.listener()
@@ -293,11 +451,9 @@ class VoteBans(commands.Cog):
 
         # Find vote by message_id
         vote_info = None
-        user_id_str = None
         for uid, data in self.vote_data.items():
             if data.get("message_id") == payload.message_id:
                 vote_info = data
-                user_id_str = uid
                 break
 
         if not vote_info or vote_info.get("completed", True):
@@ -311,41 +467,16 @@ class VoteBans(commands.Cog):
         if payload.user_id in vote_info["votes"][emoji]:
             vote_info["votes"][emoji].remove(payload.user_id)
             self.save_data()
-        else:
-            return  # No change needed if they hadn't voted with this emoji
 
-        # Fetch the message to update the embed
-        channel = self.bot.get_channel(payload.channel_id)
-        if not channel:
-            return
-
-        try:
-            message = await channel.fetch_message(payload.message_id)
-        except discord.NotFound:
-            return
-
-        user_id = payload.user_id  # or any user ID you're checking
-        yes_voters = vote_info["votes"]["✅"]
-        no_voters = vote_info["votes"]["❌"]
-
-        if user_id in vote_info["votes"][emoji]:
-            vote_info["votes"][emoji].remove(user_id)
-
-
-
-        # Update embed vote counts
-        yes = len(vote_info["votes"]["✅"])
-        no = len(vote_info["votes"]["❌"])
-        embed = message.embeds[0]
-        embed.description = (
-            f"**Reason:** {vote_info['reason']}\n\n"
-            f"Vote ✅ to ban ({yes}), ❌ to keep ({no})\n"
-            f"{self.required_votes} votes needed to decide"
-        )
-        await message.edit(embed=embed)
-
+            # Update embed
+            channel = self.bot.get_channel(payload.channel_id)
+            if channel:
+                message = await self.safe_fetch_message(channel, payload.message_id)
+                if message:
+                    await self.update_vote_embed(vote_info, message)
 
     async def complete_vote(self, user_id_str, message):
+        """Complete a vote and apply the result"""
         vote_info = self.vote_data[user_id_str]
         vote_info["completed"] = True
         self.save_data()
@@ -358,38 +489,53 @@ class VoteBans(commands.Cog):
         guild = message.guild
         target_user = guild.get_member(int(user_id_str))
         
-        embed = message.embeds[0]
-        
         # Build final embed
-        embed.description = (
-            f"**Reason:** {vote_info['reason']}\n\n"
-            f"**Voting Complete!**\n"
-            f"✅ {yes_votes} votes | ❌ {no_votes} votes\n"
-            f"Advocate bonus: +{advocate_bonus}\n"
-            f"**Final Score:** {total_score}\n\n"
+        user = self.bot.get_user(vote_info["user_id"])
+        user_name = user.display_name if user else f"User {vote_info['user_id']}"
+        
+        embed = discord.Embed(
+            title=f"Vote Ban Complete: {user_name}",
+            description=(
+                f"**Reason:** {vote_info['reason']}\n\n"
+                f"**Voting Complete!**\n"
+                f"✅ {yes_votes} votes | ❌ {no_votes} votes\n"
+                f"Advocate bonus: +{advocate_bonus}\n"
+                f"**Final Score:** {total_score}\n\n"
+            ),
+            timestamp=datetime.now()
         )
+        
+        if user and user.avatar:
+            embed.set_thumbnail(url=user.avatar.url)
         
         if total_score >= self.ban_threshold:
             if target_user:
                 try:
-                    await target_user.timeout(self.timeout_duration, reason="Vote ban result")
-                    embed.description += f"\n**Result:** {target_user.mention} has been timed out for 1 week!"
+                    await target_user.timeout(self.timeout_duration, reason=f"Vote ban result: {vote_info['reason']}")
+                    embed.description += f"**Result:** {target_user.mention} has been timed out for 1 week!"
                     embed.color = 0xff0000
+                    logger.info(f"Successfully timed out user {target_user} (ID: {target_user.id})")
                 except discord.Forbidden:
-                    embed.description += "\n**Result:** Failed to timeout user (missing permissions)"
+                    embed.description += "**Result:** Failed to timeout user (missing permissions)"
                     embed.color = 0xffff00
-                except discord.HTTPException:
-                    embed.description += "\n**Result:** Error timing out user"
+                    logger.error(f"Missing permissions to timeout user {target_user}")
+                except discord.HTTPException as e:
+                    embed.description += f"**Result:** Error timing out user: {e}"
                     embed.color = 0xffff00
+                    logger.error(f"HTTP error timing out user {target_user}: {e}")
             else:
-                embed.description += "\n**Result:** User not found in server"
+                embed.description += "**Result:** User not found in server"
                 embed.color = 0xffff00
+                logger.warning(f"User {user_id_str} not found in server for timeout")
         else:
-            embed.description += "\n**Result:** User will not be banned (score below threshold)"
+            embed.description += "**Result:** User will not be banned (score below threshold)"
             embed.color = 0x00ff00
         
-        await message.edit(embed=embed)
-        await message.clear_reactions()
+        try:
+            await message.edit(embed=embed)
+            await message.clear_reactions()
+        except discord.HTTPException as e:
+            logger.error(f"Failed to update completed vote message: {e}")
     
     @commands.command(name="votestats", aliases=["vs"])
     async def vote_stats(self, ctx, user: discord.Member = None):
@@ -401,7 +547,7 @@ class VoteBans(commands.Cog):
             title=f"Vote Stats for {user.display_name}",
             color=0x7289da
         )
-        embed.set_thumbnail(url=user.avatar.url)
+        embed.set_thumbnail(url=user.avatar.url if user.avatar else user.default_avatar.url)
         
         if user_id_str in self.vote_data:
             vote_info = self.vote_data[user_id_str]
@@ -422,19 +568,37 @@ class VoteBans(commands.Cog):
             if vote_info.get("advocates", {}):
                 advocate_text = []
                 for advocate_id, advocate_data in vote_info["advocates"].items():
-                    advocate_text.append(
-                        f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
-                        f"(<t:{int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())}:R>)"
+                    try:
+                        timestamp = int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())
+                        advocate_text.append(
+                            f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
+                            f"(<t:{timestamp}:R>)"
+                        )
+                    except (ValueError, KeyError):
+                        advocate_text.append(f"• **{advocate_data.get('username', 'Unknown')}** - \"{advocate_data.get('reason', 'No reason')}\"")
+                
+                if advocate_text:
+                    embed.add_field(
+                        name="Advocates",
+                        value="\n".join(advocate_text[:10]),
+                        inline=False
                     )
-                embed.add_field(
-                    name="Advocates",
-                    value="\n".join(advocate_text),
-                    inline=False
-                )
         else:
             embed.description = "No vote history found for this user."
         
         await ctx.send(embed=embed)
+
+    @commands.command(name="clearvotes", hidden=True)
+    @commands.has_permissions(administrator=True)
+    async def clear_completed_votes(self, ctx):
+        """Clean up completed votes (admin only)"""
+        before_count = len(self.vote_data)
+        self.vote_data = {k: v for k, v in self.vote_data.items() if not v.get("completed", True)}
+        after_count = len(self.vote_data)
+        cleaned = before_count - after_count
+        
+        self.save_data()
+        await ctx.send(f"Cleaned up {cleaned} completed votes. {after_count} active votes remaining.")
 
 async def setup(bot):
     try:
