@@ -2,6 +2,7 @@ import random
 import string
 import asyncio
 from discord.ext import commands
+from discord import DMChannel, TextChannel
 
 class Cypher(commands.Cog):
     def __init__(self, bot):
@@ -253,7 +254,7 @@ Since you didn't provide any arguments, please send your KEY now:```""")
                 )
             
             await target.send(result)
-            if ctx and hasattr(ctx, 'reply'):  # More robust check for ctx
+            if ctx and hasattr(ctx, 'reply') and isinstance(ctx.channel, TextChannel):  # More robust check for ctx
                 reply_msg = ("```🔍 Test complete (encrypted input detected) - check DMs!```" 
                             if likely_encrypted 
                             else "```✅ Test complete - check your DMs!```")
