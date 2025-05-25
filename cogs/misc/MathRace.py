@@ -18,7 +18,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger('MathRace')
-
 class MathRace(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -378,7 +377,5 @@ class MathGame:
 async def setup(bot):
     try:
         await bot.add_cog(MathRace(bot))
-        logger.info("MathRace cog loaded successfully")
     except Exception as e:
-        logger.error(f"Failed to load MathRace cog: {e}")
         raise e

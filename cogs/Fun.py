@@ -7,17 +7,8 @@ import asyncio
 import string
 import time
 import aiohttp
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data/logs/fun.log')
-    ]
-)
-logger = logging.getLogger('Fun')
+import logging
+logger = logging.getLogger(__name__)
 
 class Fun(commands.Cog):
     def __init__(self, bot):
@@ -541,6 +532,7 @@ class Fun(commands.Cog):
 
 async def setup(bot):
     try:
+        logger = logging.getLogger("bronxbot.Fun")
         await bot.add_cog(Fun(bot))
         logger.info("Fun cog loaded successfully")
     except Exception as e:
