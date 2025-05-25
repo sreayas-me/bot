@@ -132,55 +132,6 @@ class Fun(commands.Cog):
         
         await ctx.reply(f"{emoji} ```{result}```")
 
-    @commands.command(aliases=['slots', 'spin'])
-    async def slotmachine(self, ctx):
-        """🎰 spin the slot machine for virtual prizes
-        
-        Payouts:
-        🍒: 10 coins | 🍋: 20 coins | 🍊: 30 coins
-        🍇: 50 coins | 7️⃣: 100 coins | 💎: 200 coins
-        """
-        if ctx.author.id in self.active_games:
-            return await ctx.reply("```you're already playing a game!```")
-        
-        self.active_games.add(ctx.author.id)
-        
-        try:
-            emojis = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
-            weights = [30, 25, 20, 15, 8, 2]  # Weighted for realism
-            values = {"🍒": 10, "🍋": 20, "🍊": 30, "🍇": 50, "7️⃣": 100, "💎": 200}
-            
-            # Spinning animation
-            msg = await ctx.reply("🎰 ```spinning...```")
-            
-            for i in range(3):
-                await asyncio.sleep(0.8)
-                partial = " | ".join(["🎰"] * (3-i-1) + [random.choice(emojis)] * (i+1))
-                await msg.edit(content=f"🎰 {partial}\n```spinning...```")
-            
-            # Final result
-            await asyncio.sleep(1)
-            slots = [random.choices(emojis, weights=weights)[0] for _ in range(3)]
-            result = " | ".join(slots)
-            
-            # Calculate winnings
-            if slots[0] == slots[1] == slots[2]:
-                multiplier = 20 if slots[0] == "💎" else 10
-                winnings = values[slots[0]] * multiplier
-                outcome = f"JACKPOT! 🎉\nYou won {winnings} coins!"
-            elif len(set(slots)) == 2:  # Two matching
-                matching = max(set(slots), key=slots.count)
-                winnings = values[matching] * 2
-                outcome = f"Winner! 🎊\nYou won {winnings} coins!"
-            else:
-                outcome = "Better luck next time! 😅"
-                winnings = 0
-            
-            await msg.edit(content=f"🎰 {result}\n```{outcome}```")
-            
-        finally:
-            self.active_games.discard(ctx.author.id)
-
     @commands.command(aliases=['dice', 'd'])
     async def roll(self, ctx, dice: str = "1d6"):
         """roll dice (format: 2d20, 1d6, etc.)"""
