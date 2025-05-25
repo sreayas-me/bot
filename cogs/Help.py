@@ -46,7 +46,7 @@ class Help(commands.Cog):
             description = "```use help [command] for more info```\n"
             
             for cog_name, cog in self.bot.cogs.items():
-                if cog_name.lower() in ['economy', 'help']:  # Skip dev/debug cogs
+                if cog_name.lower() in ['economy', 'help', 'fun']:  # Skip dev/debug cogs
                     continue
                     
                 commands_list = [f"{ctx.prefix}{cmd.name}" for cmd in cog.get_commands()]
