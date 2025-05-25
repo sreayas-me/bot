@@ -1,5 +1,6 @@
 import random
 import string
+import asyncio
 from discord.ext import commands
 
 class Cypher(commands.Cog):
@@ -150,30 +151,96 @@ Since you didn't provide any arguments, please send your KEY now:```""")
     
     @commands.command(aliases=['testcipher'])
     async def cipher_test(self, ctx, key: str = None, *, text: str = None):
-        """Test the cipher with a sample message"""
+        """Test the cipher system interactively
+        Usage: 
+        - cipher_test <key> [message]  (in channel)
+        - cipher_test                  (starts DM wizard)"""
+        
+        # If no arguments provided, start DM wizard
         if not key:
-            return await ctx.reply("```Usage: cipher_test [key]```")
-        if not text:
-            text = "Hello World! This is a test message 123."
+            await ctx.reply("```Please check your DMs to continue!```")
+            try:
+                # Start interactive DM session
+                await self.cipher_test_dm_wizard(ctx.author)
+            except Exception as e:
+                await ctx.author.send(f"```❌ Error: {str(e)}```")
+                await ctx.reply("```Failed to complete DM interaction. Please try again.```")
+            return
+        
+        # Process with provided arguments
+        await self.process_cipher_test(ctx, key, text or "Hello World! This is a test message 123.")
+
+    async def cipher_test_dm_wizard(self, user):
+        """Interactive DM wizard for cipher testing"""
+        def dm_check(m):
+            return m.author == user and isinstance(m.channel, user.dm_channel.__class__)
+        
+        # Step 1: Get key
+        await user.send("""```🔐 Cipher Test Wizard
+    Please send your encryption KEY (or type 'cancel' to abort):
+    You can include your message after a colon like:
+    mykey123:Hello world```""")
         
         try:
-            encrypt_map, decrypt_map = self.generate_cipher_mapping(key)
-            encrypted = text.translate(encrypt_map)
-            decrypted = text.translate(decrypt_map)
-            test = decrypted.translate(encrypt_map)
+            # Wait for key input
+            key_msg = await self.bot.wait_for('message', check=dm_check, timeout=120)
+            if key_msg.content.lower() == 'cancel':
+                return await user.send("```❌ Operation cancelled```")
             
-            result = f"""```🧪 Cipher Test Results
-Key: {key}
-Original:  {text}
-Encrypted: {encrypted}
-Decrypted: {decrypted}
-Success: {test == encrypted}```"""
+            # Parse key and message
+            if ':' in key_msg.content:
+                key, text = key_msg.content.split(':', 1)
+                text = text.strip()
+            else:
+                key = key_msg.content
+                # Step 2: Get message if not provided
+                await user.send("""```✉ Now please send your MESSAGE to encrypt
+    (or type 'sample' to use default test message):```""")
+                text_msg = await self.bot.wait_for('message', check=dm_check, timeout=120)
+                text = "Hello World! This is a test message 123." if text_msg.content.lower() == 'sample' else text_msg.content
+        
+            # Process the cipher test
+            await self.process_cipher_test(None, key, text, user=user)
             
-            await ctx.author.send(result)
-            await ctx.reply("```Test results sent to your DMs```")
-            
+        except asyncio.TimeoutError:
+            await user.send("```⌛ Timeout: You took too long to respond```")
         except Exception as e:
-            await ctx.reply(f"```Test failed: {str(e)}```")
+            await user.send(f"```❌ Error: {str(e)}```")
+            raise
+
+    async def process_cipher_test(self, ctx, key, text, user=None):
+        """Process cipher test and send results"""
+        target = user or ctx.author
+        
+        try:
+            # Generate cipher mappings
+            encrypt_map, decrypt_map = self.generate_cipher_mapping(key)
+            
+            # Process the text
+            encrypted = text.translate(encrypt_map)
+            decrypted = encrypted.translate(decrypt_map)
+            success = (decrypted == text)
+            
+            # Build results
+            result = (
+                f"```🔐 Cipher Test Results\n"
+                f"Key: {key}\n"
+                f"Original:  {text}\n"
+                f"Encrypted: {encrypted}\n"
+                f"Decrypted: {decrypted}\n\n"
+                f"Round-trip: {'✅ SUCCESS' if success else '❌ FAILED'}```"
+            )
+            
+            await target.send(result)
+            if ctx:
+                await ctx.reply("```✅ Test complete - check your DMs!```")
+                
+        except Exception as e:
+            error_msg = f"```❌ Cipher Test Failed\nError: {str(e)}```"
+            await target.send(error_msg)
+            if ctx:
+                await ctx.reply("```❌ Test failed - check your DMs for details```")
+            raise
 
 async def setup(bot):
     await bot.add_cog(Cypher(bot))
