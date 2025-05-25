@@ -13,7 +13,7 @@ intents.guilds = True
 intents.reactions = True
 
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix='.', intents=intents)
 
 bot.remove_command('help')
 
@@ -34,13 +34,16 @@ async def on_ready():
 tips = [
     "i was made in 3 hours",
     "Zhang Yong",
-    "use !help to get started",
-    "use !help <command> for more info",
-    "try !ban",
-    "try !vban",
+    "use .help to get started",
+    "use .help <command> for more info",
     "try the modmail feature if you need help",
     "did you know this bot is open source?",
-    "this bot is hosted on ks' crusty old pc"   
+    "this bot is hosted on ks' crusty old pc",
+    f"try .{random.choice(bot.commands)}",
+    f"try .{random.choice(bot.commands)}",
+    f"try .{random.choice(bot.commands)}",
+    f"try .{random.choice(bot.commands)}",
+    f"try .{random.choice(bot.commands)}"
 ]
 
 @bot.event
