@@ -3,6 +3,7 @@ from discord.ext import commands
 import json
 import os
 from cogs.logging.logger import CogLogger
+from utils.db import db
 
 class ModMail(commands.Cog):
     def __init__(self, bot):
@@ -69,24 +70,7 @@ class ModMail(commands.Cog):
     async def update_message_stats(self, message):
         """Update message statistics"""
         try:
-            os.makedirs("data", exist_ok=True)
-            stats_file = "data/stats.json"
-            
-            if os.path.exists(stats_file):
-                with open(stats_file, "r") as f:
-                    data = json.load(f)
-            else:
-                data = {"stats": {}}
-            
-            # Initialize guild stats if not exists
-            guild_id = str(message.guild.id)
-            if guild_id not in data["stats"]:
-                data["stats"][guild_id] = {"messages": 0}
-            
-            data["stats"][guild_id]["messages"] += 1
-            
-            with open(stats_file, "w") as f:
-                json.dump(data, f, indent=2)
+            await db.store_stats(message.guild.id, "messages")
         except Exception as e:
             self.logger.error(f"Failed to update stats: {e}")
     

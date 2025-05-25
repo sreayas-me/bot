@@ -3,6 +3,7 @@ import random
 import json
 from discord.ext import commands
 from cogs.logging.logger import CogLogger
+from utils.db import db
 
 logger = CogLogger('Welcoming')
 
@@ -43,11 +44,7 @@ class Welcoming(commands.Cog):
             await channel.send(f"{member.mention} {random.choice(greeting)} {randomEmoji}")
             embed = await welcomeEmbed(member)
             await member.send(embed=embed)
-            with open("data/stats.json", "r") as f:
-                data = json.load(f)
-                data["stats"][str(member.guild.id)]["gained"] += 1
-                with open("data/stats.json", "w") as f:
-                    json.dump(data, f, indent=2)
+            await db.store_stats(member.guild.id, "gained")
 
     @commands.command()
     async def welcometest(self, ctx):
@@ -57,11 +54,7 @@ class Welcoming(commands.Cog):
     async def on_member_remove(self, member):
         logger.info(f"[-] Member left: {member} in guild {member.guild.id}")
         if member.guild.id == 1259717095382319215:
-            with open("data/stats.json", "r") as f:
-                data = json.load(f)
-                data["stats"][str(member.guild.id)]["lost"] -= 1
-                with open("data/stats.json", "w") as f:
-                    json.dump(data, f, indent=2)
+            await db.store_stats(member.guild.id, "lost")
 
 async def setup(bot):
     try:

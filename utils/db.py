@@ -5,6 +5,7 @@ import asyncio
 from pymongo.errors import ServerSelectionTimeoutError, ConnectionFailure
 from cogs.logging.logger import CogLogger
 import json
+import datetime
 
 with open("data/config.json", "r") as f:
     config = json.load(f)
@@ -88,6 +89,68 @@ class Database:
             return True
         except Exception as e:
             logger.error(f"Error transferring money: {e}")
+            return False
+
+    async def store_stats(self, guild_id: int, stat_type: str, value: int = 1):
+        """Update guild statistics"""
+        try:
+            await self.ensure_connected()
+            await self.db.stats.update_one(
+                {"_id": guild_id},
+                {
+                    "$inc": {stat_type: value},
+                    "$setOnInsert": {
+                        "messages": 0,
+                        "gained": 0,
+                        "lost": 0,
+                        "timestamp": datetime.datetime.utcnow()
+                    }
+                },
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error updating stats for guild {guild_id}: {e}")
+            return False
+
+    async def get_stats(self, guild_id: int) -> dict:
+        """Get guild statistics"""
+        try:
+            await self.ensure_connected()
+            stats = await self.db.stats.find_one({"_id": guild_id})
+            if not stats:
+                stats = {
+                    "_id": guild_id,
+                    "messages": 0,
+                    "gained": 0,
+                    "lost": 0,
+                    "timestamp": datetime.datetime.utcnow()
+                }
+                await self.db.stats.insert_one(stats)
+            return stats
+        except Exception as e:
+            logger.error(f"Error getting stats for guild {guild_id}: {e}")
+            return {}
+
+    async def reset_stats(self, guild_id: int):
+        """Reset guild statistics"""
+        try:
+            await self.ensure_connected()
+            await self.db.stats.update_one(
+                {"_id": guild_id},
+                {
+                    "$set": {
+                        "messages": 0,
+                        "gained": 0,
+                        "lost": 0,
+                        "timestamp": datetime.datetime.utcnow()
+                    }
+                },
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error resetting stats for guild {guild_id}: {e}")
             return False
 
 # Initialize with environment variable or default to localhost
