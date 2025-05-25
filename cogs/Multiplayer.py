@@ -725,7 +725,7 @@ class Multiplayer(commands.Cog):
         
         await ctx.send(embed=result_embed)
 
-    @commands.command(aliases=['mathduel', 'md'])
+    @commands.command(aliases=['mathduel', 'md', 'math'])
     async def mathrace(self, ctx, opponent: discord.Member = None, difficulty: int = 5):
 
         """Race to solve advanced math problems
@@ -776,7 +776,7 @@ class Multiplayer(commands.Cog):
 
         # Challenge message
         embed = discord.Embed(
-            description=f"🧮 **{opponent.mention}**, {ctx.author.mention} challenged you to a {difficulty} Math Race!\nReact with ✅ to accept within 30 seconds!",
+            description=f"🧮 **{opponent.mention}**, {ctx.author.mention} challenged you to a difficulty {difficulty} Math Race!\nReact with ✅ to accept within 30 seconds!",
             color=discord.Color.blue()
         )
         challenge_msg = await ctx.send(embed=embed)
