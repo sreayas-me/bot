@@ -57,7 +57,7 @@ def generate_problem(diff):
         elif choice == 'limit':
             return "lim(x→0) sin(x)/x", 1
         else:
-            base = random.randint(2, 5)ngga 
+            base = random.randint(2, 5)
             power = random.randint(1, 3)
             num = base ** power
             return f"log_{base}({num})", power
