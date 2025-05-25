@@ -24,7 +24,14 @@ class Multiplayer(commands.Cog):
         # Game constants
         self.SLOT_EMOJIS = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
         self.SLOT_VALUES = {"🍒": 10, "🍋": 20, "🍊": 30, "🍇": 50, "7️⃣": 100, "💎": 200}
-    
+        self.CARD_VALUES = {
+            "A": 11, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
+            "8": 8, "9": 9, "10": 10, "J": 10, "Q": 10, "K": 10
+        }
+        self.CARD_SUITS = ["♠", "♥", "♦", "♣"]
+
+        self.active_jackpots = {}  # {channel_id: {bet_amount: message_id}}
+
     def _create_embed(self, description: str, color: discord.Color = discord.Color.blue()) -> discord.Embed:
         """Helper to create consistent embeds"""
         return discord.Embed(description=description, color=color)
@@ -90,29 +97,49 @@ class Multiplayer(commands.Cog):
             self.active_games.discard(game_key)
 
     @commands.command(aliases=['jp'])
-    async def jackpot(self, ctx):
-        """Start a jackpot! $25 entry, winner takes all. React with 🎉 to join within 15 seconds."""
-        if ctx.channel.id in self.ongoing_jackpots:
-            return await ctx.reply(embed=self._create_embed(
-                "🚨 A jackpot is already running in this channel!", discord.Color.red()
-            ))
+    async def jackpot(self, ctx, bet: int = 25):
+        """Start a jackpot with custom entry fee. Default: 25
+        Usage: !jackpot [bet]"""
         
-        self.ongoing_jackpots.add(ctx.channel.id)
+        if bet < 10:
+            return await ctx.reply("Minimum jackpot entry is 10!")
+        
+        # Check if there's already a jackpot with this bet amount
+        channel_jackpots = self.active_jackpots.get(ctx.channel.id, {})
+        if bet in channel_jackpots:
+            try:
+                message = await ctx.channel.fetch_message(channel_jackpots[bet])
+                return await ctx.reply(f"A jackpot with {bet} entry fee already exists!\n{message.jump_url}")
+            except discord.NotFound:
+                # Clean up expired jackpot
+                del channel_jackpots[bet]
         
         try:
-            embed = self._create_embed(
-                f"🎰 **JACKPOT STARTED!** 🎰\n"
-                f"Hosted by: {ctx.author.mention}\n"
-                f"Entry: **$25**\n"
-                f"React with 🎉 within **15 seconds** to join!\n\n"
-                f"Current pot: **$25** (1 player)",
-                discord.Color.gold()
+            embed = discord.Embed(
+                description=(f"🎰 **JACKPOT STARTED!** 🎰\n"
+                          f"Hosted by: {ctx.author.mention}\n"
+                          f"Entry: **${bet}**\n"
+                          f"React with 🎉 within **15 seconds** to join!\n\n"
+                          f"Current pot: **${bet}** (1 player)"),
+                color=discord.Color.gold()
             )
             jackpot_msg = await ctx.send(embed=embed)
             await jackpot_msg.add_reaction("🎉")
             
+            # Store jackpot info
+            if ctx.channel.id not in self.active_jackpots:
+                self.active_jackpots[ctx.channel.id] = {}
+            self.active_jackpots[ctx.channel.id][bet] = jackpot_msg.id
+            
             participants = [ctx.author]
             await asyncio.sleep(15)
+            
+            # Clean up jackpot tracking
+            channel_jackpots = self.active_jackpots.get(ctx.channel.id, {})
+            if bet in channel_jackpots:
+                del channel_jackpots[bet]
+                if not channel_jackpots:
+                    del self.active_jackpots[ctx.channel.id]
             
             try:
                 jackpot_msg = await ctx.channel.fetch_message(jackpot_msg.id)
@@ -124,29 +151,38 @@ class Multiplayer(commands.Cog):
                             participants.append(user)
                 
                 if len(participants) == 1:
-                    return await ctx.send(embed=self._create_embed(
-                        f"❌ Only {ctx.author.mention} joined. Refunded $25.", discord.Color.red()
+                    return await ctx.send(embed=discord.Embed(
+                        description=f"❌ Only {ctx.author.mention} joined. Refunded ${bet}",
+                        color=discord.Color.red()
                     ))
                 
-                pot = len(participants) * 25
+                pot = len(participants) * bet
                 winner = random.choice(participants)
-                win_chance = 25 / pot * 100
+                win_chance = bet / pot * 100
                 
-                await ctx.send(embed=self._create_embed(
-                    f"🎉 **JACKPOT RESULTS** 🎉\n"
-                    f"Total entries: **{len(participants)}**\n"
-                    f"Total pot: **${pot}**\n"
-                    f"Winner: {winner.mention} (had a **{win_chance:.1f}%** chance)\n\n"
-                    f"🏆 **{winner.display_name} takes ALL!** 🏆",
-                    discord.Color.green()
+                await ctx.send(embed=discord.Embed(
+                    description=(f"🎉 **JACKPOT RESULTS** 🎉\n"
+                              f"Entry Fee: **${bet}**\n"
+                              f"Total entries: **{len(participants)}**\n"
+                              f"Total pot: **${pot}**\n"
+                              f"Winner: {winner.mention} (had a **{win_chance:.1f}%** chance)\n\n"
+                              f"🏆 **{winner.display_name} takes ALL!** 🏆"),
+                    color=discord.Color.green()
                 ))
                 
             except discord.NotFound:
-                await ctx.send(embed=self._create_embed(
-                    "❌ Jackpot message was deleted. Game cancelled.", discord.Color.red()
+                await ctx.send(embed=discord.Embed(
+                    description="❌ Jackpot message was deleted. Game cancelled.",
+                    color=discord.Color.red()
                 ))
-        finally:
-            self.ongoing_jackpots.discard(ctx.channel.id)
+                
+        except Exception as e:
+            self.logger.error(f"Jackpot error: {e}")
+            if ctx.channel.id in self.active_jackpots:
+                if bet in self.active_jackpots[ctx.channel.id]:
+                    del self.active_jackpots[ctx.channel.id][bet]
+                if not self.active_jackpots[ctx.channel.id]:
+                    del self.active_jackpots[ctx.channel.id]
 
     @commands.command(aliases=['slotfight', 'slotsduel', 'sb'])
     async def slotbattle(self, ctx, opponent: discord.Member = None):
@@ -463,6 +499,38 @@ class Multiplayer(commands.Cog):
             f"{opponent.display_name}: {results[opponent]}\n\n{result}",
             color
         ))
+
+    def format_cooldown(self, seconds: float) -> str:
+        """Format seconds into human readable time"""
+        minutes, remaining_seconds = divmod(int(seconds), 60)
+        hours, minutes = divmod(minutes, 60)
+        days, hours = divmod(hours, 24)
+        
+        parts = []
+        if days > 0:
+            parts.append(f"{days}d")
+        if hours > 0:
+            parts.append(f"{hours}h")
+        if minutes > 0:
+            parts.append(f"{minutes}m")
+        if remaining_seconds > 0:
+            parts.append(f"{remaining_seconds}s")
+        
+        return " ".join(parts)
+
+    async def cog_command_error(self, ctx, error):
+        if hasattr(error, "original"):
+            error = error.original
+
+        if isinstance(error, commands.CommandOnCooldown):
+            await ctx.reply(f"Command on cooldown! Try again in **{self.format_cooldown(error.retry_after)}**")
+            return
+        elif isinstance(error, commands.BadArgument):
+            await ctx.reply("Invalid argument provided! Please check your input.")
+            return
+        elif isinstance(error, commands.MemberNotFound):
+            await ctx.reply("Member not found! Please mention a valid user.")
+            return
 
 async def setup(bot):
     try:

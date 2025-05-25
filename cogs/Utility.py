@@ -45,41 +45,37 @@ class Utility(commands.Cog):
 
     @commands.command(aliases=['si'])
     async def serverinfo(self, ctx):
-        """show server information"""
         guild = ctx.guild
-        self.logger.debug(f"Server info requested for {guild.name}")
-        embed = discord.Embed(color=0x2b2d31)
-        embed.set_author(name=f"server info: {guild.name}", icon_url=guild.icon.url if guild.icon else None)
         
-        info = f"```members: {guild.member_count}\n"
-        info += f"created: {guild.created_at.strftime('%Y-%m-%d')}\n"
-        info += f"roles: {len(guild.roles)}\n"
-        info += f"channels: {len(guild.channels)}```"
-        
-        embed.description = info
+        embed = discord.Embed(
+            description=(f"**{guild.name}**\n\n"
+                      f"Members: `{guild.member_count}`\n"
+                      f"Created: `{guild.created_at.strftime('%Y-%m-%d')}`\n"
+                      f"Roles: `{len(guild.roles)}`\n"
+                      f"Channels: `{len(guild.channels)}`"),
+            color=0x2b2d31
+        )
         await ctx.reply(embed=embed)
 
     @commands.command(aliases=['ui'])
     async def userinfo(self, ctx, user: discord.Member = None):
-        """get information about a user"""
         user = user or ctx.author
-        self.logger.debug(f"User info requested for {user.display_name}")
-        embed = discord.Embed(color=0x2b2d31)
-        embed.set_author(name=f"user info: {user.display_name}", icon_url=user.display_avatar.url)
         
-        info = f"```joined: {user.joined_at.strftime('%Y-%m-%d')}\n"
-        info += f"registered: {user.created_at.strftime('%Y-%m-%d')}\n"
-        info += f"top role: {user.top_role.name}```"
-        
-        embed.description = info
+        embed = discord.Embed(
+            description=(f"**{user.display_name}**\n\n"
+                      f"Joined: `{user.joined_at.strftime('%Y-%m-%d')}`\n"
+                      f"Registered: `{user.created_at.strftime('%Y-%m-%d')}`\n"
+                      f"Top Role: `{user.top_role.name}`"),
+            color=user.color or 0x2b2d31
+        )
         await ctx.reply(embed=embed)
 
     @commands.command(aliases=["ask", "yn", "yesno"])
     async def poll(self, ctx, *, question):
-        """create a simple yes/no poll"""
-        self.logger.info(f"Poll created by {ctx.author}: {question[:50]}...")
-        embed = discord.Embed(color=0x2b2d31, description=f"```{question}```")
-        embed.set_author(name=f"poll by {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
+        embed = discord.Embed(
+            description=f"❓ {question}\n\n✅ Yes | ❌ No",
+            color=0x2b2d31
+        )
         msg = await ctx.send(embed=embed)
         await msg.add_reaction('✅')
         await msg.add_reaction('❌')

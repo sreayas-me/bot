@@ -311,12 +311,9 @@ class Fun(commands.Cog):
             start = time.time()
             
             embed = discord.Embed(
-                title="⌨️ Typing Test",
-                description=f"**Type this exactly:**\n```{sentence}```",
+                description=f"⌨️ Type this exactly:\n```{sentence}```\n`{difficulty.title()} | 60s limit`",
                 color=discord.Color.blue()
             )
-            embed.set_footer(text=f"Difficulty: {difficulty.title()} | 60 second time limit")
-            
             await ctx.reply(embed=embed)
             
             def check(m):
@@ -346,15 +343,15 @@ class Fun(commands.Cog):
                 else:
                     grade = "Keep practicing! 💪"
                 
+                # Results embed
                 embed = discord.Embed(
-                    title="📊 Typing Test Results",
+                    description=f"📊 **Results**\n\n"
+                                f"Time: `{elapsed:.2f}s`\n"
+                                f"Speed: `{wpm:.1f}` WPM\n"
+                                f"Accuracy: `{accuracy:.1f}%`\n"
+                                f"Grade: {grade}",
                     color=discord.Color.green()
                 )
-                embed.add_field(name="Time", value=f"{elapsed:.2f}s", inline=True)
-                embed.add_field(name="Speed", value=f"{wpm:.1f} WPM", inline=True)
-                embed.add_field(name="Accuracy", value=f"{accuracy:.1f}%", inline=True)
-                embed.add_field(name="Grade", value=grade, inline=False)
-                
                 await ctx.reply(embed=embed)
                 
             except asyncio.TimeoutError:

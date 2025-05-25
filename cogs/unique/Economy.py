@@ -7,12 +7,30 @@ from cogs.logging.logger import CogLogger
 from utils.db import db
 from cogs.Help import HelpPaginator  # Add this import
 
+def format_cooldown(seconds: float) -> str:
+    """Format seconds into human readable time"""
+    minutes, remaining_seconds = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}m")
+    if remaining_seconds > 0:
+        parts.append(f"{remaining_seconds}s")
+    
+    return " ".join(parts)
+
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.logger = CogLogger(self.__class__.__name__)
         self.currency = "💰"
-        self.active_games = set()
+        self.active_games = set()  # Remove ongoing_jackpots set
         
         # Slot machine configuration
         self.SLOT_EMOJIS = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
@@ -26,10 +44,15 @@ class Economy(commands.Cog):
             "title": {"name": "Custom Title", "price": 7500, "description": "Custom role name"},
             "badge": {"name": "Rich Badge", "price": 25000, "description": "Special rich person badge"}
         }
+        self.CARD_VALUES = {
+            "A": 11, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
+            "8": 8, "9": 9, "10": 10, "J": 10, "Q": 10, "K": 10
+        }
+        self.CARD_SUITS = ["♠", "♥", "♦", "♣"]
 
     async def cog_before_invoke(self, ctx):
         """Check if user has an active game"""
-        if ctx.command.name in ['slots', 'slotbattle', 'jackpot', 'rollfight', 'rps', 'blackjack']:
+        if ctx.command.name in ['slots', 'slotbattle', 'rollfight', 'rps', 'blackjack']:
             if ctx.author.id in self.active_games:
                 raise commands.CommandError("You already have an active game!")
             self.active_games.add(ctx.author.id)
@@ -95,7 +118,7 @@ class Economy(commands.Cog):
         await db.update_balance(ctx.author.id, winnings)
         
         embed = discord.Embed(
-            description=f"🎰 {display}\n\n{result}\n\nBet: **{bet}**\nWon: **{winnings}**",
+            description=f"🎰 `{display}`\n\n{result}\n\n**Bet:** {bet}\n**Won:** {winnings}",
             color=discord.Color.green() if winnings > 0 else discord.Color.red()
         )
         await msg.edit(content=None, embed=embed)
@@ -150,17 +173,16 @@ class Economy(commands.Cog):
         """View the richest users"""
         users = await db.db.economy.find().sort('balance', -1).limit(10).to_list(10)
         
-        embed = discord.Embed(title="🏆 Richest Users", color=discord.Color.gold())
-        
+        content = ["🏆 **Richest Users**\n"]
         for i, user in enumerate(users, 1):
             member = ctx.guild.get_member(user['_id'])
             if member:
-                embed.add_field(
-                    name=f"#{i} {member.display_name}",
-                    value=f"**{user['balance']}** {self.currency}",
-                    inline=False
-                )
+                content.append(f"`#{i}` {member.mention}: **{user['balance']}** {self.currency}")
         
+        embed = discord.Embed(
+            description="\n".join(content),
+            color=discord.Color.gold()
+        )
         await ctx.reply(embed=embed)
 
     @commands.command()
@@ -169,37 +191,29 @@ class Economy(commands.Cog):
         pages = []
         
         # Overview page
-        overview = discord.Embed(
-            title="🛍️ Shop Overview",
-            description=f"Welcome to the shop! Use the buttons below to browse categories.\n\n"
-                       f"**Available Categories:**\n"
-                       f"• Roles and Colors\n"
-                       f"• Badges and Status\n"
-                       f"• Special Items\n\n"
-                       f"Your Balance: **{await db.get_user_balance(ctx.author.id)}** {self.currency}",
+        pages.append(discord.Embed(
+            description=(f"🛍️ **Shop**\n\n"
+                      f"Use the buttons to browse items\n"
+                      f"Your Balance: **{await db.get_user_balance(ctx.author.id)}** {self.currency}"),
             color=discord.Color.blue()
-        )
-        pages.append(overview)
+        ))
         
-        # Split items into pages of 4 items each
+        # Split items into pages
         items = list(self.SHOP_ITEMS.items())
         for i in range(0, len(items), 4):
             page_items = items[i:i+4]
-            embed = discord.Embed(
-                title="🛍️ Shop Items",
-                color=discord.Color.blue()
-            )
+            content = []
             
             for item_id, item in page_items:
-                embed.add_field(
-                    name=f"{item['name']} - {item['price']} {self.currency}",
-                    value=f"{item['description']}\nUse `buy {item_id}` to purchase",
-                    inline=False
-                )
-                
-            embed.set_footer(text=f"Your Balance: {await db.get_user_balance(ctx.author.id)} {self.currency}")
-            pages.append(embed)
-        
+                content.append(f"**{item['name']}** - {item['price']} {self.currency}")
+                content.append(f"{item['description']}")
+                content.append(f"`buy {item_id}` to purchase\n")
+            
+            pages.append(discord.Embed(
+                description="\n".join(content),
+                color=discord.Color.blue()
+            ).set_footer(text=f"Balance: {await db.get_user_balance(ctx.author.id)} {self.currency}"))
+
         # Create and send paginator
         view = HelpPaginator(pages, ctx.author)
         view.update_buttons()
@@ -273,8 +287,7 @@ class Economy(commands.Cog):
             error = error.original
 
         if isinstance(error, commands.CommandOnCooldown):
-            minutes, seconds = divmod(error.retry_after, 60)
-            await ctx.reply(f"Command on cooldown! Try again in {int(minutes)}m {int(seconds)}s")
+            await ctx.reply(f"Command on cooldown! Try again in **{format_cooldown(error.retry_after)}**")
             return
         
         self.logger.error(f"Unhandled error in {ctx.command}: {error}")
@@ -283,9 +296,7 @@ class Economy(commands.Cog):
     @daily.error
     async def daily_error(self, ctx, error):
         if isinstance(error, commands.CommandOnCooldown):
-            hours, remainder = divmod(error.retry_after, 3600)
-            minutes, _ = divmod(remainder, 60)
-            await ctx.reply(f"You already claimed your daily reward!\nTry again in {int(hours)}h {int(minutes)}m")
+            await ctx.reply(f"You already claimed your daily reward!\nTry again in **{format_cooldown(error.retry_after)}**")
         else:
             await ctx.reply("Failed to claim daily reward")
             self.logger.error(f"Daily error: {error}")
@@ -328,8 +339,7 @@ class Economy(commands.Cog):
     @work.error
     async def work_error(self, ctx, error):
         if isinstance(error, commands.CommandOnCooldown):
-            minutes, seconds = divmod(error.retry_after, 60)
-            await ctx.reply(f"You're tired from working!\nTry again in {int(minutes)}m {int(seconds)}s")
+            await ctx.reply(f"You're tired from working!\nTry again in **{format_cooldown(error.retry_after)}**")
         else:
             await ctx.reply("Failed to complete work")
             self.logger.error(f"Work error: {error}")

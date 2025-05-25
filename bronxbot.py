@@ -1,6 +1,9 @@
 import discord
 import json
 import random
+import time
+import sys
+import os
 from discord.ext import commands
 from typing import Dict, List, Tuple
 
@@ -15,7 +18,29 @@ intents.members = True
 intents.guilds = True
 intents.reactions = True
 
-bot = commands.AutoShardedBot(command_prefix='.', intents=intents)
+class BronxBot(commands.AutoShardedBot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.start_time = time.time()
+        self.cog_load_times = {}
+        self.restart_channel = None
+        self.restart_message = None
+
+    async def load_cog_with_timing(self, cog_name: str) -> Tuple[bool, float]:
+        """Load a cog and measure its loading time"""
+        start_time = time.time()
+        try:
+            await self.load_extension(cog_name)
+            load_time = time.time() - start_time
+            self.cog_load_times[cog_name] = load_time
+            return True, load_time
+        except Exception as e:
+            load_time = time.time() - start_time
+            self.cog_load_times[cog_name] = load_time
+            return False, load_time
+
+# Replace bot initialization
+bot = BronxBot(command_prefix='.', intents=intents)
 bot.remove_command('help')
 
 # loading config
@@ -57,46 +82,41 @@ class CogLoader:
         return COG_DATA['colors'].get(color_name, COG_DATA['colors']['default'])
     
     @classmethod
-    async def load_all_cogs(cls, bot: commands.Bot) -> Tuple[int, int]:
+    async def load_all_cogs(cls, bot: BronxBot) -> Tuple[int, int]:
         """Load all cogs and return success/error counts"""
-        try:
-            await bot.load_extension(cog)
-            status_color = cls.get_color_escape('success')
-        except Exception as e:
-            import traceback
-            status = "ERROR"
-            status_color = cls.get_color_escape('error')
-            error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        start_time = time.time()
         results = []
         max_cog_length = max(len(cog) for cog in COG_DATA['cogs'])
         
+        total_success = 0
+        total_errors = 0
+        
         for cog, cog_type in COG_DATA['cogs'].items():
             color_code = cls.get_color_escape(cog_type)
-            status = "LOADED"
-            error_msg = ""
+            success, load_time = await bot.load_cog_with_timing(cog)
             
-            try:
-                await bot.load_extension(cog)
+            if success:
+                status = "LOADED"
                 status_color = cls.get_color_escape('success')
-            except Exception as e:
+                total_success += 1
+            else:
                 status = "ERROR"
                 status_color = cls.get_color_escape('error')
-                error_msg = str(e)
+                total_errors += 1
             
             cog_display = f"{color_code}{cog.ljust(max_cog_length)}\033[0m"
             status_display = f"{status_color}{status}\033[0m"
+            time_display = f"{load_time:.2f}s"
             
-            result_line = f"[bronxbot] {cog_display} : {status_display}"
-            if status == "ERROR":
-                result_line += f"\n      {cls.get_color_escape('error')}{error_msg}\033[0m"
-            
+            result_line = f"[bronxbot] {cog_display} : {status_display} ({time_display})"
             results.append((cog_type, result_line))
         
-        cls.display_results(results)
+        total_time = time.time() - start_time
+        results.append(('info', f"\nTotal loading time: {total_time:.2f}s"))
         
-        success_count = sum(1 for _, line in results if "LOADED" in line)
-        return success_count, len(results) - success_count
-    
+        cls.display_results(results)
+        return total_success, total_errors
+
     @staticmethod
     def display_results(results: List[Tuple[str, str]]) -> None:
         """Display cog loading results in organized format"""
@@ -116,6 +136,22 @@ class CogLoader:
 @bot.event
 async def on_ready():
     """Called when the bot is ready"""
+    if bot.restart_channel and bot.restart_message:
+        try:
+            channel = await bot.fetch_channel(bot.restart_channel)
+            message = await channel.fetch_message(bot.restart_message)
+            
+            total_time = time.time() - bot.start_time
+            embed = discord.Embed(
+                description=f"✅ Restart completed in `{total_time:.2f}s`\n\n"
+                           f"**Cog Load Times:**\n" + 
+                           "\n".join([f"`{cog.split('.')[-1]}: {time:.2f}s`" 
+                                    for cog, time in sorted(bot.cog_load_times.items())]),
+                color=discord.Color.green()
+            )
+            await message.edit(embed=embed)
+        except Exception as e:
+            print(f"Failed to update restart message: {e}")
 
     success, errors = await CogLoader.load_all_cogs(bot)
     status_msg = (
@@ -167,14 +203,41 @@ async def on_message(message: discord.Message):
 async def on_command_error(ctx: commands.Context, error: Exception):
     """Handle command errors"""
     if isinstance(error, commands.CommandNotFound):
+        print(f"[!] Command not found: {ctx.command}")
         return
-    elif isinstance(error, commands.CommandOnCooldown):
-        await ctx.send(
-            f"**{ctx.command.name}** is on cooldown. "
-            f"Try again in {round(error.retry_after, 2)} seconds."
-        )
     else:
         raise error
+
+@bot.command(name="restart", aliases=["reboot"])
+@commands.is_owner()
+async def restart(ctx):
+    """Restart the bot"""
+    embed = discord.Embed(
+        description="🔄 Restarting bot...",
+        color=discord.Color.orange()
+    )
+    msg = await ctx.reply(embed=embed)
+    
+    # Save restart info to file
+    with open("data/restart_info.json", "w") as f:
+        json.dump({
+            "channel_id": ctx.channel.id,
+            "message_id": msg.id
+        }, f)
+    
+    # Execute the restart
+    os.execv(sys.executable, ['python'] + sys.argv)
+
+# Add restart info loading at startup
+if os.path.exists("data/restart_info.json"):
+    try:
+        with open("data/restart_info.json", "r") as f:
+            restart_info = json.load(f)
+            bot.restart_channel = restart_info["channel_id"]
+            bot.restart_message = restart_info["message_id"]
+        os.remove("data/restart_info.json")
+    except Exception as e:
+        print(f"Failed to load restart info: {e}")
 
 if __name__ == "__main__":
     bot.run(config['TOKEN'])

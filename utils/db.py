@@ -91,4 +91,4 @@ class Database:
             return False
 
 # Initialize with environment variable or default to localhost
-db = Database(os.getenv("MONGO_URI", "mongodb://localhost:27017"))
+db = Database(config["MONGO_URI"] if "MONGO_URI" in config else "mongodb://localhost:27017")
