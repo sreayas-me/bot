@@ -62,8 +62,8 @@ class Utility(commands.Cog):
         embed.description = info
         await ctx.reply(embed=embed)
 
-    @commands.command(aliases=['poll'])
-    async def vote(self, ctx, *, question):
+    @commands.command(aliases=['poll', "ask", "yn", "yesno"])
+    async def poll(self, ctx, *, question):
         """create a simple yes/no poll"""
         embed = discord.Embed(color=0x2b2d31, description=f"```{question}```")
         embed.set_author(name=f"poll by {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)

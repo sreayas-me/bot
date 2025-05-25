@@ -47,7 +47,7 @@ class Fun(commands.Cog):
         )
         await ctx.reply(f"```{text.lower().translate(mapping)}```")
 
-    @commands.command(aliases=['flip'])
+    @commands.command(aliases=['textflip'])
     async def reverse(self, ctx, *, text: str):
         """ʇxǝʇ ǝsɹǝʌǝɹ"""
         await ctx.reply(f"```{text[::-1]}```")
