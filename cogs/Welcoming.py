@@ -16,14 +16,21 @@ logging.basicConfig(
 logger = logging.getLogger('Welcoming')
 
 async def welcomeEmbed(member):
-    with open('data/messages.json', 'r') as f:
+    with open('data/welcome.json', 'r') as f:
         data = json.load(f)
-    character = random.choice(data['characters'])
+    character = random.choice(list(data['characters'].values()))
+    characters = data['characters']
+    character_key = random.choice(list(characters.keys()))
+    character_url = characters[character_key]
     welcomeEmbed = discord.Embed(
         description=f"\"{random.choice(data['messages'])}\"\n-# [Main Server](https://discord.gg/furryporn) |  [Backup Server](https://discord.gg/W563EnFwed) | [Appeal Server](https://discord.gg/6Th9dsw6rM)",
         color=discord.Color.random()
     )
-    welcomeEmbed.set_author(name=character.title(), icon_url=data['character'][character], url="https://discord.gg/6Th9dsw6rM")
+    welcomeEmbed.set_author(
+        name=character_key.title(),
+        icon_url=character_url,
+        url="https://discord.gg/6Th9dsw6rM"
+    )
     welcomeEmbed.set_footer(text="click the title to join the appeal server if you get banned", icon_url=member.guild.icon.url)
     return welcomeEmbed
 
@@ -35,7 +42,6 @@ class Welcoming(commands.Cog):
     async def on_member_join(self, member):
         """Sync roles when a member joins any server"""
         logger.info(f"[+] Member joined: {member} in guild {member.guild.id}")
-        await self.sync_roles(member, member.guild)
 
         randomEmoji = random.choice(member.guild.emojis)
 
