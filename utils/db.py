@@ -97,18 +97,27 @@ class Database:
         """Update guild statistics"""
         try:
             await self.ensure_connected()
-            await self.db.stats.update_one(
-                {"_id": guild_id},
-                {
-                    "$inc": {stat_type: value},
-                    "$setOnInsert": {
+            
+            # Get existing stats first
+            stats = await self.db.stats.find_one({"_id": guild_id})
+            if not stats:
+                # Initialize new guild stats
+                stats = {
+                    "_id": guild_id,
+                    "stats": {
                         "messages": 0,
                         "gained": 0,
-                        "lost": 0,
-                        "timestamp": datetime.datetime.utcnow()
-                    }
-                },
-                upsert=True
+                        "lost": 0
+                    },
+                    "timestamp": datetime.datetime.utcnow()
+                }
+                await self.db.stats.insert_one(stats)
+
+            # Use dot notation for nested updates
+            update_field = f"stats.{stat_type}"
+            await self.db.stats.update_one(
+                {"_id": guild_id},
+                {"$inc": {update_field: value}}
             )
             return True
         except Exception as e:
@@ -123,13 +132,15 @@ class Database:
             if not stats:
                 stats = {
                     "_id": guild_id,
-                    "messages": 0,
-                    "gained": 0,
-                    "lost": 0,
+                    "stats": {
+                        "messages": 0,
+                        "gained": 0,
+                        "lost": 0
+                    },
                     "timestamp": datetime.datetime.utcnow()
                 }
                 await self.db.stats.insert_one(stats)
-            return stats
+            return stats.get("stats", {})
         except Exception as e:
             logger.error(f"Error getting stats for guild {guild_id}: {e}")
             return {}
@@ -142,9 +153,11 @@ class Database:
                 {"_id": guild_id},
                 {
                     "$set": {
-                        "messages": 0,
-                        "gained": 0,
-                        "lost": 0,
+                        "stats": {
+                            "messages": 0,
+                            "gained": 0,
+                            "lost": 0
+                        },
                         "timestamp": datetime.datetime.utcnow()
                     }
                 },
