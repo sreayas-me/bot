@@ -159,7 +159,7 @@ Since you didn't provide any arguments, please send your KEY now:```""")
         try:
             encrypt_map, decrypt_map = self.generate_cipher_mapping(key)
             encrypted = text.translate(encrypt_map)
-            decrypted = encrypted.translate(decrypt_map)
+            decrypted = text.translate(decrypt_map)
             
             result = f"""```🧪 Cipher Test Results
 Key: {key}
