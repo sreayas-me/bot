@@ -160,14 +160,14 @@ Since you didn't provide any arguments, please send your KEY now:```""")
             encrypt_map, decrypt_map = self.generate_cipher_mapping(key)
             encrypted = text.translate(encrypt_map)
             decrypted = text.translate(decrypt_map)
-            test = encrypted.translate(decrypt_map)
+            test = decrypted.translate(encrypt_map)
             
             result = f"""```🧪 Cipher Test Results
 Key: {key}
 Original:  {text}
 Encrypted: {encrypted}
 Decrypted: {decrypted}
-Success: {test == decrypted}```"""
+Success: {test == encrypted}```"""
             
             await ctx.author.send(result)
             await ctx.reply("```Test results sent to your DMs```")
