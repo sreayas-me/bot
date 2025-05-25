@@ -23,79 +23,95 @@ class Multiplayer(commands.Cog):
 
     @commands.command()
     async def jackpot(self, ctx):
-        """Start a jackpot! $25 entry, winner takes all. React with ✅ to join within 15 seconds."""
-        
+        """Start a jackpot! $25 entry, winner takes all. React with 🎉 to join within 15 seconds."""
         if ctx.channel.id in self.ongoing_jackpots:
-            return await ctx.reply("🚨 A jackpot is already running in this channel!")
+            return await ctx.reply(embed=discord.Embed(
+                description="🚨 A jackpot is already running in this channel!",
+                color=discord.Color.red()
+            ))
         
         self.ongoing_jackpots.add(ctx.channel.id)
         
-        # Send the initial jackpot message
-        jackpot_msg = await ctx.send(
-            f"🎰 **JACKPOT STARTED!** 🎰\n"
-            f"Hosted by: {ctx.author.mention}\n"
-            f"Entry: **$25**\n"
-            f"React with ✅ within **15 seconds** to join!\n\n"
-            f"Current pot: **$25** (1 player)"
+        embed = discord.Embed(
+            description=(
+                f"🎰 **JACKPOT STARTED!** 🎰\n"
+                f"Hosted by: {ctx.author.mention}\n"
+                f"Entry: **$25**\n"
+                f"React with 🎉 within **15 seconds** to join!\n\n"
+                f"Current pot: **$25** (1 player)"
+            ),
+            color=discord.Color.gold()
         )
-        
-        await jackpot_msg.add_reaction("✅")
+        jackpot_msg = await ctx.send(embed=embed)
+        await jackpot_msg.add_reaction("🎉")
         
         participants = [ctx.author]
         
         await asyncio.sleep(15)
-        
-        # Remove channel from ongoing jackpots
         self.ongoing_jackpots.discard(ctx.channel.id)
         
         try:
             jackpot_msg = await ctx.channel.fetch_message(jackpot_msg.id)
         except discord.NotFound:
-            return await ctx.send("❌ Jackpot message was deleted. Game cancelled.")
+            return await ctx.send(embed=discord.Embed(
+                description="❌ Jackpot message was deleted. Game cancelled.",
+                color=discord.Color.red()
+            ))
         
-        reaction = next((r for r in jackpot_msg.reactions if str(r.emoji) == "✅"), None)
+        reaction = next((r for r in jackpot_msg.reactions if str(r.emoji) == "🎉"), None)
         if not reaction:
-            return await ctx.send("❌ No one joined the jackpot. Game cancelled.")
+            return await ctx.send(embed=discord.Embed(
+                description="❌ No one joined the jackpot. Game cancelled.",
+                color=discord.Color.red()
+            ))
         
         async for user in reaction.users():
             if not user.bot and user not in participants:
                 participants.append(user)
         
         if len(participants) == 1:
-            return await ctx.send(f"❌ Only {ctx.author.mention} joined. Refunded $25.")
+            return await ctx.send(embed=discord.Embed(
+                description=f"❌ Only {ctx.author.mention} joined. Refunded $25.",
+                color=discord.Color.red()
+            ))
         
-        # Calculate pot and winner
         pot = len(participants) * 25
         winner = random.choice(participants)
-        win_chance = 25 / pot * 100 
+        win_chance = 25 / pot * 100
         
-        # Announce the winner
-        await ctx.send(
-            f"🎉 **JACKPOT RESULTS** 🎉\n"
-            f"Total entries: **{len(participants)}**\n"
-            f"Total pot: **${pot}**\n"
-            f"Winner: {winner.mention} (had a **{win_chance:.1f}%** chance)\n\n"
-            f"🏆 **{winner.display_name} takes ALL!** 🏆"
+        result_embed = discord.Embed(
+            description=(
+                f"🎉 **JACKPOT RESULTS** 🎉\n"
+                f"Total entries: **{len(participants)}**\n"
+                f"Total pot: **${pot}**\n"
+                f"Winner: {winner.mention} (had a **{win_chance:.1f}%** chance)\n\n"
+                f"🏆 **{winner.display_name} takes ALL!** 🏆"
+            ),
+            color=discord.Color.green()
         )
+        await ctx.send(embed=result_embed)
 
     @commands.command(aliases=['slotfight', 'slotsduel'])
     async def slotbattle(self, ctx, opponent: discord.Member):
-        """Challenge someone to a slot battle! Winner takes all, or the house wins if both lose.
-
-        Usage: .slotbattle [user]"""
+        """Challenge someone to a slot battle! Winner takes all, or the house wins if both lose."""
         if opponent == ctx.author:
-            return await ctx.reply("You can't battle yourself!")
+            return await ctx.reply(embed=discord.Embed(
+                description="You can't battle yourself!",
+                color=discord.Color.red()
+            ))
         if opponent.bot:
-            return await ctx.reply("Bots can't play slots!")
+            return await ctx.reply(embed=discord.Embed(
+                description="Bots can't play slots!",
+                color=discord.Color.red()
+            ))
 
-        # Send challenge message
-        challenge_msg = await ctx.reply(
-            f"🎰 **{opponent.mention}**, {ctx.author.mention} challenged you to a SLOT BATTLE!\n"
-            "React with ✅ to accept within 30 seconds!"
+        challenge_embed = discord.Embed(
+            description=f"🎰 **{opponent.mention}**, {ctx.author.mention} challenged you to a SLOT BATTLE!\nReact with ✅ to accept within 30 seconds!",
+            color=discord.Color.blue()
         )
+        challenge_msg = await ctx.send(embed=challenge_embed)
         await challenge_msg.add_reaction("✅")
 
-        # Check if opponent accepts
         def check(reaction, user):
             return (
                 user == opponent and
@@ -106,58 +122,44 @@ class Multiplayer(commands.Cog):
         try:
             await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
         except asyncio.TimeoutError:
-            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+            return await ctx.send(embed=discord.Embed(
+                description=f"⌛ {opponent.mention} didn't accept the challenge in time.",
+                color=discord.Color.red()
+            ))
         await challenge_msg.delete()
 
         emojis = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
         values = {
-            "🍒": 10,
-            "🍋": 20,
-            "🍊": 30,
-            "🍇": 50,
-            "7️⃣": 100,
-            "💎": 200
+            "🍒": 10, "🍋": 20, "🍊": 30, 
+            "🍇": 50, "7️⃣": 100, "💎": 200
         }
 
-        # Initial challenge message
-        await ctx.reply(f"🎰 **{ctx.author.display_name}** challenges **{opponent.display_name}** to a **SLOT BATTLE!** 🎰")
-
-        # Function to generate spinning animation frames
         async def spinning_slots(player_name):
             frames = []
-            for _ in range(3):  # 3 animation frames
+            for _ in range(3):
                 frame = " | ".join([random.choice(emojis) for _ in range(3)])
                 frames.append(f"**{player_name}**\n🎰 {frame}")
             return frames
 
-        # Generate spinning animations for both players
         p1_frames = await spinning_slots(ctx.author.display_name)
         p2_frames = await spinning_slots(opponent.display_name)
 
-        # Send initial spinning message
-        msg = await ctx.send(
-            f"{p1_frames[0]}\n"
-            f"{p2_frames[0]}\n"
-            "```Spinning...```"
+        spin_embed = discord.Embed(
+            description=f"{p1_frames[0]}\n{p2_frames[0]}\n```Spinning...```",
+            color=discord.Color.blue()
         )
+        msg = await ctx.send(embed=spin_embed)
 
-        # Animation sequence
         for i in range(1, 3):
-            await asyncio.sleep(1.5)  # Time between spins
-            await msg.edit(
-                content=(
-                    f"{p1_frames[i]}\n"
-                    f"{p2_frames[i]}\n"
-                    "```Spinning...```"
-                )
-            )
+            await asyncio.sleep(1.5)
+            spin_embed.description = f"{p1_frames[i]}\n{p2_frames[i]}\n```Spinning...```"
+            await msg.edit(embed=spin_embed)
 
-        # Final results
         async def get_final_result(player):
             slots = [random.choice(emojis) for _ in range(3)]
             result = " | ".join(slots)
             
-            if slots[0] == slots[1] == slots[2]:  # JACKPOT
+            if slots[0] == slots[1] == slots[2]:
                 win_amount = values[slots[0]] * 10
                 win_status = "**JACKPOT!**"
             elif slots[0] == slots[1] or slots[1] == slots[2]:
@@ -176,7 +178,6 @@ class Multiplayer(commands.Cog):
                 "display": f"**{player.display_name}**\n🎰 {result}"
             }
 
-        # Get final results
         results = await asyncio.gather(
             get_final_result(ctx.author),
             get_final_result(opponent)
@@ -184,7 +185,6 @@ class Multiplayer(commands.Cog):
         player1, player2 = results
         total_pot = player1["win_amount"] + player2["win_amount"]
 
-        # Determine outcome
         if player1["win_amount"] > player2["win_amount"]:
             outcome = f"🏆 **{player1['name']} WINS ${total_pot}!**"
         elif player2["win_amount"] > player1["win_amount"]:
@@ -194,34 +194,38 @@ class Multiplayer(commands.Cog):
         else:
             outcome = "🏦 **The house wins! Both players lose.**"
 
-        # Final display
-        await msg.edit(
-            content=(
+        result_embed = discord.Embed(
+            description=(
                 f"{player1['display']} ({player1['win_status']})\n"
                 f"{player2['display']} ({player2['win_status']})\n\n"
                 f"{outcome}"
-            )
+            ),
+            color=discord.Color.green() if "WINS" in outcome else 
+                discord.Color.blue() if "Tie" in outcome else 
+                discord.Color.red()
         )
-
+        await msg.edit(embed=result_embed)
     @commands.command(aliases=['dicebattle'])
     async def rollfight(self, ctx, opponent: discord.Member):
-        """Challenge someone to a dice duel (highest roll wins)
-
-        Usage: .rollfight [user]
-        """
+        """Challenge someone to a dice duel (highest roll wins)"""
         if opponent == ctx.author:
-            return await ctx.reply("```you can't challenge yourself```")
+            return await ctx.reply(embed=discord.Embed(
+                description="You can't challenge yourself!",
+                color=discord.Color.red()
+            ))
         if opponent.bot:
-            return await ctx.reply("```bots can't play dice games```")
+            return await ctx.reply(embed=discord.Embed(
+                description="Bots can't play dice games",
+                color=discord.Color.red()
+            ))
         
-        # Send challenge message
-        challenge_msg = await ctx.reply(
-            f"🎲 **{opponent.mention}**, {ctx.author.mention} challenged you to a DICE BATTLE!\n"
-            "React with ✅ to accept within 30 seconds!"
+        embed = discord.Embed(
+            description=f"🎲 **{opponent.mention}**, {ctx.author.mention} challenged you to a DICE BATTLE!\nReact with ✅ to accept within 30 seconds!",
+            color=discord.Color.blue()
         )
+        challenge_msg = await ctx.send(embed=embed)
         await challenge_msg.add_reaction("✅")
 
-        # Check if opponent accepts
         def check(reaction, user):
             return (
                 user == opponent and
@@ -232,7 +236,10 @@ class Multiplayer(commands.Cog):
         try:
             await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
         except asyncio.TimeoutError:
-            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+            return await ctx.send(embed=discord.Embed(
+                description=f"⌛ {opponent.mention} didn't accept the challenge in time",
+                color=discord.Color.red()
+            ))
         await challenge_msg.delete()
 
         rolls = {
@@ -241,32 +248,37 @@ class Multiplayer(commands.Cog):
         }
         winner = max(rolls, key=rolls.get)
         
-        result = (
-            f"```{ctx.author.display_name}: {rolls[ctx.author]}\n"
-            f"{opponent.display_name}: {rolls[opponent]}```\n"
-            f"🏆 `{winner.display_name} wins!`"
+        result_embed = discord.Embed(
+            description=(
+                f"**{ctx.author.display_name}**: {rolls[ctx.author]}\n"
+                f"**{opponent.display_name}**: {rolls[opponent]}\n\n"
+                f"🏆 **{winner.display_name} wins!**"
+            ),
+            color=discord.Color.green()
         )
-        await ctx.reply(result)
-    
+        await ctx.send(embed=result_embed)
+
     @commands.command(aliases=['21game'])
     async def twentyone(self, ctx, opponent: discord.Member):
-        """Take turns counting to 21 (who says 21 loses)
-
-        Usage: .twentyone [user]
-        """
+        """Take turns counting to 21 (who says 21 loses)"""
         if opponent == ctx.author:
-            return await ctx.reply("```you can't play against yourself```")
+            return await ctx.reply(embed=discord.Embed(
+                description="You can't play against yourself!",
+                color=discord.Color.red()
+            ))
         if opponent.bot:
-            return await ctx.reply("```bots can't count properly```")
+            return await ctx.reply(embed=discord.Embed(
+                description="Bots can't count properly",
+                color=discord.Color.red()
+            ))
 
-        # Send challenge message
-        challenge_msg = await ctx.reply(
-            f":100: **{opponent.mention}**, {ctx.author.mention} challenged you to 21!\n"
-            "React with ✅ to accept within 30 seconds!"
+        embed = discord.Embed(
+            description=f"🔢 **{opponent.mention}**, {ctx.author.mention} challenged you to 21!\nReact with ✅ to accept within 30 seconds!",
+            color=discord.Color.blue()
         )
+        challenge_msg = await ctx.send(embed=embed)
         await challenge_msg.add_reaction("✅")
 
-        # Check if opponent accepts
         def check(reaction, user):
             return (
                 user == opponent and
@@ -277,18 +289,27 @@ class Multiplayer(commands.Cog):
         try:
             await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
         except asyncio.TimeoutError:
-            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+            return await ctx.send(embed=discord.Embed(
+                description=f"⌛ {opponent.mention} didn't accept the challenge in time",
+                color=discord.Color.red()
+            ))
         await challenge_msg.delete()
 
         current = 0
         players = [ctx.author, opponent]
         turn = 0
         
-        await ctx.reply("```type 1, 2, or 3 to add that number```")
+        await ctx.send(embed=discord.Embed(
+            description="Type `1`, `2`, or `3` to add that number to the count",
+            color=discord.Color.blue()
+        ))
         
         while current < 21:
             player = players[turn % 2]
-            await ctx.send(f"`{current}`\n**{player.display_name}'s turn**")
+            await ctx.send(embed=discord.Embed(
+                description=f"Current count: **{current}**\n**{player.display_name}'s turn**",
+                color=discord.Color.blue()
+            ))
             
             def check(m):
                 return (
@@ -302,30 +323,38 @@ class Multiplayer(commands.Cog):
                 current += int(msg.content)
                 turn += 1
             except asyncio.TimeoutError:
-                return await ctx.reply(f"```{player.display_name} took too long!```")
+                return await ctx.send(embed=discord.Embed(
+                    description=f"{player.display_name} took too long!",
+                    color=discord.Color.red()
+                ))
         
         loser = players[(turn - 1) % 2]
-        await ctx.reply(f"💀 `{loser.display_name} said 21 and loses!`")
-    
+        await ctx.send(embed=discord.Embed(
+            description=f"💀 **{loser.display_name} said 21 and loses!**",
+            color=discord.Color.red()
+        ))
+
     @commands.command(aliases=['rps3'])
     async def rockpaperscissors3(self, ctx, opponent: discord.Member, games:int=3):
-        """Best 2 out of 3 rock-paper-scissors
-
-        Usage: .rockpaperscissors3 [user]
-        """
+        """Best 2 out of 3 rock-paper-scissors"""
         if opponent == ctx.author:
-            return await ctx.reply("```you can't play against yourself```")
+            return await ctx.reply(embed=discord.Embed(
+                description="You can't play against yourself!",
+                color=discord.Color.red()
+            ))
         if opponent.bot:
-            return await ctx.reply("```bots can't play rock-paper-scissors```")
+            return await ctx.reply(embed=discord.Embed(
+                description="Bots can't play rock-paper-scissors",
+                color=discord.Color.red()
+            ))
         
-        # Send challenge message
-        challenge_msg = await ctx.reply(
-            f":rock: **{opponent.mention}**, {ctx.author.mention} challenged you to a best out of {games} rock paper scissors game!\n"
-            "React with ✅ to accept within 30 seconds!"
+        embed = discord.Embed(
+            description=f"🪨 **{opponent.mention}**, {ctx.author.mention} challenged you to best of {games} RPS!\nReact with ✅ to accept within 30 seconds!",
+            color=discord.Color.blue()
         )
+        challenge_msg = await ctx.send(embed=embed)
         await challenge_msg.add_reaction("✅")
 
-        # Check if opponent accepts
         def check(reaction, user):
             return (
                 user == opponent and
@@ -336,18 +365,27 @@ class Multiplayer(commands.Cog):
         try:
             await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
         except asyncio.TimeoutError:
-            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+            return await ctx.send(embed=discord.Embed(
+                description=f"⌛ {opponent.mention} didn't accept the challenge in time",
+                color=discord.Color.red()
+            ))
         await challenge_msg.delete()
 
         wins = {ctx.author: 0, opponent: 0}
         choices = ['rock', 'paper', 'scissors']
         
         for round_num in range(1, games+1):
-            await ctx.reply(f"```round {round_num} - first to 2 wins```")
+            round_embed = discord.Embed(
+                description=f"**Round {round_num}** - First to 2 wins",
+                color=discord.Color.blue()
+            )
+            await ctx.send(embed=round_embed)
             
-            # Get both players' choices simultaneously
             async def get_choice(player):
-                await player.send(f"```choose for round {round_num}: rock/paper/scissors```")
+                await player.send(embed=discord.Embed(
+                    description=f"Choose for round {round_num}: `rock`, `paper`, or `scissors`",
+                    color=discord.Color.blue()
+                ))
                 def check(m):
                     return (
                         m.author == player and
@@ -361,49 +399,61 @@ class Multiplayer(commands.Cog):
                 p1_choice = await get_choice(ctx.author)
                 p2_choice = await get_choice(opponent)
             except asyncio.TimeoutError:
-                return await ctx.reply("```someone didn't choose in time```")
+                return await ctx.send(embed=discord.Embed(
+                    description="Someone didn't choose in time",
+                    color=discord.Color.red()
+                ))
             
-            # Determine winner
             if p1_choice == p2_choice:
-                result = "`tie!`"
+                result = "**Tie!**"
+                color = discord.Color.gold()
             elif (p1_choice == 'rock' and p2_choice == 'scissors') or \
                 (p1_choice == 'paper' and p2_choice == 'rock') or \
                 (p1_choice == 'scissors' and p2_choice == 'paper'):
                 wins[ctx.author] += 1
-                result = f"`{ctx.author.display_name} wins round {round_num}!`"
+                result = f"**{ctx.author.display_name} wins round {round_num}!**"
+                color = discord.Color.green()
             else:
                 wins[opponent] += 1
-                result = f"`{opponent.display_name} wins round {round_num}!`"
+                result = f"**{opponent.display_name} wins round {round_num}!**"
+                color = discord.Color.green()
             
-            await ctx.reply(
-                f"```{ctx.author.display_name}: {p1_choice}\n"
-                f"{opponent.display_name}: {p2_choice}```\n"
-                f"{result}\n"
-                f"```score: {wins[ctx.author]}-{wins[opponent]}```"
+            result_embed = discord.Embed(
+                description=(
+                    f"{ctx.author.display_name}: {p1_choice}\n"
+                    f"{opponent.display_name}: {p2_choice}\n\n"
+                    f"{result}\n"
+                    f"Score: {wins[ctx.author]}-{wins[opponent]}"
+                ),
+                color=color
             )
+            await ctx.send(embed=result_embed)
             
             if max(wins.values()) >= 2:
                 break
         
         overall_winner = max(wins, key=wins.get)
-        await ctx.reply(f"🏆 `{overall_winner.display_name} wins the match!`")
+        await ctx.send(embed=discord.Embed(
+            description=f"🏆 **{overall_winner.display_name} wins the match!**",
+            color=discord.Color.green()
+        ))
 
     @commands.command(aliases=['yacht'])
     async def yachtdice(self, ctx, opponent: discord.Member):
-        """Play a simplified Yacht dice game
-
-        Usage: .yachtdice [user]"""
+        """Play a simplified Yacht dice game"""
         if opponent.bot:
-            return await ctx.reply("```bots can't handle dice math```")
+            return await ctx.reply(embed=discord.Embed(
+                description="Bots can't handle dice math",
+                color=discord.Color.red()
+            ))
         
-        # Send challenge message
-        challenge_msg = await ctx.reply(
-            f"🎲 **{opponent.mention}**, {ctx.author.mention} challenged you to a yacht dice game!\n"
-            "React with ✅ to accept within 30 seconds!"
+        embed = discord.Embed(
+            description=f"🎲 **{opponent.mention}**, {ctx.author.mention} challenged you to Yacht Dice!\nReact with ✅ to accept within 30 seconds!",
+            color=discord.Color.blue()
         )
+        challenge_msg = await ctx.send(embed=embed)
         await challenge_msg.add_reaction("✅")
 
-        # Check if opponent accepts
         def check(reaction, user):
             return (
                 user == opponent and
@@ -414,48 +464,66 @@ class Multiplayer(commands.Cog):
         try:
             await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
         except asyncio.TimeoutError:
-            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+            return await ctx.send(embed=discord.Embed(
+                description=f"⌛ {opponent.mention} didn't accept the challenge in time",
+                color=discord.Color.red()
+            ))
         await challenge_msg.delete()
 
         async def play_round(player):
             rolls = [random.randint(1, 6) for _ in range(5)]
-            await player.send(f"```your dice: {' '.join(map(str, rolls))}```")
+            await player.send(embed=discord.Embed(
+                description=f"Your dice: {' '.join(f'`{r}`' for r in rolls)}\nTotal: {sum(rolls)}",
+                color=discord.Color.blue()
+            ))
             return sum(rolls)
         
         p1_score = await play_round(ctx.author)
         p2_score = await play_round(opponent)
         
-        result = (
-            f"```{ctx.author.display_name}: {p1_score}\n"
-            f"{opponent.display_name}: {p2_score}```\n"
-        )
-        
         if p1_score == p2_score:
-            result += "`it's a tie!`"
+            result_embed = discord.Embed(
+                description=(
+                    f"{ctx.author.display_name}: {p1_score}\n"
+                    f"{opponent.display_name}: {p2_score}\n\n"
+                    "**It's a tie!**"
+                ),
+                color=discord.Color.gold()
+            )
         else:
             winner = ctx.author if p1_score > p2_score else opponent
-            result += f"🏆 `{winner.display_name} wins!`"
+            result_embed = discord.Embed(
+                description=(
+                    f"{ctx.author.display_name}: {p1_score}\n"
+                    f"{opponent.display_name}: {p2_score}\n\n"
+                    f"🏆 **{winner.display_name} wins!**"
+                ),
+                color=discord.Color.green()
+            )
         
-        await ctx.reply(result)
+        await ctx.send(embed=result_embed)
 
     @commands.command(aliases=['21'])
     async def blackjack(self, ctx, opponent: discord.Member):
-        """Play simplified Blackjack against someone
-
-        Usage: .blackjack [user]"""
+        """Play simplified Blackjack against someone"""
         if opponent == ctx.author:
-            return await ctx.reply("```you can't play against yourself```")
+            return await ctx.reply(embed=discord.Embed(
+                description="You can't play against yourself!",
+                color=discord.Color.red()
+            ))
         if opponent.bot:
-            return await ctx.reply("```bots don't gamble```")
+            return await ctx.reply(embed=discord.Embed(
+                description="Bots don't gamble",
+                color=discord.Color.red()
+            ))
         
-        # Send challenge message
-        challenge_msg = await ctx.reply(
-            f"🃏 **{opponent.mention}**, {ctx.author.mention} challenged you to a hand of blackjack!\n"
-            "React with ✅ to accept within 30 seconds!"
+        embed = discord.Embed(
+            description=f"🃏 **{opponent.mention}**, {ctx.author.mention} challenged you to Blackjack!\nReact with ✅ to accept within 30 seconds!",
+            color=discord.Color.blue()
         )
+        challenge_msg = await ctx.send(embed=embed)
         await challenge_msg.add_reaction("✅")
 
-        # Check if opponent accepts
         def check(reaction, user):
             return (
                 user == opponent and
@@ -466,7 +534,10 @@ class Multiplayer(commands.Cog):
         try:
             await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
         except asyncio.TimeoutError:
-            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+            return await ctx.send(embed=discord.Embed(
+                description=f"⌛ {opponent.mention} didn't accept the challenge in time",
+                color=discord.Color.red()
+            ))
         await challenge_msg.delete()
 
         async def calculate_hand(hand):
@@ -485,11 +556,16 @@ class Multiplayer(commands.Cog):
         
         for player in hands:
             total = await calculate_hand(hands[player])
-            await player.send(f"```your hand: {hands[player]} ({total})```")
+            await player.send(embed=discord.Embed(
+                description=f"Your hand: {' '.join(f'`{c}`' for c in hands[player])}\nTotal: {total}",
+                color=discord.Color.blue()
+            ))
         
-        # Players take turns
         for player in hands:
-            await ctx.send(f"{player.mention}'s turn")
+            await ctx.send(embed=discord.Embed(
+                description=f"{player.mention}'s turn - type `hit` or `stand`",
+                color=discord.Color.blue()
+            ))
             while True:
                 def check(m):
                     return m.author == player and m.channel == ctx.channel and m.content.lower() in ['hit', 'stand', 'h', 's']
@@ -501,49 +577,68 @@ class Multiplayer(commands.Cog):
                     
                     hands[player].append(draw_card())
                     total = await calculate_hand(hands[player])
-                    await player.send(f"```new card: {hands[player][-1]}\ntotal: {total}```")
+                    await player.send(embed=discord.Embed(
+                        description=f"New card: `{hands[player][-1]}`\nTotal: {total}",
+                        color=discord.Color.blue()
+                    ))
                     
                     if total > 21:
-                        await ctx.send(f"```{player.display_name} busts!```")
+                        await ctx.send(embed=discord.Embed(
+                            description=f"💥 **{player.display_name} busts!**",
+                            color=discord.Color.red()
+                        ))
                         break
                 except asyncio.TimeoutError:
-                    await ctx.send(f"```{player.display_name} took too long!```")
+                    await ctx.send(embed=discord.Embed(
+                        description=f"⌛ {player.display_name} took too long!",
+                        color=discord.Color.red()
+                    ))
                     break
         
-        # Determine winner
         results = {}
         for player in hands:
             results[player] = await calculate_hand(hands[player])
         
         valid_scores = {k: v for k, v in results.items() if v <= 21}
         if not valid_scores:
-            await ctx.reply("```both players busted!```")
+            result_embed = discord.Embed(
+                description="💥 **Both players busted!**",
+                color=discord.Color.red()
+            )
         else:
             winner = max(valid_scores.items(), key=lambda x: x[1])
-            await ctx.reply(
-                f"```{ctx.author.display_name}: {results[ctx.author]}\n"
-                f"{opponent.display_name}: {results[opponent]}```\n"
-                f"🏆 `{winner[0].display_name} wins!`"
+            result_embed = discord.Embed(
+                description=(
+                    f"{ctx.author.display_name}: {results[ctx.author]}\n"
+                    f"{opponent.display_name}: {results[opponent]}\n\n"
+                    f"🏆 **{winner[0].display_name} wins!**"
+                ),
+                color=discord.Color.green()
             )
+        
+        await ctx.send(embed=result_embed)
 
     @commands.command(aliases=['mathduel'])
     async def mathrace(self, ctx, opponent: discord.Member, difficulty: int = 10):
-        """Race to solve math problems
-
-        Usage: .mathrace <user> [difficulty]"""
+        """Race to solve math problems"""
         if opponent == ctx.author:
-            return await ctx.reply("```you can't race against yourself```")
+            return await ctx.reply(embed=discord.Embed(
+                description="You can't race against yourself!",
+                color=discord.Color.red()
+            ))
         if opponent.bot:
-            return await ctx.reply("```bots can't race```")
+            return await ctx.reply(embed=discord.Embed(
+                description="Bots can't race",
+                color=discord.Color.red()
+            ))
         
-        # Send challenge message
-        challenge_msg = await ctx.reply(
-            f":heavy_division_sign: **{opponent.mention}**, {ctx.author.mention} challenged you to a math race!\n"
-            "React with ✅ to accept within 30 seconds!"
+        embed = discord.Embed(
+            description=f"🧮 **{opponent.mention}**, {ctx.author.mention} challenged you to a Math Race!\nReact with ✅ to accept within 30 seconds!",
+            color=discord.Color.blue()
         )
+        challenge_msg = await ctx.send(embed=embed)
         await challenge_msg.add_reaction("✅")
 
-        # Check if opponent accepts
         def check(reaction, user):
             return (
                 user == opponent and
@@ -554,8 +649,12 @@ class Multiplayer(commands.Cog):
         try:
             await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
         except asyncio.TimeoutError:
-            return await ctx.send(f"⌛ {opponent.mention} didn't accept the challenge in time.")
+            return await ctx.send(embed=discord.Embed(
+                description=f"⌛ {opponent.mention} didn't accept the challenge in time",
+                color=discord.Color.red()
+            ))
         await challenge_msg.delete()
+
         ops = ['+', '-', '*']
         a = random.randint(1, difficulty)
         b = random.randint(1, difficulty)
@@ -563,7 +662,10 @@ class Multiplayer(commands.Cog):
         problem = f"{a} {op} {b}"
         answer = eval(problem)
         
-        await ctx.reply(f"```solve this first: {problem}```")
+        await ctx.send(embed=discord.Embed(
+            description=f"**Solve this first:** `{problem}`",
+            color=discord.Color.blue()
+        ))
         
         def check(m):
             return (
@@ -575,9 +677,15 @@ class Multiplayer(commands.Cog):
         
         try:
             msg = await self.bot.wait_for('message', check=check, timeout=15)
-            await ctx.reply(f"🏆 `{msg.author.display_name} solved it first!`")
+            await ctx.send(embed=discord.Embed(
+                description=f"🏆 **{msg.author.display_name} solved it first!**",
+                color=discord.Color.green()
+            ))
         except asyncio.TimeoutError:
-            await ctx.reply(f"```time's up! answer was: {answer}```")
+            await ctx.send(embed=discord.Embed(
+                description=f"⌛ Time's up! The answer was: `{answer}`",
+                color=discord.Color.red()
+            ))
 
 async def setup(bot):
     try:
