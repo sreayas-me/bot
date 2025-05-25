@@ -1,9 +1,13 @@
 import discord
 from discord.ext import commands
+import logging
 import json
 import os
-from cogs.logging.logger import CogLogger
-from utils.db import db
+import random
+import sys
+
+with open("data/config.json", "r") as f:
+    config = json.load(f)
 
 class ModMail(commands.Cog):
     def __init__(self, bot):
@@ -11,9 +15,17 @@ class ModMail(commands.Cog):
         self.staff_channel_id = 1259717946947670099
         self.data_file = "data/modmail.json"
         
+        # Ensure data directory exists
         os.makedirs("data", exist_ok=True)
         
-        self.logger = CogLogger("ModMail")
+        # Simple logger setup - avoid complex custom logger for now
+        self.logger = logging.getLogger(f"ModMail")
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+            self.logger.setLevel(logging.INFO)
         
         self.active_tickets = self.load_data()
         self.logger.info("ModMail cog initialized")
@@ -45,32 +57,86 @@ class ModMail(commands.Cog):
     
     @commands.Cog.listener()
     async def on_message(self, message):
+        """Handle incoming messages for modmail"""
+        if message.author == self.bot.user:
+            return
         if message.author.bot:
             return
         
+        tips = [
+            "I was made in 3 hours", 
+            "Zhang Yong", 
+            "Use .help to get started",
+            "Try .help <command> for more info", 
+            "Try the modmail feature if you need help",
+            "Did you know this bot is open source?", 
+            "This bot is hosted on KS's crusty old PC",
+            ".md gets smarter over time, so try it out!", 
+            ".jackpot is fun with friends"
+        ]
+        
+        if message.content == self.bot.user.mention:
+            if str(message.author.id) in config['OWNER_IDS']:
+                response = f"`{round(self.bot.latency * 1000, 2)}ms`"
+            else:
+                response = random.choice(tips)
+            
+            await message.reply(
+                f"Hi, **{message.author.name}**\n"
+                f"-# {response}\n"
+            )
+    
+
         guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
         
         # Handle DM messages
         if isinstance(message.channel, discord.DMChannel):
-            if str(message.author.id) not in self.active_tickets and "help" in message.content.lower():
-                await self.create_new_modmail(message)
-            elif str(message.author.id) in self.active_tickets:
+            if str(message.author.id) not in self.active_tickets:
+                # Check for a simple "help" message
+                if message.content.lower().strip() == "help":
+                    help_embed = discord.Embed(
+                        description="To create a modmail ticket, send a message containing your issue.\nExample: `I need help with...`",
+                        color=discord.Color.blue()
+                    )
+                    await message.author.send(embed=help_embed)
+                else:
+                    await self.create_new_modmail(message)
+            else:
                 await self.forward_to_thread(message)
-    
+        
         # Handle staff replies in threads
         elif (isinstance(message.channel, discord.Thread) and 
               message.channel.parent_id == self.staff_channel_id and
-              not message.author.bot):
+              not message.author.bot) and message.content[0] != ".":
             await self.handle_staff_reply(message)
         
         # Handle message stats for specific guilds
         elif message.guild and message.guild.id in guilds:
             await self.update_message_stats(message)
+        await self.bot.process_commands(message)
+    
     
     async def update_message_stats(self, message):
         """Update message statistics"""
         try:
-            await db.store_stats(message.guild.id, "messages")
+            os.makedirs("data", exist_ok=True)
+            stats_file = "data/stats.json"
+            
+            if os.path.exists(stats_file):
+                with open(stats_file, "r") as f:
+                    data = json.load(f)
+            else:
+                data = {"stats": {}}
+            
+            # Initialize guild stats if not exists
+            guild_id = str(message.guild.id)
+            if guild_id not in data["stats"]:
+                data["stats"][guild_id] = {"messages": 0}
+            
+            data["stats"][guild_id]["messages"] += 1
+            
+            with open(stats_file, "w") as f:
+                json.dump(data, f, indent=2)
         except Exception as e:
             self.logger.error(f"Failed to update stats: {e}")
     
@@ -80,6 +146,10 @@ class ModMail(commands.Cog):
             staff_channel = self.bot.get_channel(self.staff_channel_id)
             if staff_channel is None:
                 self.logger.error(f"Staff channel {self.staff_channel_id} not found!")
+                return
+            
+            # Check if user already has an active ticket
+            if str(user_message.author.id) in self.active_tickets:
                 return
             
             embed = discord.Embed(
@@ -101,8 +171,9 @@ class ModMail(commands.Cog):
                 auto_archive_duration=1440
             )
             
+            # Save thread ID and send confirmation
             self.active_tickets[str(user_message.author.id)] = thread.id
-            self.save_data()
+            self.save_data()  # Make sure to save after updating
             
             user_embed = discord.Embed(
                 title="Modmail Received",
@@ -255,11 +326,22 @@ class ModMail(commands.Cog):
         if not message or len(message) < 15:
             return await ctx.reply("Please give a reason to open a new modmail thread. Don't spam it please.")
         
-        # Create a mock message object for create_new_modmail
+        # Check if user already has an active ticket
+        if str(ctx.author.id) in self.active_tickets:
+            try:
+                thread = await self.bot.fetch_channel(self.active_tickets[str(ctx.author.id)])
+                return await ctx.reply(f"You already have an active ticket! {thread.jump_url}")
+            except:
+                # Clean up invalid ticket
+                del self.active_tickets[str(ctx.author.id)]
+                self.save_data()
+        
+        # Create mock message and proceed
         class MockMessage:
             def __init__(self, author, content):
                 self.author = author
                 self.content = content
+                self.created_at = discord.utils.utcnow()
         
         mock_message = MockMessage(ctx.author, message)
         await self.create_new_modmail(mock_message)
@@ -318,4 +400,10 @@ class ModMail(commands.Cog):
             await ctx.send(f"Failed to close modmail: {e}")
 
 async def setup(bot):
-    await bot.add_cog(ModMail(bot))
+    """Setup function for the cog"""
+    try:
+        await bot.add_cog(ModMail(bot))
+        print("ModMail cog loaded successfully")
+    except Exception as e:
+        print(f"Failed to load ModMail cog: {e}")
+        raise
