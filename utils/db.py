@@ -1,7 +1,9 @@
+import motor
 from motor.motor_asyncio import AsyncIOMotorClient
 from typing import Optional, Dict, Any
 import os
 import asyncio
+import pymongo
 from pymongo.errors import ServerSelectionTimeoutError, ConnectionFailure
 from cogs.logging.logger import CogLogger
 import json
@@ -153,5 +155,5 @@ class Database:
             logger.error(f"Error resetting stats for guild {guild_id}: {e}")
             return False
 
-# Initialize with environment variable or default to localhost
+# environment variable or default to localhost
 db = Database(config["MONGO_URI"] if "MONGO_URI" in config else "mongodb://localhost:27017")
