@@ -41,7 +41,7 @@ class Welcoming(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member):
         """Sync roles when a member joins any server"""
-        logger.info(f"[+] Member joined: {member} in guild {member.guild.id}")
+        logger.info(f"[+] Member joined: {member.name} in guild {member.guild.id}")
 
         randomEmoji = random.choice(member.guild.emojis)
 
@@ -49,7 +49,7 @@ class Welcoming(commands.Cog):
 
         if member.guild.id == 1259717095382319215:
             channel = member.guild.get_channel(1368768246475391037)
-            await channel.send(f"{random.choice(greeting)} {member.mention} {randomEmoji}")
+            await channel.send(f"{member.mention} {random.choice(greeting)} {randomEmoji}")
             embed = await welcomeEmbed(member)
             await member.send(embed=embed)
             with open("data/stats.json", "r") as f:
