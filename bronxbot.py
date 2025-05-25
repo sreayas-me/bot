@@ -33,6 +33,7 @@ async def on_ready():
 
 tips = [
     "i was made in 3 hours",
+    "Zhang Yong",
     "use !help to get started",
     "use !help <command> for more info",
     "try !ban",
