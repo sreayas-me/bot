@@ -189,19 +189,6 @@ class Fun(commands.Cog):
         response = random.choice(responses)
         await ctx.reply(f"🎱 ```{response}```")
 
-    # Enhanced games
-    @commands.command(aliases=['coin', 'cf'])
-    async def flip(self, ctx):
-        """flip a coin and see the result"""
-        if random.random() < 0.001:  # 0.1% chance
-            result = "the coin landed on its side somehow"
-            emoji = "🪙"
-        else:
-            result = random.choice(["heads", "tails"])
-            emoji = "🪙"
-        
-        await ctx.reply(f"{emoji} ```{result}```")
-
     @commands.command(aliases=['dice', 'd'])
     async def roll(self, ctx, dice: str = "1d6"):
         """roll dice (format: 2d20, 1d6, etc.)"""

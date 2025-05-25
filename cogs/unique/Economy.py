@@ -267,5 +267,77 @@ class Economy(commands.Cog):
         else:
             await ctx.reply(f"It's **{result}**! You lost **{bet}** {self.currency}!")
 
+    async def cog_command_error(self, ctx, error):
+        """Global error handler for economy commands"""
+        if hasattr(error, "original"):
+            error = error.original
+
+        if isinstance(error, commands.CommandOnCooldown):
+            minutes, seconds = divmod(error.retry_after, 60)
+            await ctx.reply(f"Command on cooldown! Try again in {int(minutes)}m {int(seconds)}s")
+            return
+        
+        self.logger.error(f"Unhandled error in {ctx.command}: {error}")
+        await ctx.reply("An error occurred while processing your command")
+
+    @daily.error
+    async def daily_error(self, ctx, error):
+        if isinstance(error, commands.CommandOnCooldown):
+            hours, remainder = divmod(error.retry_after, 3600)
+            minutes, _ = divmod(remainder, 60)
+            await ctx.reply(f"You already claimed your daily reward!\nTry again in {int(hours)}h {int(minutes)}m")
+        else:
+            await ctx.reply("Failed to claim daily reward")
+            self.logger.error(f"Daily error: {error}")
+
+    @pay.error
+    @rob.error
+    async def transfer_error(self, ctx, error):
+        if isinstance(error, commands.MemberNotFound):
+            await ctx.reply("Could not find that user!")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.reply("Please specify both a user and an amount!")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.reply("Invalid amount specified!")
+        else:
+            await ctx.reply("Failed to process transaction")
+            self.logger.error(f"Transfer error in {ctx.command}: {error}")
+
+    @slots.error
+    @coinflip.error
+    async def gambling_error(self, ctx, error):
+        if isinstance(error, commands.BadArgument):
+            await ctx.reply("Please provide a valid bet amount!")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.reply("Please specify a bet amount!")
+        else:
+            await ctx.reply("Failed to process gambling command")
+            self.logger.error(f"Gambling error in {ctx.command}: {error}")
+
+    @buy.error
+    async def buy_error(self, ctx, error):
+        if isinstance(error, commands.MissingRequiredArgument):
+            await ctx.reply("Please specify an item to buy!")
+        elif isinstance(error, discord.Forbidden):
+            await ctx.reply("I don't have permission to create/assign roles!")
+            await db.update_balance(ctx.author.id, self.SHOP_ITEMS[ctx.kwargs.get('item_id', '')]['price'])  # Refund
+        else:
+            await ctx.reply("Failed to process purchase")
+            self.logger.error(f"Shop error: {error}")
+
+    @work.error
+    async def work_error(self, ctx, error):
+        if isinstance(error, commands.CommandOnCooldown):
+            minutes, seconds = divmod(error.retry_after, 60)
+            await ctx.reply(f"You're tired from working!\nTry again in {int(minutes)}m {int(seconds)}s")
+        else:
+            await ctx.reply("Failed to complete work")
+            self.logger.error(f"Work error: {error}")
+
+    @leaderboard.error
+    async def leaderboard_error(self, ctx, error):
+        await ctx.reply("Failed to fetch leaderboard data")
+        self.logger.error(f"Leaderboard error: {error}")
+
 async def setup(bot):
     await bot.add_cog(Economy(bot))
