@@ -1,15 +1,15 @@
 import discord
 import random
 import json
-import logging
-from discord.ext import commands
 import datetime
 import asyncio
+from discord.ext import commands
+from cogs.logging.logger import CogLogger
 
 class Utility(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.logger = logging.getLogger(f"bronxbot.{self.__class__.__name__}")
+        self.logger = CogLogger(self.__class__.__name__)
         self.bot.launch_time = discord.utils.utcnow()
         self.logger.info("Utility cog initialized")
 
@@ -217,7 +217,7 @@ class Utility(commands.Cog):
             await ctx.reply(f"```first message in #{channel.name}```\n{msg.jump_url}")
 
 async def setup(bot):
-    logger = logging.getLogger("bronxbot.Utility")
+    logger = CogLogger("Utility")
     try:
         await bot.add_cog(Utility(bot))
         logger.info("Utility cog loaded successfully")

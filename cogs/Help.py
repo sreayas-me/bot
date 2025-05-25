@@ -1,17 +1,8 @@
 import discord
 from discord.ext import commands
-import logging
+from cogs.logging.logger import CogLogger
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data/logs/Help.log')
-    ]
-)
-logger = logging.getLogger('Help')
+logger = CogLogger('Help')
 
 
 class HelpPaginator(discord.ui.View):

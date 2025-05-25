@@ -1,6 +1,6 @@
 import discord
-import logging
 from discord.ext import commands
+from cogs.logging.logger import CogLogger
 
 ROLE_MAPPING = {
     "south_bronx": {
@@ -39,7 +39,7 @@ class SyncRoles(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.staff_channel_id = 1259717946947670099
-        self.logger = logging.getLogger(f"bronxbot.{self.__class__.__name__}")
+        self.logger = CogLogger(self.__class__.__name__)
         self.bot.launch_time = discord.utils.utcnow()
         self.logger.info("SyncRoles cog initialized")
     
@@ -221,7 +221,7 @@ class SyncRoles(commands.Cog):
         await ctx.send(f"Force-synced roles for {member.display_name}")
 
 async def setup(bot):
-    logger = logging.getLogger("bronxbot.SyncRoles")
+    logger = CogLogger("SyncRoles")
     try:
         await bot.add_cog(SyncRoles(bot))
         logger.info("SyncRoles cog loaded successfully")

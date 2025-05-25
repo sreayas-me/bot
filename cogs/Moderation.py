@@ -5,12 +5,13 @@ import logging
 from discord.ext import commands
 import datetime
 import asyncio
+from cogs.logging.logger import CogLogger
 
 # this is super wip
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.logger = logging.getLogger(f"bronxbot.{self.__class__.__name__}")
+        self.logger = CogLogger(self.__class__.__name__)
         self.bot.launch_time = discord.utils.utcnow()
         self.logger.info("Moderation cog initialized")
 
@@ -21,7 +22,7 @@ class Moderation(commands.Cog):
         await ctx.send(f"**{member.display_name}**")
 
 async def setup(bot):
-    logger = logging.getLogger("bronxbot.Moderation")
+    logger = CogLogger("Moderation")
     try:
         await bot.add_cog(Moderation(bot))
         logger.info("Moderation cog loaded successfully")

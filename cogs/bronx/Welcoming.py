@@ -2,18 +2,9 @@ import discord
 import random
 import json
 from discord.ext import commands
-import logging
+from cogs.logging.logger import CogLogger
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data/logs/welcoming.log')
-    ]
-)
-logger = logging.getLogger('Welcoming')
+logger = CogLogger('Welcoming')
 
 async def welcomeEmbed(member):
     with open('data/welcome.json', 'r') as f:

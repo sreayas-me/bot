@@ -7,14 +7,14 @@ import asyncio
 import string
 import time
 import aiohttp
-import logging
-logger = logging.getLogger(__name__)
+from cogs.logging.logger import CogLogger
 
 class Fun(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         # Cache for active games to prevent spam
         self.active_games = set()
+        self.logger = CogLogger(self.__class__.__name__)
 
     # Text transformation commands
     @commands.command(aliases=['mock'])
@@ -532,7 +532,7 @@ class Fun(commands.Cog):
 
 async def setup(bot):
     try:
-        logger = logging.getLogger("bronxbot.Fun")
+        logger = CogLogger("Fun")
         await bot.add_cog(Fun(bot))
         logger.info("Fun cog loaded successfully")
     except Exception as e:

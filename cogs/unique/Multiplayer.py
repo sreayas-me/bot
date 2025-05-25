@@ -1,20 +1,12 @@
 import discord
 import random
 import asyncio
-import logging
 from discord.ext import commands
 from typing import Dict, List, Optional, Tuple, Union
+from cogs.logging.logger import CogLogger
 
 # Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data/logs/Multiplayer.log')
-    ]
-)
-logger = logging.getLogger('Multiplayer')
+logger = CogLogger('Multiplayer')
 
 class GameError(Exception):
     """Custom exception for game-related errors"""
@@ -27,6 +19,7 @@ class Multiplayer(commands.Cog):
         self.bot = bot
         self.ongoing_jackpots = set()
         self.active_games = set()  # Track all active games to prevent duplicates
+        self.logger = CogLogger(self.__class__.__name__)
         
         # Game constants
         self.SLOT_EMOJIS = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]

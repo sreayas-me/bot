@@ -1,13 +1,13 @@
 import discord
 import random
 import json
-import logging
 from discord.ext import commands
+from cogs.logging.logger import CogLogger
 
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.logger = logging.getLogger(f"bronxbot.{self.__class__.__name__}")
+        self.logger = CogLogger(self.__class__.__name__)
         self.logger.info(f"Initializing {self.__class__.__name__} cog")
         self.currency = "💰"
 
@@ -36,7 +36,7 @@ class Economy(commands.Cog):
             await ctx.send(f"Error: {str(e)}")
 
 async def setup(bot):
-    logger = logging.getLogger("bronxbot.Economy")
+    logger = CogLogger("Economy")
     try:
         cog = Economy(bot)
         await bot.add_cog(cog)

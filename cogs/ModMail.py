@@ -1,8 +1,8 @@
 import discord
 from discord.ext import commands
-import logging
 import json
 import os
+from cogs.logging.logger import CogLogger
 
 class ModMail(commands.Cog):
     def __init__(self, bot):
@@ -12,14 +12,7 @@ class ModMail(commands.Cog):
         
         os.makedirs("data", exist_ok=True)
         
-        self.logger = logging.getLogger("discord.ModMail")
-        self.logger.setLevel(logging.INFO)
-        
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter('[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
+        self.logger = CogLogger("ModMail")
         
         self.active_tickets = self.load_data()
         self.logger.info("ModMail cog initialized")

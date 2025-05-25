@@ -1,20 +1,10 @@
 import discord
 import json
 from discord.ext import commands
-import logging
 import datetime
-#from dateutil.parser import parse 
+from cogs.logging.logger import CogLogger
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data/logs/stats.log')
-    ]
-)
-logger = logging.getLogger('Stats')
+logger = CogLogger('Stats')
 guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
 class Stats(commands.Cog):
     def __init__(self, bot):

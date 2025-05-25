@@ -4,10 +4,12 @@ import asyncio
 import discord
 from discord.ext import commands
 from discord import DMChannel, TextChannel
+from cogs.logging.logger import CogLogger
 
 class Cypher(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.logger = CogLogger(self.__class__.__name__)
     
     def extract_from_codeblock(self, text):
         """Extract content from codeblocks if present"""

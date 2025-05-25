@@ -3,19 +3,10 @@ from discord.ext import commands
 import json
 from pathlib import Path
 from datetime import datetime, timedelta
-import logging
 import asyncio
+from cogs.logging.logger import CogLogger
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data/logs/votebans.log')
-    ]
-)
-logger = logging.getLogger('VoteBans')
+logger = CogLogger('VoteBans')
 
 class VoteBans(commands.Cog):
     def __init__(self, bot):

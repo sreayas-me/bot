@@ -6,23 +6,15 @@ import asyncio
 from pathlib import Path
 import discord
 from discord.ext import commands
-import logging
+from cogs.logging.logger import CogLogger
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data/logs/MathRace.log')
-    ]
-)
-logger = logging.getLogger('MathRace')
+logger = CogLogger('MathRace')
 class MathRace(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.EQUATION_FILE = Path("data/equations.json")
         self.EQUATION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        self.logger = CogLogger(self.__class__.__name__)
 
     @commands.command(aliases=['mathduel', 'md', 'math'])
     async def mathrace(self, ctx, opponent: discord.Member = None, difficulty: int = 10):
