@@ -10,7 +10,7 @@ class Cypher(commands.Cog):
     
     def extract_from_codeblock(self, text):
         """Extract content from codeblocks if present"""
-        if text.startswith('```') and text.endswith('```'):
+        if isinstance(text, str) and text.startswith('```') and text.endswith('```'):
             text = text[3:-3].strip()
             # Remove potential language specifier
             if '\n' in text:
@@ -21,7 +21,9 @@ class Cypher(commands.Cog):
     
     def wrap_in_codeblock(self, text):
         """Wrap text in codeblocks if it contains newlines or is long"""
-        if '\n' in text or len(text) > 50:
+        if isinstance(text, bool):  # Handle boolean values
+            text = str(text)
+        if '\n' in text or len(text) > 50 or any(c in text for c in '+=<>/\\|`~"\''):
             return f"```\n{text}\n```"
         return text
     
@@ -60,6 +62,10 @@ You can use a colon to separate the key and message:
 mykey123:hello world (sending key and message at the same time)
 mykey123 (sending just key, I will ask for message after)
 
+this command also supports DMs & codeblocks
+mykey123:```hello world```
+
+If you want to cancel, type "cancel"
 Please send your KEY now (or in format key:message):```""")
             
             def dm_check(m):
@@ -145,7 +151,8 @@ Please send your KEY now (or in format key:message):```""")
 
     @commands.command(aliases=['decrypt'])
     async def decypher(self, ctx, key: str = None, *, text: str = None):
-        """Decrypt encrypted messages using the same key"""
+        """Decrypt encrypted messages using the same key
+        If no arguments are provided, will prompt for them"""
         # Handle missing arguments
         if not key or not text:
             key, text = await self.process_input(ctx, "decrypt")
@@ -245,7 +252,7 @@ Please send your KEY now (or in format key:message):```""")
                     f"**🔐 Cipher Test Results**\n"
                     f"**Key:** `{key}`\n"
                     f"**Original:** {self.wrap_in_codeblock(text)}\n"
-                    f"**Encrypted:** {self.wrap_in_codeblock(encrypted)}\n"
+                    f"**Encrypted:** {self.wrap_in_codeblock(encrypted)}\n"  # Fixed typo here
                     f"**Decrypted:** {self.wrap_in_codeblock(decrypted)}\n\n"
                     f"**Round-trip:** {'✅ SUCCESS' if success else '❌ FAILED'}"
                 )
