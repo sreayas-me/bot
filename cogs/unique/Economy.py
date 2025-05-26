@@ -2,6 +2,7 @@ import discord
 import random
 import asyncio
 import datetime
+import logging
 from discord.ext import commands
 from cogs.logging.logger import CogLogger
 from utils.db import db
@@ -521,6 +522,17 @@ class Economy(commands.Cog):
             except:
                 await db.update_balance(ctx.author.id, item['price'], ctx.guild.id)  # Refund
                 return await ctx.reply("Color selection failed. You've been refunded.")
+        elif item_id == "bank_upgrade":
+            if await db.increase_bank_limit(ctx.author.id, 5000, ctx.guild.id):
+                embed = discord.Embed(
+                    description=f"✨ Bank storage increased by **5,000** 💰\n" \
+                              f"New limit: **{await db.get_bank_limit(ctx.author.id, ctx.guild.id)}** 💰",
+                    color=discord.Color.green()
+                )
+                return await ctx.reply(embed=embed)
+            else:
+                await db.update_balance(ctx.author.id, item['price'], ctx.guild.id)  # Refund
+                return await ctx.reply("Failed to upgrade bank. You've been refunded.")
         
         await ctx.reply(f"Successfully purchased **{item['name']}**!")
 
@@ -1023,7 +1035,6 @@ class InventorySelect(discord.ui.Select):
             
         except Exception as e:
             await interaction.followup.send("An error occurred while filtering inventory!", ephemeral=True)
-            logger.error(f"Inventory filter error: {e}")
 
 class InventoryView(HelpPaginator):
     def __init__(self, pages: list, author: discord.Member, all_items: list):

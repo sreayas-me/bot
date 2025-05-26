@@ -455,4 +455,42 @@ class Database:
             logger.error(f"Failed to remove item from inventory: {e}")
             return False
 
+    async def get_bank_limit(self, user_id: int, guild_id: int = None) -> int:
+        """Get user's bank storage limit"""
+        try:
+            await self.ensure_connected()
+            key = f"{user_id}_{guild_id}" if guild_id else str(user_id)
+            user = await self.db.economy.find_one({"_id": key})
+            
+            # Default bank limit is 10,000
+            default_limit = 10000
+            if not user or "bank_limit" not in user:
+                await self.db.economy.update_one(
+                    {"_id": key},
+                    {"$set": {"bank_limit": default_limit}},
+                    upsert=True
+                )
+                return default_limit
+                
+            return user.get("bank_limit", default_limit)
+        except Exception as e:
+            logger.error(f"Failed to get bank limit: {e}")
+            return 10000  # Return default limit on error
+
+    async def increase_bank_limit(self, user_id: int, amount: int, guild_id: int = None) -> bool:
+        """Increase user's bank storage limit"""
+        try:
+            await self.ensure_connected()
+            key = f"{user_id}_{guild_id}" if guild_id else str(user_id)
+            
+            result = await self.db.economy.update_one(
+                {"_id": key},
+                {"$inc": {"bank_limit": amount}},
+                upsert=True
+            )
+            return bool(result.modified_count or result.upserted_id)
+        except Exception as e:
+            logger.error(f"Failed to increase bank limit: {e}")
+            return False
+
 db = Database(config["MONGO_URI"] if "MONGO_URI" in config else "mongodb://localhost:27017")
