@@ -801,5 +801,249 @@ class Economy(commands.Cog):
         # Reuse the same shop display logic
         await self.shop(ctx)
 
+    @commands.command(name="potions", aliases=["potion", "pot", "pots"])
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def potions(self, ctx):
+        """View available potions from global and server shops"""
+        global_shop = await db.get_shop_items()
+        server_shop = await db.get_shop_items(ctx.guild.id)
+        
+        # Combine potions from both shops
+        potions = {}
+        if "potions" in global_shop:
+            potions.update(global_shop["potions"])
+        if "potions" in server_shop:
+            potions.update(server_shop["potions"])
+            
+        if not potions:
+            return await ctx.reply("No potions available in the shop!")
+
+        # Create embed pages for potions
+        pages = []
+        
+        # Overview page
+        overview = discord.Embed(
+            title="🧪 Available Potions",
+            description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id, ctx.guild.id)}** 💰\n\n",
+            color=discord.Color.blue()
+        )
+        
+        # Add first 3 potions to overview
+        sample_potions = list(potions.items())[:3]
+        for potion_id, potion in sample_potions:
+            overview.description += (
+                f"**{potion['name']}** - {potion['price']} 💰\n"
+                f"• {potion['multiplier']}x {potion['type']} buff for {potion['duration']}min\n"
+                f"• {potion.get('description', '')}\n"
+                f"`buy {potion_id}` to purchase\n\n"
+            )
+            
+        if len(potions) > 3:
+            overview.description += "*Use the arrows to see more potions*"
+        
+        pages.append(overview)
+        
+        # Create detail pages - 4 potions per page
+        items = list(potions.items())
+        for i in range(0, len(items), 4):
+            chunk = items[i:i+4]
+            embed = discord.Embed(
+                title="🧪 Potions Shop",
+                color=discord.Color.blue()
+            )
+            
+            for potion_id, potion in chunk:
+                embed.add_field(
+                    name=f"{potion['name']} - {potion['price']} 💰",
+                    value=(
+                        f"Type: {potion['type']}\n"
+                        f"Effect: {potion['multiplier']}x for {potion['duration']}min\n"
+                        f"{potion.get('description', '')}\n"
+                        f"`buy {potion_id}` to purchase"
+                    ),
+                    inline=False
+                )
+            
+            pages.append(embed)
+
+        # Use the existing HelpPaginator for navigation
+        view = HelpPaginator(pages, ctx.author)
+        view.update_buttons()
+        message = await ctx.reply(embed=pages[0], view=view)
+        view.message = message
+
+    @commands.command(name="inventory", aliases=["inv"])
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def inventory(self, ctx):
+        """View your inventory with filtering and pagination"""
+        items = await db.get_inventory(ctx.author.id, ctx.guild.id)
+        
+        if not items:
+            return await ctx.reply("Your inventory is empty!")
+
+        # Create initial pages with all items
+        pages = []
+        chunks = [items[i:i+6] for i in range(0, len(items), 6)]
+        
+        for chunk in chunks:
+            embed = discord.Embed(
+                title=f"🎒 {ctx.author.name}'s Inventory",
+                color=ctx.author.color or discord.Color.blue()
+            )
+            
+            for item in chunk:
+                name = f"{item.get('name', 'Unknown Item')}"
+                if item.get("type") == "potion":
+                    name = f"🧪 {name}"
+                elif item.get("type") == "consumable":
+                    name = f"🍖 {name}"
+                elif item.get("type") == "collectible":
+                    name = f"🎨 {name}"
+                
+                value = f"ID: `{item.get('id')}`\n"
+                if item.get("type") == "potion":
+                    value += f"Effect: {item.get('multiplier')}x {item.get('buff_type')} for {item.get('duration')}min\n"
+                value += item.get("description", "No description")
+                
+                embed.add_field(name=name, value=value, inline=False)
+        
+        pages.append(embed)
+
+        # Create view with filter and pagination
+        view = InventoryView(pages, ctx.author, items)
+        view.update_buttons()
+        message = await ctx.reply(embed=pages[0], view=view)
+        view.message = message
+
+    @commands.command(name="use")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def use_item(self, ctx, item_id: str):
+        """Use an item from your inventory"""
+        items = await db.get_inventory(ctx.author.id, ctx.guild.id)
+        
+        # Find the item
+        item = next((item for item in items if item.get("id") == item_id), None)
+        if not item:
+            return await ctx.reply("❌ Item not found in your inventory!")
+
+        # Handle different item types
+        if item["type"] == "potion":
+            # Apply potion effect
+            if await db.add_potion(ctx.author.id, item):
+                await db.remove_from_inventory(ctx.author.id, ctx.guild.id, item_id)
+                embed = discord.Embed(
+                    description=f"🧪 Used **{item['name']}**!\n" \
+                              f"{item['multiplier']}x {item['buff_type']} buff active for {item['duration']} minutes",
+                    color=discord.Color.green()
+                )
+                await ctx.reply(embed=embed)
+            else:
+                await ctx.reply("❌ Failed to use potion!")
+                
+        elif item["type"] == "consumable":
+            # Handle consumable effects
+            await db.remove_from_inventory(ctx.author.id, ctx.guild.id, item_id)
+            embed = discord.Embed(
+                description=f"✨ Used **{item['name']}**!",
+                color=discord.Color.green()
+            )
+            await ctx.reply(embed=embed)
+            
+        else:
+            await ctx.reply("❌ This item cannot be used!")
+
+class InventorySelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="All Items", value="all", description="Show all items", emoji="📦"),
+            discord.SelectOption(label="Potions", value="potion", description="Show only potions", emoji="🧪"),
+            discord.SelectOption(label="Consumables", value="consumable", description="Show only consumables", emoji="🍖"),
+            discord.SelectOption(label="Collectibles", value="collectible", description="Show only collectibles", emoji="🎨")
+        ]
+        super().__init__(placeholder="Filter items...", options=options, custom_id="filter_select")
+
+    async def callback(self, interaction: discord.Interaction):
+        # Get parent view for access to inventory data
+        view: InventoryView = self.view
+        
+        if interaction.user != view.author:
+            return await interaction.response.send_message("This isn't your inventory!", ephemeral=True)
+
+        try:
+            await interaction.response.defer()
+            
+            filter_type = self.values[0]
+            items = view.all_items
+            
+            if filter_type != "all":
+                items = [item for item in items if item.get("type") == filter_type]
+            
+            # Create pages from filtered items
+            pages = []
+            chunks = [items[i:i+6] for i in range(0, len(items), 6)]
+            
+            for chunk in chunks:
+                embed = discord.Embed(
+                    title=f"🎒 {interaction.user.name}'s Inventory",
+                    color=interaction.user.color or discord.Color.blue()
+                )
+                
+                for item in chunk:
+                    name = f"{item.get('name', 'Unknown Item')}"
+                    if item.get("type") == "potion":
+                        name = f"🧪 {name}"
+                    elif item.get("type") == "consumable":
+                        name = f"🍖 {name}"
+                    elif item.get("type") == "collectible":
+                        name = f"🎨 {name}"
+                        
+                    value = f"ID: `{item.get('id')}`\n"
+                    if item.get("type") == "potion":
+                        value += f"Effect: {item.get('multiplier')}x {item.get('buff_type')} for {item.get('duration')}min\n"
+                    value += item.get("description", "No description")
+                    
+                    embed.add_field(name=name, value=value, inline=False)
+                
+                embed.set_footer(text=f"Filter: {filter_type.title()}")
+                pages.append(embed)
+            
+            if not pages:
+                embed = discord.Embed(
+                    title=f"🎒 {interaction.user.name}'s Inventory",
+                    description=f"No {filter_type} items found!",
+                    color=interaction.user.color or discord.Color.blue()
+                )
+                pages = [embed]
+
+            # Update paginator
+            view.pages = pages
+            view.current_page = 0
+            view.update_buttons()
+            await interaction.message.edit(embed=pages[0], view=view)
+            
+        except Exception as e:
+            await interaction.followup.send("An error occurred while filtering inventory!", ephemeral=True)
+            logger.error(f"Inventory filter error: {e}")
+
+class InventoryView(HelpPaginator):
+    def __init__(self, pages: list, author: discord.Member, all_items: list):
+        super().__init__(pages, author)
+        self.all_items = all_items
+        self.add_item(InventorySelect())
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user != self.author:
+            await interaction.response.send_message("This isn't your inventory!", ephemeral=True)
+            return False
+        return True
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
+        try:
+            await self.message.edit(view=self)
+        except discord.NotFound:
+            pass
+
 async def setup(bot):
     await bot.add_cog(Economy(bot))

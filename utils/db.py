@@ -413,4 +413,46 @@ class Database:
             logger.error(f"Failed to remove shop item: {e}")
             return False
 
+    async def add_to_inventory(self, user_id: int, guild_id: int, item_data: dict) -> bool:
+        """Add item to user's inventory"""
+        try:
+            await self.ensure_connected()
+            key = f"{user_id}_{guild_id}"
+            
+            await self.db.inventory.update_one(
+                {"_id": key},
+                {"$push": {"items": item_data}},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add item to inventory: {e}")
+            return False
+
+    async def get_inventory(self, user_id: int, guild_id: int) -> list:
+        """Get user's inventory"""
+        try:
+            await self.ensure_connected()
+            key = f"{user_id}_{guild_id}"
+            inv = await self.db.inventory.find_one({"_id": key})
+            return inv.get("items", []) if inv else []
+        except Exception as e:
+            logger.error(f"Failed to get inventory: {e}")
+            return []
+
+    async def remove_from_inventory(self, user_id: int, guild_id: int, item_id: str) -> bool:
+        """Remove item from inventory"""
+        try:
+            await self.ensure_connected()
+            key = f"{user_id}_{guild_id}"
+            
+            result = await self.db.inventory.update_one(
+                {"_id": key},
+                {"$pull": {"items": {"id": item_id}}}
+            )
+            return bool(result.modified_count)
+        except Exception as e:
+            logger.error(f"Failed to remove item from inventory: {e}")
+            return False
+
 db = Database(config["MONGO_URI"] if "MONGO_URI" in config else "mongodb://localhost:27017")
