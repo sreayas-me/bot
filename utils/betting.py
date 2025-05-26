@@ -7,7 +7,7 @@ def parse_bet(amount_str: str, balance: int) -> Tuple[Union[int, None], str]:
     Supports:
     - Regular numbers: 100, 400, 1000
     - Percentages: 50%, 100%, 5.5%
-    - K/M notation: 1k, 1.5k, 1m, 100k
+    - K/M notation: 1k, 1.5k, 100k, 1m, 2.5m
     - Scientific: 1e3, 1.5e3, 1e6
     """
     try:

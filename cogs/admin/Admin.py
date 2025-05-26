@@ -102,9 +102,9 @@ class Admin(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @commands.command(name="adminshop", aliases=["ashop"])
+    @commands.group(name="adminshop", aliases=["ashop"], invoke_without_command=True)
     @commands.has_permissions(administrator=True)
-    async def admin_shop(self, ctx):
+    async def adminshop_group(self, ctx):
         """Server shop management commands"""
         embed = discord.Embed(
             description=(
@@ -120,30 +120,46 @@ class Admin(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @admin_shop.command(name="add")
+    @adminshop_group.command(name="add")
     @commands.has_permissions(administrator=True)
-    async def shop_add_item(self, ctx, name: str = None, price: int = None, *, description: str = None):
+    async def adminshop_add(self, ctx, name: str = None, price: int = None, *, description: str = None):
         """Add an item to the server shop"""
         await self.server_add_item(ctx, name, price, description)
 
-    @admin_shop.command(name="potion")
+    @adminshop_group.command(name="potion")
     @commands.has_permissions(administrator=True)
-    async def shop_add_potion(self, ctx, name: str = None, price: int = None, type: str = None,
+    async def adminshop_potion(self, ctx, name: str = None, price: int = None, type: str = None,
                         multiplier: float = None, duration: int = None, *, description: str = None):
         """Add a potion to the server shop"""
         await self.server_add_potion(ctx, name, price, type, multiplier, duration, description)
 
-    @admin_shop.command(name="remove")
+    @adminshop_group.command(name="remove")
     @commands.has_permissions(administrator=True)
-    async def shop_remove(self, ctx, *, name: str):
+    async def adminshop_remove(self, ctx, *, name: str):
         """Remove item from server shop"""
         await self.server_remove(ctx, name)
 
-    @admin_shop.command(name="list") 
+    @adminshop_group.command(name="list") 
     @commands.has_permissions(administrator=True)
-    async def shop_list(self, ctx):
+    async def adminshop_list(self, ctx):
         """List server shop items"""
         await self.server_list(ctx)
+
+    @adminshop_group.group(name="global", invoke_without_command=True)
+    @commands.is_owner()
+    async def adminshop_global(self, ctx):
+        """Global shop management"""
+        embed = discord.Embed(
+            description=(
+                "**Global Shop Management**\n"
+                "`.adminshop global add <name> <price> <desc>` - Add item\n"
+                "`.adminshop global potion <name> <price> <type> <mult> <dur>` - Add potion\n"
+                "`.adminshop global remove <name>` - Remove item\n"
+                "`.adminshop global list` - List items"
+            ),
+            color=0x2b2d31
+        )
+        await ctx.send(embed=embed)
 
     async def display_shop(self, ctx, shop_data, title="Shop", show_admin=False):
         """Display shop contents with pagination"""
@@ -249,7 +265,7 @@ class Admin(commands.Cog):
         """Get server-specific shop data"""
         return self.server_shops.get(str(guild_id), {"items": {}, "potions": {}})
 
-    @commands.command(name="shop", aliases=["servershop"])
+    @commands.command(name="sshop", aliases=["servershop"])
     @commands.has_permissions(administrator=True)
     async def server_shop(self, ctx):
         """Server shop management commands"""
@@ -267,9 +283,9 @@ class Admin(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @commands.command(name="adminshop", aliases=["ashop"])
+    @commands.group(name="adminshop", aliases=["ashop"], invoke_without_command=True)
     @commands.has_permissions(administrator=True)
-    async def admin_shop(self, ctx):
+    async def adminshop_group(self, ctx):
         """Server shop management commands"""
         embed = discord.Embed(
             description=(
@@ -285,30 +301,46 @@ class Admin(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @admin_shop.command(name="add")
+    @adminshop_group.command(name="add")
     @commands.has_permissions(administrator=True)
-    async def shop_add_item(self, ctx, name: str = None, price: int = None, *, description: str = None):
+    async def adminshop_add(self, ctx, name: str = None, price: int = None, *, description: str = None):
         """Add an item to the server shop"""
         await self.server_add_item(ctx, name, price, description)
 
-    @admin_shop.command(name="potion")
+    @adminshop_group.command(name="potion")
     @commands.has_permissions(administrator=True)
-    async def shop_add_potion(self, ctx, name: str = None, price: int = None, type: str = None,
+    async def adminshop_potion(self, ctx, name: str = None, price: int = None, type: str = None,
                         multiplier: float = None, duration: int = None, *, description: str = None):
         """Add a potion to the server shop"""
         await self.server_add_potion(ctx, name, price, type, multiplier, duration, description)
 
-    @admin_shop.command(name="remove")
+    @adminshop_group.command(name="remove")
     @commands.has_permissions(administrator=True)
-    async def shop_remove(self, ctx, *, name: str):
+    async def adminshop_remove(self, ctx, *, name: str):
         """Remove item from server shop"""
         await self.server_remove(ctx, name)
 
-    @admin_shop.command(name="list") 
+    @adminshop_group.command(name="list") 
     @commands.has_permissions(administrator=True)
-    async def shop_list(self, ctx):
+    async def adminshop_list(self, ctx):
         """List server shop items"""
         await self.server_list(ctx)
+
+    @adminshop_group.group(name="global", invoke_without_command=True)
+    @commands.is_owner()
+    async def adminshop_global(self, ctx):
+        """Global shop management"""
+        embed = discord.Embed(
+            description=(
+                "**Global Shop Management**\n"
+                "`.adminshop global add <name> <price> <desc>` - Add item\n"
+                "`.adminshop global potion <name> <price> <type> <mult> <dur>` - Add potion\n"
+                "`.adminshop global remove <name>` - Remove item\n"
+                "`.adminshop global list` - List items"
+            ),
+            color=0x2b2d31
+        )
+        await ctx.send(embed=embed)
 
     async def display_shop(self, ctx, shop_data, title="Shop", show_admin=False):
         """Display shop contents with pagination"""

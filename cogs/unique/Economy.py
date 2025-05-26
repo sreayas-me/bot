@@ -731,5 +731,5 @@ class Economy(commands.Cog):
         else:
             await ctx.send("Shop system is currently unavailable.")
 
-def setup(bot):
-    bot.add_cog(Economy(bot))
+async def setup(bot):
+    await bot.add_cog(Economy(bot))
