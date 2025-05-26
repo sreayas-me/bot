@@ -29,9 +29,17 @@ async def welcomeEmbed(member):
 class Welcoming(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.main_guilds = self.bot.MAIN_GUILD_IDS
     
+    async def cog_check(self, ctx):
+        """Check if the guild has permission to use this cog's commands"""
+        return ctx.guild.id in self.main_guilds
+
     @commands.Cog.listener()
     async def on_member_join(self, member):
+        if member.guild.id not in self.main_guilds:
+            return
+
         """Sync roles when a member joins any server"""
         logger.info(f"[+] Member joined: {member.name} in guild {member.guild.id}")
 
@@ -52,6 +60,9 @@ class Welcoming(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
+        if member.guild.id not in self.main_guilds:
+            return
+            
         logger.info(f"[-] Member left: {member} in guild {member.guild.id}")
         if member.guild.id == 1259717095382319215:
             await db.store_stats(member.guild.id, "lost")

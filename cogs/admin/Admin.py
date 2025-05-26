@@ -214,22 +214,73 @@ class Admin(commands.Cog):
         """List server shop items"""
         await self.server_list(ctx)
 
-    @adminshop_group.group(name="global", aliases=["gshopm", "globalshopm"], invoke_without_command=True)
+    @adminshop_group.group(name="global", invoke_without_command=True)
     @commands.is_owner()
     async def adminshop_global(self, ctx):
         """Global shop management
         gshopManagement commands"""
+        if ctx.invoked_subcommand is None:
+            embed = discord.Embed(
+                description=(
+                    "**Global Shop Management**\n"
+                    "`.adminshop global add <name> <price> <desc>` - Add item\n"
+                    "`.adminshop global potion <name> <price> <type> <mult> <dur>` - Add potion\n"
+                    "`.adminshop global remove <name>` - Remove item\n"
+                    "`.adminshop global list` - List items"
+                ),
+                color=0x2b2d31
+            )
+            await ctx.send(embed=embed)
+
+    @adminshop_global.command(name="potion")
+    @commands.is_owner()
+    async def global_shop_potion(self, ctx, name: str = None, price: int = None, type: str = None,
+                          multiplier_str: str = None, duration_str: str = None, *, description: str = None):
+        """Add a potion to the global shop"""
+        # Parse multiplier and duration
+        if multiplier_str:
+            multiplier = self.parse_multiplier(multiplier_str)
+            if multiplier is None:
+                return await ctx.reply("❌ Invalid multiplier format! Use `2x`, `150%`, etc.")
+        else:
+            multiplier = None
+
+        if duration_str:
+            duration = self.parse_duration(duration_str)
+            if duration is None:
+                return await ctx.reply("❌ Invalid duration format! Use `1h`, `30m`, `90s`, etc.")
+        else:
+            duration = None
+
+        # Validate inputs
+        if not all([name, price, type, multiplier, duration]):
+            return await ctx.invoke(self.adminshop_potion)
+
+        if type not in self.buff_types:
+            embed = discord.Embed(description="❌ Invalid buff type", color=0x2b2d31)
+            return await ctx.reply(embed=embed)
+
+        # Add potion to global shop
+        potion_id = name.lower().replace(" ", "_")
+        self.shop_data["potions"][potion_id] = {
+            "name": name,
+            "price": price,
+            "type": type,
+            "multiplier": multiplier,
+            "duration": duration,
+            "description": description or self.buff_types[type]["description"]
+        }
+
+        self.save_shop_data()
+        
         embed = discord.Embed(
-            description=(
-                "**Global Shop Management**\n"
-                "`.adminshop global add <name> <price> <desc>` - Add item\n"
-                "`.adminshop global potion <name> <price> <type> <mult> <dur>` - Add potion\n"
-                "`.adminshop global remove <name>` - Remove item\n"
-                "`.adminshop global list` - List items"
-            ),
+            description=f"✨ Added potion **{name}** to global shop\n"
+                      f"Type: {type}\n"
+                      f"Effect: {multiplier}x for {duration}min\n"
+                      f"Price: {price} 💰",
             color=0x2b2d31
         )
-        await ctx.send(embed=embed)
+        await ctx.reply(embed=embed)
 
     async def display_shop(self, ctx, shop_data, title="Shop", show_admin=False):
         """Display shop contents with pagination"""
@@ -436,17 +487,68 @@ class Admin(commands.Cog):
     @commands.is_owner()
     async def adminshop_global(self, ctx):
         """Global shop management"""
+        if ctx.invoked_subcommand is None:
+            embed = discord.Embed(
+                description=(
+                    "**Global Shop Management**\n"
+                    "`.adminshop global add <name> <price> <desc>` - Add item\n"
+                    "`.adminshop global potion <name> <price> <type> <mult> <dur>` - Add potion\n"
+                    "`.adminshop global remove <name>` - Remove item\n"
+                    "`.adminshop global list` - List items"
+                ),
+                color=0x2b2d31
+            )
+            await ctx.send(embed=embed)
+
+    @adminshop_global.command(name="potion")
+    @commands.is_owner()
+    async def global_shop_potion(self, ctx, name: str = None, price: int = None, type: str = None,
+                          multiplier_str: str = None, duration_str: str = None, *, description: str = None):
+        """Add a potion to the global shop"""
+        # Parse multiplier and duration
+        if multiplier_str:
+            multiplier = self.parse_multiplier(multiplier_str)
+            if multiplier is None:
+                return await ctx.reply("❌ Invalid multiplier format! Use `2x`, `150%`, etc.")
+        else:
+            multiplier = None
+
+        if duration_str:
+            duration = self.parse_duration(duration_str)
+            if duration is None:
+                return await ctx.reply("❌ Invalid duration format! Use `1h`, `30m`, `90s`, etc.")
+        else:
+            duration = None
+
+        # Validate inputs
+        if not all([name, price, type, multiplier, duration]):
+            return await ctx.invoke(self.adminshop_potion)
+
+        if type not in self.buff_types:
+            embed = discord.Embed(description="❌ Invalid buff type", color=0x2b2d31)
+            return await ctx.reply(embed=embed)
+
+        # Add potion to global shop
+        potion_id = name.lower().replace(" ", "_")
+        self.shop_data["potions"][potion_id] = {
+            "name": name,
+            "price": price,
+            "type": type,
+            "multiplier": multiplier,
+            "duration": duration,
+            "description": description or self.buff_types[type]["description"]
+        }
+
+        self.save_shop_data()
+        
         embed = discord.Embed(
-            description=(
-                "**Global Shop Management**\n"
-                "`.adminshop global add <name> <price> <desc>` - Add item\n"
-                "`.adminshop global potion <name> <price> <type> <mult> <dur>` - Add potion\n"
-                "`.adminshop global remove <name>` - Remove item\n"
-                "`.adminshop global list` - List items"
-            ),
+            description=f"✨ Added potion **{name}** to global shop\n"
+                      f"Type: {type}\n"
+                      f"Effect: {multiplier}x for {duration}min\n"
+                      f"Price: {price} 💰",
             color=0x2b2d31
         )
-        await ctx.send(embed=embed)
+        await ctx.reply(embed=embed)
 
     async def display_shop(self, ctx, shop_data, title="Shop", show_admin=False):
         """Display shop contents with pagination"""

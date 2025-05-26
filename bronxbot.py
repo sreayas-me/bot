@@ -13,6 +13,13 @@ from typing import Dict, List, Tuple
 with open("data/config.json", "r") as f:
     config = json.load(f)
 
+# List of guilds that have access to all features
+MAIN_GUILD_IDS = [
+    1259717095382319215,  # Main server
+    1299747094449623111,  # South Bronx
+    1142088882222022786   # Long Island
+]
+
 # setup
 intents = discord.Intents.default()
 intents.message_content = True

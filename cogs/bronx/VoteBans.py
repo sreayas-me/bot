@@ -11,6 +11,7 @@ logger = CogLogger('VoteBans')
 class VoteBans(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.main_guilds = self.bot.MAIN_GUILD_IDS
         self.vote_channel_id = 1367979611748696284
         self.staff_role_id = 1259728436377817100
         self.required_votes = 25
@@ -133,6 +134,10 @@ class VoteBans(commands.Cog):
         except discord.HTTPException as e:
             logger.error(f"HTTP error fetching message {message_id}: {e}")
             return None
+
+    async def cog_check(self, ctx):
+        """Check if the guild has permission to use this cog's commands"""
+        return ctx.guild.id in self.main_guilds
 
     @commands.command(name="vban", aliases=["voteban", "vote", "kill", "vb", "ban"])
     async def voteban(self, ctx, user: discord.Member=None, *, reason="No reason provided"):
@@ -378,6 +383,9 @@ class VoteBans(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
+        if payload.guild_id not in self.main_guilds:
+            return
+            
         if payload.user_id == self.bot.user.id:
             return
 
@@ -437,6 +445,9 @@ class VoteBans(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload):
+        if payload.guild_id not in self.main_guilds:
+            return
+            
         if payload.user_id == self.bot.user.id:
             return
 

@@ -8,7 +8,11 @@ guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
 class Stats(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.main_guilds = self.bot.MAIN_GUILD_IDS
 
+    async def cog_check(self, ctx):
+        """Check if the guild has permission to use this cog's commands"""
+        return ctx.guild.id in self.main_guilds
 
     @commands.command(name="stats", aliases=["st"])
     @commands.is_owner()
