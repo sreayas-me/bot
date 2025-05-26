@@ -707,29 +707,39 @@ class Economy(commands.Cog):
         )
         await ctx.send(embed=embed)
 
+    def get_server_shop(self, guild_id: int) -> dict:
+        """Get shop items for a specific server"""
+        # For now, return the default shop items
+        # This can be expanded later to support per-server customization
+        return self.SHOP_ITEMS
+
     @commands.command(invoke_without_command=True)
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop(self, ctx):
         """View the server's shop"""
-        # Get shop data
-        guild_shop = self.get_server_shop(ctx.guild.id)
+        shop_items = self.get_server_shop(ctx.guild.id)
         
-        # Display shop using Admin cog's display method
-        admin_cog = self.bot.get_cog('Admin')
-        if admin_cog:
-            await admin_cog.display_shop(ctx, guild_shop, title="Server Shop")
-        else:
-            await ctx.send("Shop system is currently unavailable.")
+        embed = discord.Embed(
+            title="Server Shop",
+            description="Use `.buy <item_id>` to purchase an item",
+            color=discord.Color.blue()
+        )
+        
+        for item_id, item in shop_items.items():
+            embed.add_field(
+                name=f"{item['name']} - {item['price']} 💰",
+                value=f"{item['description']}\nID: `{item_id}`",
+                inline=False
+            )
+            
+        await ctx.reply(embed=embed)
 
     @commands.command()
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def globalshop(self, ctx):
         """View the global shop"""
-        admin_cog = self.bot.get_cog('Admin')
-        if admin_cog:
-            await admin_cog.display_shop(ctx, admin_cog.shop_data, title="Global Shop")
-        else:
-            await ctx.send("Shop system is currently unavailable.")
+        # Reuse the same shop display logic
+        await self.shop(ctx)
 
 async def setup(bot):
     await bot.add_cog(Economy(bot))
