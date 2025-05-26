@@ -5,7 +5,7 @@ import datetime
 from discord.ext import commands
 from cogs.logging.logger import CogLogger
 from utils.db import db
-from cogs.Help import HelpPaginator  # Add this import
+from cogs.Help import HelpPaginator
 from utils.betting import parse_bet
 
 def format_cooldown(seconds: float) -> str:

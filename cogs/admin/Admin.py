@@ -10,6 +10,7 @@ import aiohttp
 import os
 import traceback
 from typing import Optional, List
+from cogs.Help import HelpPaginator
 
 logger = CogLogger('Admin')
 
