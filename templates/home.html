@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BronxBot - Home</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <section class="hero">
+        <h1>Welcome to BronxBot</h1>
+        <p>The ultimate Discord bot for your community</p>
+        <a href="/login" class="btn btn-primary">Login with Discord</a>
+    </section>
+
+    <div class="features">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Easy to Use</h3>
+                <p><i class="fas fa-smile"></i></p>
+            </div>
+            <div class="stat-card">
+                <h3>Customizable</h3>
+                <p><i class="fas fa-sliders-h"></i></p>
+            </div>
+            <div class="stat-card">
+                <h3>24/7 Online</h3>
+                <p><i class="fas fa-clock"></i></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
