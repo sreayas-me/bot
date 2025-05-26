@@ -5,30 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BronxBot - Home</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
-<body>
-    <section class="hero">
-        <h1>Welcome to BronxBot</h1>
-        <p>The ultimate Discord bot for your community</p>
-        <a href="/login">Get Started</a>
-    </section>
+<body class="with-fixed-sidebar">
+    <div class="container">
+        <aside class="sidebar fixed">
+            <div class="sidebar-header">
+                <h2>BronxBot</h2>
+            </div>
+            <div class="sidebar-menu">
+                <a href="#" class="sidebar-item">
+                    <i class="fas fa-home"></i>
+                    <span>Home</span>
+                </a>
+                <a href="/login" class="sidebar-item">
+                    <i class="fas fa-sign-in-alt"></i>
+                    <span>Login</span>
+                </a>
+                <a href="#features" class="sidebar-item">
+                    <i class="fas fa-star"></i>
+                    <span>Features</span>
+                </a>
+            </div>
+        </aside>
 
-    <div class="features">
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3>Easy to Use</h3>
-                <p><i class="fas fa-smile"></i></p>
+        <main class="main-content">
+            <section class="hero">
+                <h1>Welcome to BronxBot</h1>
+                <p>The ultimate Discord bot for your community</p>
+            </section>
+
+            <div id="features" class="features">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Easy to Use</h3>
+                        <p><i class="fas fa-smile"></i></p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Customizable</h3>
+                        <p><i class="fas fa-sliders-h"></i></p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>24/7 Online</h3>
+                        <p><i class="fas fa-clock"></i></p>
+                    </div>
+                </div>
+                <a href="/login" class="btn btn-primary">Login with Discord</a>
             </div>
-            <div class="stat-card">
-                <h3>Customizable</h3>
-                <p><i class="fas fa-sliders-h"></i></p>
-            </div>
-            <div class="stat-card">
-                <h3>24/7 Online</h3>
-                <p><i class="fas fa-clock"></i></p>
-            </div>
-        </div>
-        <a href="/login" class="btn btn-primary">Login with Discord</a>
+        </main>
     </div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>

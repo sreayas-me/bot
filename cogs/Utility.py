@@ -73,8 +73,6 @@ class Utility(commands.Cog, ErrorHandler):
         embed.set_footer(text=f"ID: {guild.id}")
         if guild.description:
             embed.description += f"\n\n**Description:** {guild.description}"
-        if guild.features:
-            embed.add_field(name="Features", value=", ".join(guild.features), inline=False)
         if guild.system_channel:
             embed.add_field(name="System Channel", value=guild.system_channel.mention, inline=False)
         if guild.rules_channel:
@@ -92,17 +90,6 @@ class Utility(commands.Cog, ErrorHandler):
                         f"Nickname: `{user.nick}`\n"
                         f"Status: `{user.status}`\n"
                         f"Roles: `{len(user.roles)}`\n"
-                            f"Avatar: [Click Here]({user.display_avatar.url})\n"
-                            f"Banner: [Click Here]({user.banner.url})" if user.banner else "",
-                        f"\n\n**Badges:**\n"
-                            f"Staff: `{user.guild_permissions.administrator}`\n"
-                            f"Verified: `{user.public_flags.verified_bot}`\n"
-                            f"Bot Developer: `{user.public_flags.bot_developer}`\n"
-                            f"Partnered: `{user.public_flags.partnered}`\n"
-                            f"Premium: `{user.public_flags.premium}`\n"
-                            f"Discord Employee: `{user.public_flags.discord_employee}`\n"
-                            f"Discord Partner: `{user.public_flags.discord_partner}`\n"
-                            f"Active Developer: `{user.public_flags.active_developer}`\n"
                         f"\n**Roles:**\n"
                             f"{', '.join(role.name for role in user.roles if role.name != '@everyone') or 'None'}\n"
                         f"\n**Top Role:**\n"

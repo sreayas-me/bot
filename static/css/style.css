@@ -161,9 +161,37 @@ body {
 
 .sidebar {
     width: 250px;
-    background: #2c2f33;
+    background: var(--secondary);
     padding: 1rem;
     border-right: 1px solid #40444b;
+    transition: transform 0.3s ease;
+}
+
+.sidebar.fixed {
+    position: fixed;
+    height: 100vh;
+}
+
+.sidebar.collapsible {
+    position: fixed;
+    height: calc(100vh - 60px);
+    top: 60px;
+    transform: translateX(-100%);
+}
+
+.sidebar.collapsible.active {
+    transform: translateX(0);
+}
+
+.with-fixed-sidebar .main-content {
+    margin-left: 250px;
+}
+
+.sidebar-header {
+    padding: 1rem;
+    text-align: center;
+    border-bottom: 1px solid #40444b;
+    margin-bottom: 1rem;
 }
 
 .sidebar-menu {
@@ -203,6 +231,37 @@ body {
     padding: 2rem;
 }
 
+.nav-toggle {
+    display: block;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 1.5rem;
+    cursor: pointer;
+    margin-right: 1rem;
+}
+
+.nav-toggle i {
+    transition: transform 0.3s ease;
+}
+
+.nav-toggle.active i {
+    transform: rotate(180deg);
+}
+
+@media (min-width: 769px) {
+    .nav-toggle {
+        display: none;
+    }
+
+    .nav-links.collapsible {
+        display: flex;
+        position: static;
+        padding: 0;
+        flex-direction: row;
+    }
+}
+
 @media (max-width: 768px) {
   .nav-links {
     display: none;
@@ -227,5 +286,38 @@ body {
         top: 60px;
         height: calc(100vh - 60px);
         z-index: 100;
+    }
+    
+    .with-fixed-sidebar .main-content {
+        margin-left: 0;
+    }
+    
+    .sidebar.fixed {
+        display: none;
+    }
+
+    .nav-toggle {
+        display: block;
+    }
+
+    .nav-content {
+        position: relative;
+    }
+
+    .nav-links.collapsible {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--secondary);
+        padding: 1rem;
+        flex-direction: column;
+        align-items: center;
+        display: none;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .nav-links.collapsible.active {
+        display: flex;
     }
 }
