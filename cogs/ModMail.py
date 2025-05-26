@@ -57,35 +57,10 @@ class ModMail(commands.Cog):
     
     @commands.Cog.listener()
     async def on_message(self, message):
-        """Handle incoming messages for modmail"""
         if message.author == self.bot.user:
             return
         if message.author.bot:
             return
-        
-        tips = [
-            "I was made in 3 hours", 
-            "Zhang Yong", 
-            "Use .help to get started",
-            "Try .help <command> for more info", 
-            "Try the modmail feature if you need help",
-            "Did you know this bot is open source?", 
-            "This bot is hosted on KS's crusty old PC",
-            ".md gets smarter over time, so try it out!", 
-            ".jackpot is fun with friends"
-        ]
-        
-        if message.content == self.bot.user.mention:
-            if str(message.author.id) in config['OWNER_IDS']:
-                response = f"`{round(self.bot.latency * 1000, 2)}ms`"
-            else:
-                response = random.choice(tips)
-            
-            await message.reply(
-                f"Hi, **{message.author.name}**\n"
-                f"-# {response}\n"
-            )
-    
 
         guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
         
@@ -113,7 +88,6 @@ class ModMail(commands.Cog):
         # Handle message stats for specific guilds
         elif message.guild and message.guild.id in guilds:
             await self.update_message_stats(message)
-        await self.bot.process_commands(message)
     
     
     async def update_message_stats(self, message):

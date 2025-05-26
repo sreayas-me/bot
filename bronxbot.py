@@ -4,6 +4,7 @@ import random
 import time
 import sys
 import os
+import asyncio
 from discord.ext import commands
 from typing import Dict, List, Tuple
 
@@ -81,45 +82,90 @@ class CogLoader:
         """Return ANSI escape sequence for color name"""
         return COG_DATA['colors'].get(color_name, COG_DATA['colors']['default'])
     
+    @staticmethod
+    def categorize_error(error: Exception) -> Tuple[str, str]:
+        """Categorize error and provide helpful message"""
+        if isinstance(error, ImportError):
+            return "Import Failed", "Missing required module or dependency"
+        elif isinstance(error, SyntaxError):
+            return "Syntax Error", f"Invalid syntax at line {error.lineno}"
+        elif isinstance(error, AttributeError):
+            return "Setup Failed", "Missing setup() function or invalid cog class"
+        elif isinstance(error, TypeError):
+            return "Type Error", "Invalid argument types in cog setup"
+        elif isinstance(error, discord.ClientException):
+            return "Discord Error", "Invalid event or command setup"
+        else:
+            return "Unknown Error", str(error)
+
+    @classmethod
+    async def load_cog_with_retries(cls, bot: BronxBot, cog: str, max_retries: int = 3) -> Tuple[bool, float, str]:
+        """Attempt to load a cog with retries for critical cogs"""
+        start_time = time.time()
+        error_msg = ""
+        
+        for attempt in range(max_retries):
+            try:
+                success, load_time = await bot.load_cog_with_timing(cog)
+                if success:
+                    return True, load_time, ""
+            except Exception as e:
+                error_type, error_desc = cls.categorize_error(e)
+                error_msg = f"{error_type}: {error_desc}"
+                if attempt < max_retries - 1 and cog in ["cogs.Help", "cogs.ModMail", "cogs.unique.SyncRoles"]:
+                    await asyncio.sleep(1)  # Wait before retry
+                    continue
+                break
+        
+        return False, time.time() - start_time, error_msg
+
     @classmethod
     async def load_all_cogs(cls, bot: BronxBot) -> Tuple[int, int]:
-        """Load all cogs and return success/error counts"""
+        """Load all cogs with enhanced error handling"""
         start_time = time.time()
         results = []
+        failed_cogs = []
         max_cog_length = max(len(cog) for cog in COG_DATA['cogs'])
-        
-        total_success = 0
-        total_errors = 0
         
         for cog, cog_type in COG_DATA['cogs'].items():
             color_code = cls.get_color_escape(cog_type)
-            success, load_time = await bot.load_cog_with_timing(cog)
+            success, load_time, error_msg = await cls.load_cog_with_retries(bot, cog)
             
             if success:
                 status = "LOADED"
                 status_color = cls.get_color_escape('success')
-                total_success += 1
             else:
                 status = "ERROR"
                 status_color = cls.get_color_escape('error')
-                total_errors += 1
+                failed_cogs.append((cog, error_msg))
             
             cog_display = f"{color_code}{cog.ljust(max_cog_length)}\033[0m"
             status_display = f"{status_color}{status}\033[0m"
             time_display = f"{load_time:.2f}s"
             
             result_line = f"[bronxbot] {cog_display} : {status_display} ({time_display})"
+            if not success:
+                result_line += f"\n         {cls.get_color_escape('error')}→ {error_msg}\033[0m"
+            
             results.append((cog_type, result_line))
         
         total_time = time.time() - start_time
         results.append(('info', f"\nTotal loading time: {total_time:.2f}s"))
         
+        # Add critical failures section if any essential cogs failed
+        critical_cogs = {"cogs.Help", "cogs.ModMail", "cogs.unique.SyncRoles"}
+        critical_failures = [cog for cog, _ in failed_cogs if cog in critical_cogs]
+        if critical_failures:
+            results.append(('error', "\n⚠️ Critical cog(s) failed to load:"))
+            for cog in critical_failures:
+                results.append(('error', f"  • {cog}"))
+        
         cls.display_results(results)
-        return total_success, total_errors
+        return len([r for r in results if "LOADED" in r[1]]), len(failed_cogs)
 
     @staticmethod
     def display_results(results: List[Tuple[str, str]]) -> None:
-        """Display cog loading results in organized format"""
+        """Display cog loading results with enhanced formatting"""
         results.sort(key=lambda x: x[0])
         print(f"{CogLoader.get_color_escape('info')}=== COG LOADING STATUS ===\033[0m")
     
