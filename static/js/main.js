@@ -6,14 +6,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const uptimeElement = document.getElementById('uptime');
         if (!uptimeElement) return;
 
-        const botStartTime = parseInt(uptimeElement.dataset.uptime);
-        const now = Math.floor(new Date().getTime() / 1000);
-        const diff = Math.max(0, now - botStartTime); // Ensure positive difference
+        const uptimeSeconds = parseInt(uptimeElement.dataset.uptime);
         
-        const days = Math.floor(diff / 86400);
-        const hours = Math.floor((diff % 86400) / 3600);
-        const minutes = Math.floor((diff % 3600) / 60);
-        const seconds = diff % 60;
+        const days = Math.floor(uptimeSeconds / 86400);
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+        const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+        const seconds = uptimeSeconds % 60;
         
         uptimeElement.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
     }

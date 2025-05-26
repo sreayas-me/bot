@@ -132,7 +132,8 @@ def servers():
         
     return render_template('servers.html', 
         guilds=manage_guilds,
-        username=request.cookies.get('username', 'User')
+        username=request.cookies.get('username', 'User'),
+        config={'CLIENT_ID': DISCORD_CLIENT_ID}
     )
 
 @app.route('/servers/<guild_id>/settings')

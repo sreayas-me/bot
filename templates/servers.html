@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BronxBot - Server List</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="sidebar-menu">
+                <a href="/" class="sidebar-item">
+                    <i class="fas fa-home"></i>
+                    <span>Overview</span>
+                </a>
+                <a href="/settings" class="sidebar-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+                <a href="/servers" class="sidebar-item active">
+                    <i class="fas fa-server"></i>
+                    <span>Servers</span>
+                </a>
+                <a href="/stats" class="sidebar-item">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Statistics</span>
+                </a>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <section class="hero">
+                <h1>Your Servers</h1>
+                <p>Manage bot settings for your Discord servers</p>
+            </section>
+
+            <div class="server-grid">
+                {% for guild in guilds %}
+                <div class="server-card">
+                    {% if guild.icon %}
+                    <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png" alt="{{ guild.name }} icon" class="server-icon">
+                    {% else %}
+                    <div class="server-icon default-icon">
+                        {{ guild.name[:2] }}
+                    </div>
+                    {% endif %}
+                    
+                    <h3>{{ guild.name }}</h3>
+                    
+                    {% if guild.bot_present %}
+                    <span class="bot-status present">
+                        <i class="fas fa-check"></i> Bot Added
+                    </span>
+                    <a href="/servers/{{ guild.id }}/settings" class="settings-button">
+                        <i class="fas fa-cog"></i> Settings
+                    </a>
+                    {% else %}
+                    <span class="bot-status not-present">
+                        <i class="fas fa-times"></i> Bot Not Added
+                    </span>
+                    <a href="https://discord.com/api/oauth2/authorize?client_id={{ config.CLIENT_ID }}&permissions=8&scope=bot%20applications.commands&guild_id={{ guild.id }}" class="add-bot-button">
+                        <i class="fas fa-plus"></i> Add Bot
+                    </a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
