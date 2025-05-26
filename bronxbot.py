@@ -10,7 +10,7 @@ import traceback
 import threading
 from app import run
 # BronxBot - A Discord bot for the Bronx community
-from discord.ext import commands
+from discord.ext import commands, tasks
 from typing import Dict, List, Tuple
 
 # config
@@ -65,6 +65,29 @@ class BronxBot(commands.AutoShardedBot):
             load_time = time.time() - start_time
             self.cog_load_times[cog_name] = load_time
             return False, load_time
+
+    @tasks.loop(seconds=30)
+    async def update_stats(self):
+        """Update bot stats via API every 30 seconds"""
+        try:
+            stats = {
+                'server_count': len(self.guilds),
+                'user_count': sum(g.member_count for g in self.guilds),
+                'uptime': time.time() - self.start_time,
+                'latency': round(self.latency * 1000, 2)
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post('http://localhost:5000/api/stats', 
+                                      json=stats) as resp:
+                    if resp.status != 200:
+                        print(f"Failed to update stats: {resp.status}")
+        except Exception as e:
+            print(f"Error updating stats: {e}")
+
+    @update_stats.before_loop
+    async def before_update_stats(self):
+        await self.wait_until_ready()
 
 bot = BronxBot(command_prefix='.', intents=intents)
 bot.remove_command('help')
@@ -167,6 +190,10 @@ class CogLoader:
 @bot.event
 async def on_ready():
     """Called when the bot is ready"""
+    # Start the stats update loop
+    if not bot.update_stats.is_running():
+        bot.update_stats.start()
+
     guild_cache_start = time.time()
     # Build guild cache
     for guild in bot.guilds:

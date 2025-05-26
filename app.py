@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, request, make_response, url_for
+from flask import Flask, render_template, redirect, request, make_response, url_for, jsonify
 from werkzeug.serving import make_server
 import requests
 import json
@@ -17,6 +17,14 @@ DISCORD_CLIENT_SECRET = config['CLIENT_SECRET']
 DISCORD_REDIRECT_URI = 'http://localhost:5000/callback'
 DISCORD_BOT_OWNER_ID = config['OWNER_ID']
 
+# Global stats dictionary
+bot_stats = {
+    'server_count': 0,
+    'user_count': 0,
+    'uptime': 0,
+    'latency': 0
+}
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -26,17 +34,19 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+@app.route('/api/stats', methods=['GET', 'POST'])
+def api_stats():
+    global bot_stats
+    if request.method == 'POST':
+        bot_stats.update(request.json)
+        return jsonify({"status": "success"})
+    return jsonify(bot_stats)
+
 @app.route('/')
 def home():
     user_id = request.cookies.get('user_id')
     if user_id and user_id == DISCORD_BOT_OWNER_ID:
         username = request.cookies.get('username', 'User')
-        bot_stats = {
-            'server_count': len(bot.guilds) if 'bot' in globals() else 0,
-            'user_count': sum(g.member_count for g in bot.guilds) if 'bot' in globals() else 0,
-            'uptime': time.time() - bot.start_time if 'bot' in globals() else 0,
-            'latency': round(bot.latency * 1000, 2) if 'bot' in globals() else 0
-        }
         return render_template('index.html', username=username, stats=bot_stats)
     return render_template('home.html')
 
