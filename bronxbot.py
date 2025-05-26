@@ -117,8 +117,8 @@ class CogLoader:
         """Load all cogs and display results grouped by type"""
         results = []
         errors = []
-        
-        print(f"{cls.get_color_escape('info')}=== COG LOADING STATUS ===\033[0m")
+
+        print(f"{cls.get_color_escape('info')}=== COG LOADING STATUS ==={'^' * 28}\033[0m".center(100))
         
         cog_groups = {}
         for cog, cog_type in COG_DATA["cogs"].items():

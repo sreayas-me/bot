@@ -52,11 +52,33 @@ class Utility(commands.Cog, ErrorHandler):
         embed = discord.Embed(
             description=(f"**{guild.name}**\n\n"
                       f"Members: `{guild.member_count}`\n"
+                      f"Owner: `{guild.owner.display_name}`\n"
+                    f"*Verification Level: `{guild.verification_level}`*\n"
+                    f"Boosts: `{guild.premium_subscription_count}`\n"
+                    f"Boost Level: `{guild.premium_tier}`\n"
                       f"Created: `{guild.created_at.strftime('%Y-%m-%d')}`\n"
                       f"Roles: `{len(guild.roles)}`\n"
-                      f"Channels: `{len(guild.channels)}`"),
-            color=0x2b2d31
+                      f"Channels: `{len(guild.channels)}`"
+                        f"\n\n**Channels:**\n"
+                            f"Voice Channels: `{len(guild.voice_channels)}`\n"
+                            f"Text Channels: `{len(guild.text_channels)}`"
+                        f"\n\n**Emojis:**\n"
+                            f"Custom Emojis: `{len(guild.emojis)}`\n"
+                            f"Animated Emojis: `{len([e for e in guild.emojis if e.animated])}`"),
+            color=0x2b2d31,
+            timestamp=discord.utils.utcnow()
         )
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else discord.Embed.Empty)
+        embed.set_image(url=guild.banner.url if guild.banner else discord.Embed.Empty)
+        embed.set_footer(text=f"ID: {guild.id}")
+        if guild.description:
+            embed.description += f"\n\n**Description:** {guild.description}"
+        if guild.features:
+            embed.add_field(name="Features", value=", ".join(guild.features), inline=False)
+        if guild.system_channel:
+            embed.add_field(name="System Channel", value=guild.system_channel.mention, inline=False)
+        if guild.rules_channel:
+            embed.add_field(name="Rules Channel", value=guild.rules_channel.mention, inline=False)
         await ctx.reply(embed=embed)
 
     @commands.command(aliases=['ui'])
