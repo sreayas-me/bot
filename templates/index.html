@@ -23,28 +23,57 @@
         </div>
     </nav>
 
-    <section class="hero">
-        <h1>Welcome back, {{ username }}! 👋</h1>
-        <p>Here's your bot's current status and statistics</p>
-    </section>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="sidebar-menu">
+                <a href="#" class="sidebar-item active">
+                    <i class="fas fa-home"></i>
+                    <span>Overview</span>
+                </a>
+                <a href="#" class="sidebar-item">
+                    <i class="fas fa-terminal"></i>
+                    <span>Commands</span>
+                </a>
+                <a href="#" class="sidebar-item">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Statistics</span>
+                </a>
+                <a href="#" class="sidebar-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+                <a href="#" class="sidebar-item">
+                    <i class="fas fa-users"></i>
+                    <span>Members</span>
+                </a>
+            </div>
+        </aside>
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <h3>Servers</h3>
-            <p>{{ stats.server_count }}</p>
-        </div>
-        <div class="stat-card">
-            <h3>Users</h3>
-            <p>{{ stats.user_count }}</p>
-        </div>
-        <div class="stat-card">
-            <h3>Uptime</h3>
-            <p id="uptime" data-uptime="{{ stats.uptime }}">Calculating...</p>
-        </div>
-        <div class="stat-card">
-            <h3>Latency</h3>
-            <p>{{ stats.latency }}ms</p>
-        </div>
+        <main class="main-content">
+            <section class="hero">
+                <h1>Welcome back, {{ username }}! 👋</h1>
+                <p>Here's your bot's current status and statistics</p>
+            </section>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Servers</h3>
+                    <p>{{ stats.server_count }}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Users</h3>
+                    <p>{{ stats.user_count }}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Uptime</h3>
+                    <p id="uptime" data-uptime="{{ stats.uptime }}">Calculating...</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Latency</h3>
+                    <p>{{ stats.latency }}ms</p>
+                </div>
+            </div>
+        </main>
     </div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
