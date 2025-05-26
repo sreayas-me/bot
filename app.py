@@ -193,6 +193,33 @@ async def update_settings(guild_id):
     
     return redirect(f'/servers/{guild_id}/settings')
 
+@app.route('/settings')
+@login_required
+def settings_select():
+    """Show server selection for settings"""
+    access_token = request.cookies.get('access_token')
+    if not access_token:
+        return redirect('/login')
+        
+    user_guilds = get_user_guilds(access_token)
+    bot_guilds = get_bot_guilds()
+    
+    # Filter guilds where user has manage server permission
+    manage_guilds = [
+        guild for guild in user_guilds 
+        if (int(guild['permissions']) & 0x20) == 0x20
+    ]
+    
+    # Add bot presence info
+    for guild in manage_guilds:
+        guild['bot_present'] = str(guild['id']) in bot_guilds
+        guild['icon_url'] = f"https://cdn.discordapp.com/icons/{guild['id']}/{guild['icon']}.png" if guild['icon'] else None
+    
+    return render_template('settings_select.html',
+        guilds=manage_guilds,
+        username=request.cookies.get('username', 'User')
+    )
+
 def run_server():
     global server
     server = make_server('127.0.0.1', 5000, app)

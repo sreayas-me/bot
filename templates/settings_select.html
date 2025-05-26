@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Server - BronxBot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-content">
+            <a href="/" class="nav-brand">BronxBot</a>
+            <div class="nav-links">
+                <a href="/settings" class="nav-link active">Settings</a>
+                <a href="/logout" class="nav-link">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <main class="main-content centered">
+            <section class="server-select">
+                <h1>Select a Server</h1>
+                <p>Choose a server to configure BronxBot settings</p>
+                
+                <div class="server-grid">
+                    {% for guild in guilds %}
+                        <a href="{{ '/servers/' + guild.id + '/settings' if guild.bot_present else '#' }}" 
+                           class="server-card {{ 'disabled' if not guild.bot_present }}">
+                            <div class="server-icon">
+                                {% if guild.icon_url %}
+                                    <img src="{{ guild.icon_url }}" alt="{{ guild.name }}">
+                                {% else %}
+                                    <i class="fas fa-server"></i>
+                                {% endif %}
+                            </div>
+                            <div class="server-info">
+                                <h3>{{ guild.name }}</h3>
+                                <span class="server-status {{ 'active' if guild.bot_present else 'inactive' }}">
+                                    {{ 'Bot Active' if guild.bot_present else 'Bot Not Added' }}
+                                </span>
+                            </div>
+                        </a>
+                    {% endfor %}
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
