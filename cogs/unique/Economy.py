@@ -62,6 +62,7 @@ class Economy(commands.Cog):
         self.active_games.discard(ctx.author.id)
 
     @commands.command(name="balance", aliases=["bal"])
+    @commands.cooldown(1, 3, commands.BucketType.user)
     async def balance(self, ctx, member: discord.Member = None):
         """Check your balance or someone else's"""
         member = member or ctx.author
@@ -69,6 +70,7 @@ class Economy(commands.Cog):
         await ctx.reply(f"{member.mention}'s balance: **{balance}** {self.currency}")
 
     @commands.command(name="pay", aliases=["transfer"])
+    @commands.cooldown(1, 3, commands.BucketType.user)
     async def pay(self, ctx, member: discord.Member, amount: int):
         """Transfer money to another user"""
         if amount <= 0:
@@ -83,6 +85,7 @@ class Economy(commands.Cog):
             await ctx.reply("Insufficient funds!")
 
     @commands.command(aliases=['slot'])
+    @commands.cooldown(1, 3, commands.BucketType.user)
     async def slots(self, ctx, bet: int = 10):
         """Play the slot machine"""
         if bet < 10:
@@ -169,6 +172,7 @@ class Economy(commands.Cog):
         await ctx.reply(f"You stole **{stolen}** {self.currency} from {victim.mention}!")
 
     @commands.command(aliases=['lb'])
+    @commands.cooldown(1, 3, commands.BucketType.user)
     async def leaderboard(self, ctx):
         """View the richest users"""
         users = await db.db.economy.find().sort('balance', -1).limit(10).to_list(10)
@@ -186,6 +190,7 @@ class Economy(commands.Cog):
         await ctx.reply(embed=embed)
 
     @commands.command()
+    @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop(self, ctx):
         """View available items in the shop"""
         pages = []
@@ -260,6 +265,7 @@ class Economy(commands.Cog):
         await ctx.reply(f"Successfully purchased **{item['name']}**!")
 
     @commands.command(aliases=['cf'])
+    @commands.cooldown(1, 3, commands.BucketType.user)
     async def coinflip(self, ctx, bet: int, choice: str):
         """Bet on a coinflip (heads/tails)"""
         if bet < 10:
@@ -285,10 +291,6 @@ class Economy(commands.Cog):
         """Global error handler for economy commands"""
         if hasattr(error, "original"):
             error = error.original
-
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"Command on cooldown! Try again in **{format_cooldown(error.retry_after)}**")
-            return
         
         self.logger.error(f"Unhandled error in {ctx.command}: {error}")
         await ctx.reply("An error occurred while processing your command")
@@ -310,6 +312,8 @@ class Economy(commands.Cog):
             await ctx.reply("Please specify both a user and an amount!")
         elif isinstance(error, commands.BadArgument):
             await ctx.reply("Invalid amount specified!")
+        elif isinstance(error, commands.CommandOnCooldown):
+            await ctx.reply(f"A good robber doesnt move so fast!\nTry again in **{format_cooldown(error.retry_after)}**")
         else:
             await ctx.reply("Failed to process transaction")
             self.logger.error(f"Transfer error in {ctx.command}: {error}")
