@@ -29,7 +29,20 @@ intents.reactions = True
 
 class BronxBot(commands.AutoShardedBot):
     def __init__(self, *args, **kwargs):
+        self.boot_metrics = {
+            'start_time': time.time(),
+            'config_load_time': 0,
+            'cog_load_times': {},
+            'total_cog_load_time': 0,
+            'guild_cache_time': 0,
+            'total_boot_time': 0,
+            'ready_time': 0
+        }
+        
+        config_start = time.time()
         super().__init__(*args, **kwargs)
+        self.boot_metrics['config_load_time'] = time.time() - config_start
+        
         self.start_time = time.time()
         self.cog_load_times = {}
         self.restart_channel = None
@@ -150,17 +163,35 @@ class CogLoader:
 @bot.event
 async def on_ready():
     """Called when the bot is ready"""
+    guild_cache_start = time.time()
+    # Build guild cache
+    for guild in bot.guilds:
+        await guild.chunk()
+    bot.boot_metrics['guild_cache_time'] = time.time() - guild_cache_start
+    
     if bot.restart_channel and bot.restart_message:
         try:
             channel = await bot.fetch_channel(bot.restart_channel)
             message = await channel.fetch_message(bot.restart_message)
             
-            total_time = time.time() - bot.start_time
+            bot.boot_metrics['total_boot_time'] = time.time() - bot.boot_metrics['start_time']
+            bot.boot_metrics['ready_time'] = time.time() - bot.start_time
+            bot.boot_metrics['total_cog_load_time'] = sum(bot.cog_load_times.values())
+            
+            boot_info = (
+                f"✅ Boot completed in `{bot.boot_metrics['total_boot_time']:.2f}s`\n\n"
+                f"**Boot Metrics:**\n"
+                f"• Config Load: `{bot.boot_metrics['config_load_time']:.2f}s`\n"
+                f"• Guild Cache: `{bot.boot_metrics['guild_cache_time']:.2f}s`\n"
+                f"• Total Cog Load: `{bot.boot_metrics['total_cog_load_time']:.2f}s`\n"
+                f"• Ready Time: `{bot.boot_metrics['ready_time']:.2f}s`\n\n"
+                f"**Individual Cog Load Times:**\n" + 
+                "\n".join([f"• `{cog.split('.')[-1]}: {time:.2f}s`" 
+                          for cog, time in sorted(bot.cog_load_times.items())])
+            )
+            
             embed = discord.Embed(
-                description=f"✅ Restart completed in `{total_time:.2f}s`\n\n"
-                           f"**Cog Load Times:**\n" + 
-                           "\n".join([f"`{cog.split('.')[-1]}: {time:.2f}s`" 
-                                    for cog, time in sorted(bot.cog_load_times.items())]),
+                description=boot_info,
                 color=discord.Color.green()
             )
             await message.edit(embed=embed)
@@ -228,10 +259,47 @@ async def on_guild_join(guild):
 async def on_command_error(ctx: commands.Context, error: Exception):
     """Handle command errors"""
     if isinstance(error, commands.CommandNotFound):
-        print(f"[!] Command not found: {ctx.command}")
         return
+    elif isinstance(error, commands.NotOwner):
+        embed = discord.Embed(
+            title="Error",
+            description="❌ This command can only be used by the bot owner.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed, delete_after=10)
+    elif isinstance(error, commands.MissingPermissions):
+        perms = ', '.join(error.missing_permissions)
+        embed = discord.Embed(
+            title="Error",
+            description=f"❌ You need the following permissions: `{perms}`",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed, delete_after=10)
+    elif isinstance(error, commands.BotMissingPermissions):
+        perms = ', '.join(error.missing_permissions)
+        embed = discord.Embed(
+            title="Error",
+            description=f"❌ I need the following permissions: `{perms}`",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed, delete_after=10)
+    elif isinstance(error, commands.MissingRequiredArgument):
+        embed = discord.Embed(
+            title="Error",
+            description=f"❌ Missing required argument: `{error.param.name}`",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed, delete_after=10)
+    elif isinstance(error, commands.CommandOnCooldown):
+        embed = discord.Embed(
+            title="Cooldown",
+            description=f"⏰ Try again in {error.retry_after:.2f}s",
+            color=discord.Color.gold()
+        )
+        await ctx.send(embed=embed, delete_after=5)
     else:
-        raise error
+        print(f"Unhandled error in {ctx.command}: {error}")
+        traceback.print_exception(type(error), error, error.__traceback__)
 
 @bot.command(name="restart", aliases=["reboot"])
 @commands.is_owner()
