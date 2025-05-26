@@ -5,7 +5,11 @@ import time
 import sys
 import os
 import asyncio
+import aiohttp
 import traceback
+import threading
+from app import run
+# BronxBot - A Discord bot for the Bronx community
 from discord.ext import commands
 from typing import Dict, List, Tuple
 
@@ -330,4 +334,12 @@ if os.path.exists("data/restart_info.json"):
         print(f"Failed to load restart info: {e}")
 
 if __name__ == "__main__":
-    bot.run(config['TOKEN'])
+    from app import run_server, shutdown_server
+    flask_thread = threading.Thread(target=run_server)
+    flask_thread.daemon = True  # This ensures the thread stops when the main program exits
+    flask_thread.start()
+    
+    try:
+        bot.run(config['TOKEN'])
+    finally:
+        shutdown_server()

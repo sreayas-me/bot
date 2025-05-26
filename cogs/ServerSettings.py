@@ -132,7 +132,7 @@ class ServerSettings(commands.Cog, ErrorHandler):
             "author": {
                 "name": "Welcome {name}!",
                 "icon_url": "{avatar_url}",
-                "url": "https://discord.gg/invite"
+                "url": "https://discord.gg/discord"
             },
             "title": "Welcome to {server}",
             "url": "https://your-url.com",

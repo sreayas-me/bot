@@ -6,24 +6,41 @@
 - MongoDB instance (local or cloud)
 - Discord Bot Token
 - pip (Python package manager)
+- systemd (for Linux service)
 
 ## Initial Setup
 
 1. Clone the repository
-2. Install dependencies:
+2. Install Python venv package:
 ```bash
-pip install -r requirements.txt
+sudo apt install python3.12-venv python3-pip
 ```
 
-3. Copy `config.example.json` to `data/config.json` and fill in:
-```json
-{
-    "TOKEN": "your-bot-token-here",
-    "OWNER_IDS": ["your-discord-id"],
-    "OWNER_REPLY": ["nickname1", "nickname2"],
-    "MONGO_URI": "mongodb://localhost:27017"  # or your MongoDB connection string
-}
+3. Create and activate virtual environment:
+```bash
+python3 -m venv venv
+source venv/bin/activate
 ```
+
+4. Install dependencies:
+```bash
+pip install flask discord.py python-dotenv gunicorn
+```
+
+5. Set up the service:
+```bash
+sudo cp bronxbot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable bronxbot
+sudo systemctl start bronxbot
+```
+
+## Web Interface
+
+The bot includes a web interface running on port 5000. To access:
+1. Make sure the service is running
+2. Visit http://localhost:5000
+3. For external access, configure your firewall to allow port 5000
 
 ## Configuration Details
 
@@ -42,29 +59,26 @@ Make sure these directories exist:
 bronxbot/
 ├── data/           # Bot data storage
 ├── cogs/           # Bot commands and features
+├── templates/      # Web interface templates
 └── utils/          # Utility functions
 ```
 
-## First Launch
+## Service Management
 
-1. Start MongoDB service (if using local instance)
-2. Create required directories:
+Start the bot:
 ```bash
-mkdir -p data
+sudo systemctl start bronxbot
 ```
 
-3. Start the bot:
+Check status:
 ```bash
-python bronxbot.py
+sudo systemctl status bronxbot
 ```
 
-## Required Data Files
-
-The bot expects these files in the `data` directory:
-- `config.json`: Main configuration
-- `welcome.json`: Welcome messages and settings
-- `shop.json`: Shop items and settings (created automatically)
-- `modmail.json`: ModMail tickets (created automatically)
+View logs:
+```bash
+sudo journalctl -u bronxbot -f
+```
 
 ## Common Issues
 
@@ -81,6 +95,11 @@ The bot expects these files in the `data` directory:
    - Ensure write permissions in `data` directory
    - Check file ownership matches running user
 
+4. **Web Interface Issues**
+   - Check if port 5000 is available
+   - Verify permissions for web templates
+   - Ensure Flask is installed correctly
+
 ## Support
 
 If you need help:
@@ -89,5 +108,5 @@ If you need help:
 3. Ensure MongoDB is accessible
 4. Check bot has required permissions in Discord
 
-For more help, join the [support server](https://discord.gg/furryporn).
+For more help, join the [support server](https://discord.gg/jUnNzm29Un).
 > This bot was coded using VISUAL STUDIO CODE on LINUX MINT, if your OS is different, expect different problems.
