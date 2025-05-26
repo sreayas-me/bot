@@ -512,3 +512,47 @@ section h2 {
 .server-status.inactive {
     color: var(--warning);
 }
+
+/* Server Action Styles */
+.server-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.server-card.active {
+    background: linear-gradient(135deg, var(--secondary), #40444b);
+    border: 1px solid #40444b;
+}
+
+.server-card.active:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.settings-hint {
+    font-size: 0.8rem;
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.server-card.active:hover .settings-hint {
+    color: var(--text);
+}
+
+.add-bot-link {
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: color 0.3s ease;
+}
+
+.add-bot-link:hover {
+    color: var(--text);
+}

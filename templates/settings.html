@@ -32,22 +32,50 @@
                 
                 <div class="server-grid">
                     {% for guild in guilds %}
-                        <a href="{{ '/servers/' + guild.id + '/settings' if guild.bot_present else '#' }}" 
-                           class="server-card {{ 'disabled' if not guild.bot_present }}">
-                            <div class="server-icon">
-                                {% if guild.icon_url %}
-                                    <img src="{{ guild.icon_url }}" alt="{{ guild.name }}">
-                                {% else %}
-                                    <i class="fas fa-server"></i>
-                                {% endif %}
+                        {% if guild.bot_present %}
+                            <a href="{{ '/servers/' + guild.id + '/settings' }}" class="server-card active">
+                                <div class="server-icon">
+                                    {% if guild.icon_url %}
+                                        <img src="{{ guild.icon_url }}" alt="{{ guild.name }}">
+                                    {% else %}
+                                        <i class="fas fa-server"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="server-info">
+                                    <h3>{{ guild.name }}</h3>
+                                    <div class="server-actions">
+                                        <span class="server-status active">
+                                            <i class="fas fa-check"></i> Bot Active
+                                        </span>
+                                        <span class="settings-hint">
+                                            <i class="fas fa-cog"></i> Configure Settings
+                                        </span>
+                                    </div>
+                                </div>
+                            </a>
+                        {% else %}
+                            <div class="server-card disabled">
+                                <div class="server-icon">
+                                    {% if guild.icon_url %}
+                                        <img src="{{ guild.icon_url }}" alt="{{ guild.name }}">
+                                    {% else %}
+                                        <i class="fas fa-server"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="server-info">
+                                    <h3>{{ guild.name }}</h3>
+                                    <div class="server-actions">
+                                        <span class="server-status inactive">
+                                            <i class="fas fa-times"></i> Bot Not Added
+                                        </span>
+                                        <a href="https://discord.com/api/oauth2/authorize?client_id={{ config.CLIENT_ID }}&permissions=8&scope=bot%20applications.commands&guild_id={{ guild.id }}" 
+                                           class="add-bot-link">
+                                            <i class="fas fa-plus"></i> Add Bot
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="server-info">
-                                <h3>{{ guild.name }}</h3>
-                                <span class="server-status {{ 'active' if guild.bot_present else 'inactive' }}">
-                                    {{ 'Bot Active' if guild.bot_present else 'Bot Not Added' }}
-                                </span>
-                            </div>
-                        </a>
+                        {% endif %}
                     {% endfor %}
                 </div>
             </section>

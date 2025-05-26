@@ -23,7 +23,8 @@ bot_stats = {
     'server_count': 0,
     'user_count': 0,
     'uptime': 0,
-    'latency': 0
+    'latency': 0,
+    'guilds': []  # List of guild IDs where bot is present
 }
 
 def login_required(f):
@@ -126,10 +127,11 @@ def servers():
         if (int(guild['permissions']) & 0x20) == 0x20  # Check for MANAGE_GUILD permission
     ]
     
-    # Mark guilds where bot is present
+    # Mark guilds where bot is present and add icon URLs
     for guild in manage_guilds:
-        guild['bot_present'] = guild['id'] in bot_guilds
-        
+        guild['bot_present'] = str(guild['id']) in bot_guilds
+        guild['icon_url'] = f"https://cdn.discordapp.com/icons/{guild['id']}/{guild['icon']}.png" if guild['icon'] else None
+    
     return render_template('servers.html', 
         guilds=manage_guilds,
         username=request.cookies.get('username', 'User'),
@@ -216,9 +218,10 @@ def settings_select():
         guild['bot_present'] = str(guild['id']) in bot_guilds
         guild['icon_url'] = f"https://cdn.discordapp.com/icons/{guild['id']}/{guild['icon']}.png" if guild['icon'] else None
     
-    return render_template('settings_select.html',
+    return render_template('settings.html',
         guilds=manage_guilds,
-        username=request.cookies.get('username', 'User')
+        username=request.cookies.get('username', 'User'),
+        config={'CLIENT_ID': DISCORD_CLIENT_ID}
     )
 
 def run_server():
