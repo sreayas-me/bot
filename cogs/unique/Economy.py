@@ -31,25 +31,59 @@ class Economy(commands.Cog):
         self.bot = bot
         self.logger = CogLogger(self.__class__.__name__)
         self.currency = "💰"
-        self.active_games = set()  # Remove ongoing_jackpots set
-        
+        self.active_games = set()
+
         # Slot machine configuration
         self.SLOT_EMOJIS = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
         self.SLOT_VALUES = {"🍒": 2, "🍋": 3, "🍊": 4, "🍇": 5, "7️⃣": 10, "💎": 15}
         self.SLOT_WEIGHTS = [30, 25, 20, 15, 8, 2]
 
-        # Shop items configuration
-        self.SHOP_ITEMS = {
-            "vip": {"name": "VIP Status", "price": 10000, "description": "Exclusive VIP role"},
-            "color": {"name": "Custom Color", "price": 5000, "description": "Custom role color"},
-            "title": {"name": "Custom Title", "price": 7500, "description": "Custom role name"},
-            "badge": {"name": "Rich Badge", "price": 25000, "description": "Special rich person badge"}
-        }
+        # Card values for blackjack
         self.CARD_VALUES = {
             "A": 11, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
             "8": 8, "9": 9, "10": 10, "J": 10, "Q": 10, "K": 10
         }
         self.CARD_SUITS = ["♠", "♥", "♦", "♣"]
+
+    async def get_shop_items(self, guild_id: int = None) -> dict:
+        """Get shop items from database"""
+        try:
+            # Get server-specific or global shop items
+            shop_id = f"server_{guild_id}" if guild_id else "global"
+            shop = await db.db.shops.find_one({"_id": shop_id})
+            
+            if shop:
+                return shop.get("items", {})
+                
+            # If no items found, initialize with defaults for global shop
+            if not guild_id:
+                default_items = {
+                    "vip": {
+                        "name": "VIP Role",
+                        "price": 10000,
+                        "description": "Get a special VIP role with unique color"
+                    },
+                    "color": {
+                        "name": "Custom Color", 
+                        "price": 5000,
+                        "description": "Create a custom colored role for yourself"
+                    },
+                    "bank_upgrade": {
+                        "name": "Bank Upgrade",
+                        "price": 2500,
+                        "description": "Increase your bank storage limit by 5000"
+                    }
+                }
+                await db.db.shops.insert_one({
+                    "_id": "global",
+                    "items": default_items
+                })
+                return default_items
+                
+            return {}
+        except Exception as e:
+            self.logger.error(f"Failed to get shop items: {e}")
+            return {}
 
     async def cog_before_invoke(self, ctx):
         """Check if user has an active game"""
@@ -268,7 +302,7 @@ class Economy(commands.Cog):
     async def daily(self, ctx):
         """Claim your daily reward"""
         amount = random.randint(100, 500)
-        await db.update_balance(ctx.author.id, amount, ctx.guild.id)
+        await db.update_wallet(ctx.author.id, amount, ctx.guild.id)
         await ctx.reply(f"Daily reward claimed! +**{amount}** {self.currency}")
 
     @commands.command()
@@ -286,19 +320,19 @@ class Economy(commands.Cog):
         if victim == ctx.author:
             return await ctx.reply("You can't rob yourself!")
         
-        victim_bal = await db.get_user_balance(victim.id, ctx.guild.id)
+        victim_bal = await db.get_wallet_balance(victim.id, ctx.guild.id)
         if victim_bal < 100:
             return await ctx.reply("They're too poor to rob!")
         
         chance = random.random()
         if chance < 0.6:  # 60% chance to fail
             fine = random.randint(50, 200)
-            await db.update_balance(ctx.author.id, -fine, ctx.guild.id)
+            await db.update_wallet(ctx.author.id, -fine, ctx.guild.id)
             return await ctx.reply(f"You got caught and paid **{fine}** {self.currency} in fines!")
         
         stolen = random.randint(50, min(victim_bal, 500))
-        await db.update_balance(victim.id, -stolen, ctx.guild.id)
-        await db.update_balance(ctx.author.id, stolen, ctx.guild.id)
+        await db.update_wallet(victim.id, -stolen, ctx.guild.id)
+        await db.update_wallet(ctx.author.id, stolen, ctx.guild.id)
         await ctx.reply(f"You stole **{stolen}** {self.currency} from {victim.mention}!")
 
     @commands.command(aliases=['lb'])
@@ -450,10 +484,14 @@ class Economy(commands.Cog):
     @commands.command()
     async def buy(self, ctx, item_id: str):
         """Buy an item from the shop"""
-        if item_id not in self.SHOP_ITEMS:
-            return await ctx.reply("Invalid item! Use `shop` to see available items.")
-        
-        item = self.SHOP_ITEMS[item_id]
+        items = await self.get_shop_items(ctx.guild.id)
+        if item_id not in items:
+            global_items = await self.get_shop_items()
+            if item_id not in global_items:
+                return await ctx.reply("Invalid item! Use `shop` to see available items.")
+            items = global_items
+
+        item = items[item_id]
         if not await db.update_balance(ctx.author.id, -item['price'], ctx.guild.id):
             return await ctx.reply("Insufficient funds!")
         
@@ -490,7 +528,7 @@ class Economy(commands.Cog):
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def coinflip(self, ctx, bet_amount: str, choice: str):
         """Bet on a coinflip (heads/tails)"""
-        balance = await db.get_user_balance(ctx.author.id, ctx.guild.id)
+        balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
         bet, error = parse_bet(bet_amount, balance)
         
         if error:
@@ -502,7 +540,7 @@ class Economy(commands.Cog):
         if choice.lower() not in ['heads', 'tails', 'h', 't']:
             return await ctx.reply("Choose either 'heads' or 'tails'!")
         
-        if not await db.update_balance(ctx.author.id, -bet, ctx.guild.id):
+        if not await db.update_wallet(ctx.author.id, -bet, ctx.guild.id):
             return await ctx.reply("Insufficient funds!")
         
         result = random.choice(['heads', 'tails'])
@@ -510,7 +548,7 @@ class Economy(commands.Cog):
         
         if (user_choice == 'h' and result == 'heads') or (user_choice == 't' and result == 'tails'):
             winnings = bet * 2
-            await db.update_balance(ctx.author.id, winnings, ctx.guild.id)
+            await db.update_wallet(ctx.author.id, winnings, ctx.guild.id)
             await ctx.reply(f"It's **{result}**! You won **{winnings}** {self.currency}!")
         else:
             await ctx.reply(f"It's **{result}**! You lost **{bet}** {self.currency}!")

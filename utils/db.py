@@ -371,4 +371,46 @@ class Database:
             logger.error(f"Failed to get global buff: {e}")
             return None
 
+    async def get_shop_items(self, guild_id: int = None) -> dict:
+        """Get shop items for global or server shop"""
+        try:
+            await self.ensure_connected()
+            if guild_id:
+                shop = await self.db.shops.find_one({"_id": f"server_{guild_id}"})
+            else:
+                shop = await self.db.shops.find_one({"_id": "global"})
+            return shop.get("items", {}) if shop else {}
+        except Exception as e:
+            logger.error(f"Failed to get shop items: {e}")
+            return {}
+
+    async def add_shop_item(self, item_data: dict, guild_id: int = None) -> bool:
+        """Add item to global or server shop"""
+        try:
+            await self.ensure_connected()
+            shop_id = f"server_{guild_id}" if guild_id else "global"
+            await self.db.shops.update_one(
+                {"_id": shop_id},
+                {"$set": {f"items.{item_data['id']}": item_data}},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add shop item: {e}")
+            return False
+
+    async def remove_shop_item(self, item_id: str, guild_id: int = None) -> bool:
+        """Remove item from global or server shop"""
+        try:
+            await self.ensure_connected()
+            shop_id = f"server_{guild_id}" if guild_id else "global"
+            result = await self.db.shops.update_one(
+                {"_id": shop_id},
+                {"$unset": {f"items.{item_id}": ""}}
+            )
+            return bool(result.modified_count)
+        except Exception as e:
+            logger.error(f"Failed to remove shop item: {e}")
+            return False
+
 db = Database(config["MONGO_URI"] if "MONGO_URI" in config else "mongodb://localhost:27017")

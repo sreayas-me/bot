@@ -84,23 +84,25 @@ class Admin(commands.Cog):
         """Get server-specific shop data"""
         return self.server_shops.get(str(guild_id), {"items": {}, "potions": {}})
 
-    @commands.group(name="adminshop", aliases=["ashop", "sshop"], invoke_without_command=True)
+    @commands.group(name="shopm", aliases=["ashop", "adminshop"], invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     async def adminshop_group(self, ctx):
-        """Server shop management commands"""
-        embed = discord.Embed(
-            description=(
-                "**Server Shop Management**\n"
-                "`.adminshop add <name> <price> <description>` - Add server item\n"
-                "`.adminshop potion <name> <price> <type> <mult> <duration>` - Add server potion\n"
-                "`.adminshop remove <name>` - Remove from server shop\n"
-                "`.adminshop list` - List server items\n\n"
-                "**Global Shop (Bot Admin Only)**\n"
-                "`.adminshop global ...` - Manage global shop"
-            ),
-            color=0x2b2d31
-        )
-        await ctx.send(embed=embed)
+        """Server shop management commands
+        shopManagement commands"""
+        if not ctx.invoked_subcommand:
+            embed = discord.Embed(
+                description=(
+                    "**Server Shop Management**\n"
+                    "`.adminshop add <name> <price> <description>` - Add server item\n"
+                    "`.adminshop potion <name> <price> <type> <mult> <duration>` - Add server potion\n"
+                    "`.adminshop remove <name>` - Remove from server shop\n"
+                    "`.adminshop list` - List server items\n\n"
+                    "**Global Shop (Bot Admin Only)**\n"
+                    "`.adminshop global ...` - Manage global shop"
+                ),
+                color=0x2b2d31
+            )
+            await ctx.send(embed=embed)
 
     @adminshop_group.command(name="add")
     @commands.has_permissions(administrator=True)
@@ -108,11 +110,96 @@ class Admin(commands.Cog):
         """Add an item to the server shop"""
         await self.server_add_item(ctx, name, price, description)
 
+    def parse_duration(self, duration_str: str) -> int:
+        """Parse duration string into minutes
+        Accepts formats: 10h, 10m, 1h, 5m 2s, 2s, 29s, 2.9s, 3.9m, 1e2s"""
+        try:
+            total_seconds = 0
+            parts = duration_str.lower().split()
+            
+            for part in parts:
+                if 'e' in part:  # Scientific notation
+                    num = float(part.rstrip('s'))
+                    total_seconds += num
+                    continue
+                    
+                number = ''
+                unit = ''
+                for char in part:
+                    if char.isdigit() or char == '.':
+                        number += char
+                    else:
+                        unit += char
+                
+                value = float(number)
+                if unit == 'h':
+                    total_seconds += value * 3600
+                elif unit == 'm':
+                    total_seconds += value * 60
+                elif unit == 's':
+                    total_seconds += value
+                    
+            return max(1, round(total_seconds / 60))  # Convert to minutes, minimum 1
+            
+        except Exception:
+            return None
+
+    def parse_multiplier(self, multiplier_str: str) -> float:
+        """Parse multiplier string into float
+        Accepts formats: 2.3x, 2x, 150%, 30%, 15x"""
+        try:
+            multiplier_str = multiplier_str.lower().strip()
+            if multiplier_str.endswith('%'):
+                # Convert percentage to multiplier (30% -> 1.3)
+                return 1 + (float(multiplier_str[:-1]) / 100)
+            elif multiplier_str.endswith('x'):
+                return float(multiplier_str[:-1])
+            else:
+                return float(multiplier_str)
+        except Exception:
+            return None
+
     @adminshop_group.command(name="potion")
     @commands.has_permissions(administrator=True)
     async def adminshop_potion(self, ctx, name: str = None, price: int = None, type: str = None,
-                        multiplier: float = None, duration: int = None, *, description: str = None):
+                        multiplier_str: str = None, duration_str: str = None, *, description: str = None):
         """Add a potion to the server shop"""
+        if not any([name, price, type, multiplier_str, duration_str]):
+            embed = discord.Embed(
+                title="Potion Creation Guide",
+                description=(
+                    "**Usage:** `.adminshop potion <name> <price> <type> <multiplier> <duration> [description]`\n\n"
+                    "**Available Buff Types:**\n" + 
+                    "\n".join(f"• **{k}** - {v['name']}: {v['description']}" for k,v in self.buff_types.items()) +
+                    "\n\n**Multiplier Formats:**\n"
+                    "• Percentage: `30%`, `150%`\n"
+                    "• Multiplier: `1.3x`, `2x`, `15x`\n"
+                    "\n**Duration Formats:**\n"
+                    "• Hours: `2h`, `1.5h`\n"
+                    "• Minutes: `30m`, `5m`\n"
+                    "• Seconds: `90s`, `1e2s`\n"
+                    "• Combined: `1h 30m`, `5m 30s`"
+                ),
+                color=0x2b2d31
+            )
+            await ctx.reply(embed=embed)
+            return
+
+        # Parse multiplier and duration
+        if multiplier_str:
+            multiplier = self.parse_multiplier(multiplier_str)
+            if multiplier is None:
+                return await ctx.reply("❌ Invalid multiplier format! Use `2x`, `150%`, etc.")
+        else:
+            multiplier = None
+
+        if duration_str:
+            duration = self.parse_duration(duration_str)
+            if duration is None:
+                return await ctx.reply("❌ Invalid duration format! Use `1h`, `30m`, `90s`, etc.")
+        else:
+            duration = None
+
         await self.server_add_potion(ctx, name, price, type, multiplier, duration, description)
 
     @adminshop_group.command(name="remove")
@@ -127,10 +214,11 @@ class Admin(commands.Cog):
         """List server shop items"""
         await self.server_list(ctx)
 
-    @adminshop_group.group(name="global", invoke_without_command=True)
+    @adminshop_group.group(name="global", aliases=["gshopm", "globalshopm"], invoke_without_command=True)
     @commands.is_owner()
     async def adminshop_global(self, ctx):
-        """Global shop management"""
+        """Global shop management
+        gshopManagement commands"""
         embed = discord.Embed(
             description=(
                 "**Global Shop Management**\n"
@@ -292,8 +380,44 @@ class Admin(commands.Cog):
     @adminshop_group.command(name="potion")
     @commands.has_permissions(administrator=True)
     async def adminshop_potion(self, ctx, name: str = None, price: int = None, type: str = None,
-                        multiplier: float = None, duration: int = None, *, description: str = None):
+                        multiplier_str: str = None, duration_str: str = None, *, description: str = None):
         """Add a potion to the server shop"""
+        if not any([name, price, type, multiplier_str, duration_str]):
+            embed = discord.Embed(
+                title="Potion Creation Guide",
+                description=(
+                    "**Usage:** `.adminshop potion <name> <price> <type> <multiplier> <duration> [description]`\n\n"
+                    "**Available Buff Types:**\n" + 
+                    "\n".join(f"• **{k}** - {v['name']}: {v['description']}" for k,v in self.buff_types.items()) +
+                    "\n\n**Multiplier Formats:**\n"
+                    "• Percentage: `30%`, `150%`\n"
+                    "• Multiplier: `1.3x`, `2x`, `15x`\n"
+                    "\n**Duration Formats:**\n"
+                    "• Hours: `2h`, `1.5h`\n"
+                    "• Minutes: `30m`, `5m`\n"
+                    "• Seconds: `90s`, `1e2s`\n"
+                    "• Combined: `1h 30m`, `5m 30s`"
+                ),
+                color=0x2b2d31
+            )
+            await ctx.reply(embed=embed)
+            return
+
+        # Parse multiplier and duration
+        if multiplier_str:
+            multiplier = self.parse_multiplier(multiplier_str)
+            if multiplier is None:
+                return await ctx.reply("❌ Invalid multiplier format! Use `2x`, `150%`, etc.")
+        else:
+            multiplier = None
+
+        if duration_str:
+            duration = self.parse_duration(duration_str)
+            if duration is None:
+                return await ctx.reply("❌ Invalid duration format! Use `1h`, `30m`, `90s`, etc.")
+        else:
+            duration = None
+
         await self.server_add_potion(ctx, name, price, type, multiplier, duration, description)
 
     @adminshop_group.command(name="remove")
@@ -451,21 +575,29 @@ class Admin(commands.Cog):
     @commands.cooldown(1, 900, commands.BucketType.user)
     async def trigger_buff(self, ctx, buff_type: str = None):
         """Trigger the next global buff (costs 300,000, requires 5M net worth)"""
-        # Check net worth requirement
-        wallet = await db.get_wallet_balance(ctx.author.id)
-        bank = await db.get_bank_balance(ctx.author.id)
-        net_worth = wallet + bank
+        is_owner = await self.bot.is_owner(ctx.author)
         
-        if net_worth < 5_000_000:
-            return await ctx.reply("❌ You need a net worth of 5,000,000 to use this command!")
+        if not is_owner:
+            # Check requirements for non-owners
+            wallet = await db.get_wallet_balance(ctx.author.id)
+            bank = await db.get_bank_balance(ctx.author.id)
+            net_worth = wallet + bank
+            
+            if net_worth < 5_000_000:
+                embed = discord.Embed(description="❌ You need a net worth of 5,000,000 to use this command!", color=0x2b2d31)
+                return await ctx.reply(embed=embed)
+                
+            if wallet < 300_000:
+                embed = discord.Embed(description="❌ You need 300,000 in your wallet!", color=0x2b2d31)
+                return await ctx.reply(embed=embed)
 
         if not buff_type:
             embed = discord.Embed(
                 description=(
-                    "**Available Global Buffs**\n"
-                    "Cost: 300,000 💰\n"
-                    "Requirement: 5M net worth\n\n"
-                    "**Usage:** `.trigger <buff>`\n\n"
+                    "**Available Global Buffs**\n" +
+                    ("Cost: Free (Bot Owner)\n" if is_owner else "Cost: 300,000 💰\n") +
+                    ("" if is_owner else "Requirement: 5M net worth\n") +
+                    "\n**Usage:** `.trigger <buff>`\n\n" +
                     "**Available Buffs:**\n" +
                     "\n".join(f"• **{k}** - {v['description']}\n  *Affects: {', '.join(v['commands'])}*" 
                             for k,v in self.buff_types.items())
@@ -475,12 +607,11 @@ class Admin(commands.Cog):
             return await ctx.reply(embed=embed)
 
         if buff_type not in self.buff_types:
-            return await ctx.reply("❌ Invalid buff type!")
+            embed = discord.Embed(description="❌ Invalid buff type!", color=0x2b2d31)
+            return await ctx.reply(embed=embed)
 
-        if wallet < 300_000:
-            return await ctx.reply("❌ You need 300,000 in your wallet!")
-
-        await db.update_wallet(ctx.author.id, -300_000)
+        if not is_owner:
+            await db.update_wallet(ctx.author.id, -300_000)
         
         expiry = datetime.datetime.now() + datetime.timedelta(minutes=15)
         await db.add_global_buff({
@@ -499,6 +630,96 @@ class Admin(commands.Cog):
                 f"Affects: {', '.join(buff_info['commands'])}\n\n"
                 f"Triggered by: {ctx.author.mention}"
             ),
+            color=0x2b2d31
+        )
+        await ctx.reply(embed=embed)
+
+    async def server_list(self, ctx):
+        """List items in server shop"""
+        shop_data = self.get_server_shop(ctx.guild.id)
+        
+        if not shop_data["items"] and not shop_data["potions"]:
+            return await ctx.reply("This server's shop is empty!")
+
+        embed = discord.Embed(title=f"{ctx.guild.name}'s Shop", color=0x2b2d31)
+        
+        # List items
+        if shop_data["items"]:
+            items_text = []
+            for item_id, item in shop_data["items"].items():
+                items_text.append(
+                    f"**{item['name']}** - {item['price']} 💰\n"
+                    f"{item['description']}"
+                )
+            if items_text:
+                embed.add_field(
+                    name="📦 Items",
+                    value="\n\n".join(items_text),
+                    inline=False
+                )
+        
+        # List potions
+        if shop_data["potions"]:
+            potions_text = []
+            for potion_id, potion in shop_data["potions"].items():
+                potions_text.append(
+                    f"**{potion['name']}** - {potion['price']} 💰\n"
+                    f"{potion['multiplier']}x {potion['type']} buff for {potion['duration']}min"
+                )
+            if potions_text:
+                embed.add_field(
+                    name="🧪 Potions",
+                    value="\n\n".join(potions_text),
+                    inline=False
+                )
+
+        await ctx.reply(embed=embed)
+
+    async def server_add_potion(self, ctx, name: str, price: int, type: str, multiplier: float, duration: int, description: str = None):
+        """Add a potion to the server shop"""
+        # Validate inputs
+        if not all([name, price, type, multiplier, duration]):
+            embed = discord.Embed(description="❌ Missing required arguments", color=0x2b2d31)
+            return await ctx.reply(embed=embed)
+
+        if type not in self.buff_types:
+            embed = discord.Embed(description="❌ Invalid buff type", color=0x2b2d31)
+            return await ctx.reply(embed=embed)
+
+        if price < 0:
+            embed = discord.Embed(description="❌ Price cannot be negative", color=0x2b2d31)
+            return await ctx.reply(embed=embed)
+
+        if multiplier <= 0:
+            embed = discord.Embed(description="❌ Multiplier must be positive", color=0x2b2d31)
+            return await ctx.reply(embed=embed)
+
+        if duration <= 0:
+            embed = discord.Embed(description="❌ Duration must be positive", color=0x2b2d31)
+            return await ctx.reply(embed=embed)
+
+        # Add potion to server shop
+        guild_id = str(ctx.guild.id)
+        if guild_id not in self.server_shops:
+            self.server_shops[guild_id] = {"items": {}, "potions": {}}
+
+        potion_id = name.lower().replace(" ", "_")
+        self.server_shops[guild_id]["potions"][potion_id] = {
+            "name": name,
+            "price": price,
+            "type": type,
+            "multiplier": multiplier,
+            "duration": duration,
+            "description": description or self.buff_types[type]["description"]
+        }
+
+        self.save_shop_data()
+        
+        embed = discord.Embed(
+            description=f"✨ Added potion **{name}** to server shop\n"
+                      f"Type: {type}\n"
+                      f"Effect: {multiplier}x for {duration}min\n"
+                      f"Price: {price} 💰",
             color=0x2b2d31
         )
         await ctx.reply(embed=embed)
