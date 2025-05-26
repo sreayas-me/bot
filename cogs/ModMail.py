@@ -16,6 +16,7 @@ class ModMail(commands.Cog, ErrorHandler):
         self.bot = bot
         self.staff_channel_id = 1259717946947670099
         self.data_file = "data/modmail.json"
+        self.allowed_guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
         
         # Ensure data directory exists
         os.makedirs("data", exist_ok=True)
@@ -63,19 +64,23 @@ class ModMail(commands.Cog, ErrorHandler):
             return
         if message.author.bot:
             return
-
-        guilds = [1259717095382319215, 1299747094449623111, 1142088882222022786]
         
         # Handle DM messages
         if isinstance(message.channel, discord.DMChannel):
             if str(message.author.id) not in self.active_tickets:
                 # Check for a simple "help" message
                 if message.content.lower().strip() == "help":
-                    help_embed = discord.Embed(
-                        description="To create a modmail ticket, send a message containing your issue.\nExample: `I need help with...`",
-                        color=discord.Color.blue()
-                    )
-                    await message.author.send(embed=help_embed)
+                    if not await self.can_use_modmail(message.author):
+                        embed = discord.Embed(
+                            description="Sorry, ModMail is only available to members of our servers.",
+                            color=discord.Color.red()
+                        )
+                    else:
+                        embed = discord.Embed(
+                            description="To create a modmail ticket, send a message containing your issue.\nExample: `I need help with...`",
+                            color=discord.Color.blue()
+                        )
+                    await message.author.send(embed=embed)
                 else:
                     await self.create_new_modmail(message)
             else:
@@ -88,7 +93,7 @@ class ModMail(commands.Cog, ErrorHandler):
             await self.handle_staff_reply(message)
         
         # Handle message stats for specific guilds
-        elif message.guild and message.guild.id in guilds:
+        elif message.guild and message.guild.id in self.allowed_guilds:
             await self.update_message_stats(message)
     
     
@@ -116,9 +121,27 @@ class ModMail(commands.Cog, ErrorHandler):
         except Exception as e:
             self.logger.error(f"Failed to update stats: {e}")
     
+    async def can_use_modmail(self, user: discord.User) -> bool:
+        """Check if user is in any of the allowed guilds"""
+        for guild_id in self.allowed_guilds:
+            guild = self.bot.get_guild(guild_id)
+            if guild and guild.get_member(user.id):
+                return True
+        return False
+    
     async def create_new_modmail(self, user_message):
         """Create a new modmail thread for a user's DM"""
         try:
+            # Check if user is allowed to use modmail
+            if not await self.can_use_modmail(user_message.author):
+                embed = discord.Embed(
+                    title="Access Denied",
+                    description="You must be a member of one of our servers to use ModMail.",
+                    color=discord.Color.red()
+                )
+                await user_message.author.send(embed=embed)
+                return
+
             staff_channel = self.bot.get_channel(self.staff_channel_id)
             if staff_channel is None:
                 self.logger.error(f"Staff channel {self.staff_channel_id} not found!")
@@ -299,6 +322,11 @@ class ModMail(commands.Cog, ErrorHandler):
     @commands.command(name="open", aliases=["openmail", "openmodmail", "omm", "mods"])
     async def open_modmail(self, ctx, *, message=None):
         """Open a new modmail thread"""
+        # Check if user is allowed to use modmail
+        if not await self.can_use_modmail(ctx.author):
+            await ctx.reply("You must be a member of one of our servers to use ModMail.")
+            return
+
         if not message or len(message) < 15:
             return await ctx.reply("Please give a reason to open a new modmail thread. Don't spam it please.")
         
@@ -384,7 +412,6 @@ async def setup(bot):
     """Setup function for the cog"""
     try:
         await bot.add_cog(ModMail(bot))
-        print("ModMail cog loaded successfully")
     except Exception as e:
         print(f"Failed to load ModMail cog: {e}")
         raise

@@ -34,6 +34,7 @@ class BronxBot(commands.AutoShardedBot):
         self.cog_load_times = {}
         self.restart_channel = None
         self.restart_message = None
+        self.MAIN_GUILD_IDS = MAIN_GUILD_IDS  # Add this line to fix the error
 
     async def load_cog_with_timing(self, cog_name: str) -> Tuple[bool, float]:
         """Load a cog and measure its loading time"""
