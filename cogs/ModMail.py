@@ -5,12 +5,14 @@ import json
 import os
 import random
 import sys
+from utils.error_handler import ErrorHandler
 
 with open("data/config.json", "r") as f:
     config = json.load(f)
 
-class ModMail(commands.Cog):
+class ModMail(commands.Cog, ErrorHandler):
     def __init__(self, bot):
+        ErrorHandler.__init__(self)
         self.bot = bot
         self.staff_channel_id = 1259717946947670099
         self.data_file = "data/modmail.json"
@@ -372,6 +374,11 @@ class ModMail(commands.Cog):
         except Exception as e:
             self.logger.error(f"Failed to close modmail: {e}")
             await ctx.send(f"Failed to close modmail: {e}")
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        if ctx.command and ctx.command.cog_name == self.__class__.__name__:
+            await self.handle_error(ctx, error)
 
 async def setup(bot):
     """Setup function for the cog"""

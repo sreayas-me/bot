@@ -8,9 +8,11 @@ import string
 import time
 import aiohttp
 from cogs.logging.logger import CogLogger
+from utils.error_handler import ErrorHandler
 
-class Fun(commands.Cog):
+class Fun(commands.Cog, ErrorHandler):
     def __init__(self, bot):
+        ErrorHandler.__init__(self)
         self.bot = bot
         # Cache for active games to prevent spam
         self.active_games = set()
@@ -533,6 +535,11 @@ class Fun(commands.Cog):
             await ctx.reply("```user not found in this server```")
         elif isinstance(error, commands.MissingRequiredArgument):
             await ctx.reply("```please mention a user```")
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        if ctx.command and ctx.command.cog_name == self.__class__.__name__:
+            await self.handle_error(ctx, error)
 
 
 async def setup(bot):

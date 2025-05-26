@@ -5,9 +5,11 @@ import datetime
 import asyncio
 from discord.ext import commands
 from cogs.logging.logger import CogLogger
+from utils.error_handler import ErrorHandler
 
-class Utility(commands.Cog):
+class Utility(commands.Cog, ErrorHandler):
     def __init__(self, bot):
+        ErrorHandler.__init__(self)
         self.bot = bot
         self.logger = CogLogger(self.__class__.__name__)
         self.bot.launch_time = discord.utils.utcnow()
@@ -211,6 +213,11 @@ class Utility(commands.Cog):
         self.logger.debug(f"First message requested in #{channel.name}")
         async for msg in channel.history(limit=1, oldest_first=True):
             await ctx.reply(f"```first message in #{channel.name}```\n{msg.jump_url}")
+
+    @commands.Cog.listener() 
+    async def on_command_error(self, ctx, error):
+        if ctx.command and ctx.command.cog_name == self.__class__.__name__:
+            await self.handle_error(ctx, error)
 
     def get_command_help(self) -> list[discord.Embed]:
         """Get paginated help embeds for this cog"""

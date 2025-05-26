@@ -493,4 +493,70 @@ class Database:
             logger.error(f"Failed to increase bank limit: {e}")
             return False
 
-db = Database(config["MONGO_URI"] if "MONGO_URI" in config else "mongodb://localhost:27017")
+    async def get_guild_settings(self, guild_id: int) -> dict:
+        """Get guild settings"""
+        try:
+            await self.ensure_connected()
+            settings = await self.db.guild_settings.find_one({"_id": guild_id})
+            if not settings:
+                default_settings = {
+                    "_id": guild_id,
+                    "prefixes": ["."],
+                    "welcome": {
+                        "enabled": False,
+                        "channel_id": None,
+                        "message": "Welcome {user} to {server}!",
+                        "dm_message": None
+                    },
+                    "moderation": {
+                        "log_channel": None,
+                        "mute_role": None,
+                        "jail_role": None
+                    }
+                }
+                await self.db.guild_settings.insert_one(default_settings)
+                return default_settings
+            return settings
+        except Exception as e:
+            logger.error(f"Failed to get guild settings: {e}")
+            return {}
+
+    async def update_guild_settings(self, guild_id: int, settings: dict) -> bool:
+        """Update guild settings"""
+        try:
+            await self.ensure_connected()
+            await self.db.guild_settings.update_one(
+                {"_id": guild_id},
+                {"$set": settings},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update guild settings: {e}")
+            return False
+
+    async def add_prefix(self, guild_id: int, prefix: str) -> bool:
+        """Add a prefix to guild settings"""
+        try:
+            await self.ensure_connected()
+            result = await self.db.guild_settings.update_one(
+                {"_id": guild_id},
+                {"$addToSet": {"prefixes": prefix}}
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add prefix: {e}")
+            return False
+
+    async def remove_prefix(self, guild_id: int, prefix: str) -> bool:
+        """Remove a prefix from guild settings"""
+        try:
+            await self.ensure_connected()
+            result = await self.db.guild_settings.update_one(
+                {"_id": guild_id},
+                {"$pull": {"prefixes": prefix}}
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to remove prefix: {e}")
+            return False

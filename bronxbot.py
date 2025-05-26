@@ -181,6 +181,49 @@ async def on_ready():
     await bot.change_presence(activity=activity)
 
 @bot.event
+async def on_guild_join(guild):
+    """Send welcome message when bot joins a new guild"""
+    # Find first available channel
+    channel = None
+    for ch in guild.text_channels:
+        try:
+            if ch.permissions_for(guild.me).send_messages:
+                channel = ch
+                break
+        except discord.HTTPException:
+            continue
+    
+    if not channel:
+        return
+
+    embed = discord.Embed(
+        description=(
+            f"Thanks for adding me! 👋\n\n"
+            "**What I can do:**\n"
+            "• Customizable welcome messages\n"
+            "• Economy & *Fake* Gambling\n"
+            "• Basic utility commands (!help)\n"
+            "• Fun commands and games\n"
+            "• Moderation tools\n\n"
+            "*The bot is still in active development, so feel free to suggest new features!*\n\n"
+            "**Quick Start:**\n"
+            "• Use .help to see available commands\n"
+            "• Use .help <command> for detailed info\n"
+            "• Join the [support server](https://discord.gg/furryporn)\n\n"
+            "Have fun! 🎉"
+        ),
+        color=discord.Color.blue()
+    )
+    
+    embed.set_thumbnail(url=bot.user.avatar.url)
+    embed.set_footer(text="made with 💜 by ks.net", icon_url=bot.user.avatar.url)
+    
+    try:
+        await channel.send(embed=embed)
+    except discord.HTTPException as e:
+        print(f"Failed to send welcome message in {guild.name}: {e}")
+
+@bot.event
 async def on_command_error(ctx: commands.Context, error: Exception):
     """Handle command errors"""
     if isinstance(error, commands.CommandNotFound):

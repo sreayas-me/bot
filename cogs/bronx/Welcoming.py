@@ -10,21 +10,17 @@ logger = CogLogger('Welcoming')
 async def welcomeEmbed(member):
     with open('data/welcome.json', 'r') as f:
         data = json.load(f)
-    character = random.choice(list(data['characters'].values()))
-    characters = data['characters']
-    character_key = random.choice(list(characters.keys()))
-    character_url = characters[character_key]
-    welcomeEmbed = discord.Embed(
-        description=f"\"{random.choice(data['messages'])}\"\n-# [Main Server](https://discord.gg/furryporn) |  [Backup Server](https://discord.gg/W563EnFwed) | [Appeal Server](https://discord.gg/6Th9dsw6rM)",
+    character_key = random.choice(list(data['characters'].keys()))
+    character_url = data['characters'][character_key]
+    
+    return discord.Embed(
+        description=f"\"{random.choice(data['messages'])}\"\n\n[main](https://discord.gg/furryporn) • [backup](https://discord.gg/W563EnFwed) • [appeal](https://discord.gg/6Th9dsw6rM)",
         color=discord.Color.random()
-    )
-    welcomeEmbed.set_author(
-        name=character_key.title(),
+    ).set_author(
+        name=character_key.lower(),
         icon_url=character_url,
         url="https://discord.gg/6Th9dsw6rM"
-    )
-    welcomeEmbed.set_footer(text="click the title to join the appeal server if you get banned", icon_url=member.guild.icon.url)
-    return welcomeEmbed
+    ).set_footer(text="click name to appeal if banned")
 
 class Welcoming(commands.Cog):
     def __init__(self, bot):
