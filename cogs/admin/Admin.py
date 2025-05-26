@@ -84,25 +84,7 @@ class Admin(commands.Cog):
         """Get server-specific shop data"""
         return self.server_shops.get(str(guild_id), {"items": {}, "potions": {}})
 
-    @commands.command(name="shop", aliases=["servershop"])
-    @commands.has_permissions(administrator=True)
-    async def server_shop(self, ctx):
-        """Server shop management commands"""
-        embed = discord.Embed(
-            description=(
-                "**Server Shop Management**\n"
-                "`.adminshop add <name> <price> <description>` - Add server item\n"
-                "`.adminshop potion <name> <price> <type> <mult> <duration>` - Add server potion\n"
-                "`.adminshop remove <name>` - Remove from server shop\n"
-                "`.adminshop list` - List server items\n\n"
-                "**Global Shop (Bot Admin Only)**\n"
-                "`.adminshop global ...` - Manage global shop"
-            ),
-            color=0x2b2d31
-        )
-        await ctx.send(embed=embed)
-
-    @commands.group(name="adminshop", aliases=["ashop"], invoke_without_command=True)
+    @commands.group(name="adminshop", aliases=["ashop", "sshop"], invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     async def adminshop_group(self, ctx):
         """Server shop management commands"""
