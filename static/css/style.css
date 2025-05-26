@@ -321,3 +321,108 @@ body {
         display: flex;
     }
 }
+
+/* Settings Form Styles */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text);
+}
+
+.form-group input[type="text"],
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #40444b;
+    background: var(--secondary);
+    color: var(--text);
+    border-radius: 4px;
+}
+
+.form-group textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+.form-group small {
+    display: block;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+section {
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: var(--secondary);
+    border-radius: 8px;
+}
+
+section h2 {
+    margin-bottom: 1rem;
+    color: var(--text);
+}
+
+/* Prefix Management Styles */
+.prefix-input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.prefix-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    min-height: 38px;
+    padding: 0.5rem;
+    border: 1px solid #40444b;
+    border-radius: 4px;
+    background: rgba(0,0,0,0.2);
+}
+
+.prefix-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 15px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    animation: slideIn 0.3s ease;
+}
+
+.prefix-tag:hover {
+    background: var(--danger);
+    transform: translateY(-2px);
+}
+
+.remove-prefix {
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+.prefix-counter {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-align: right;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(-10px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}

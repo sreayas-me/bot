@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Settings - BronxBot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-content">
+            <button id="nav-toggle" class="nav-toggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <a href="/" class="nav-brand">BronxBot</a>
+            <div class="nav-links collapsible">
+                <a href="/servers" class="nav-link">Servers</a>
+                <a href="/logout" class="nav-link">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <aside class="sidebar">
+            <div class="sidebar-menu">
+                <a href="#general" class="sidebar-item active">
+                    <i class="fas fa-cog"></i>
+                    <span>General</span>
+                </a>
+                <a href="#welcome" class="sidebar-item">
+                    <i class="fas fa-door-open"></i>
+                    <span>Welcome</span>
+                </a>
+                <a href="#moderation" class="sidebar-item">
+                    <i class="fas fa-gavel"></i>
+                    <span>Moderation</span>
+                </a>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <form method="POST" action="/servers/{{ guild.id }}/settings/update">
+                <section id="general">
+                    <h2>General Settings</h2>
+                    <div class="form-group">
+                        <label>Prefixes</label>
+                        <div class="prefix-input-container">
+                            <input type="text" id="newPrefix" placeholder="Add new prefix...">
+                            <div class="prefix-buttons" id="prefixContainer">
+                                {% for prefix in settings.get('prefixes', ['.']) %}
+                                    <button type="button" class="prefix-tag" data-prefix="{{ prefix }}">
+                                        {{ prefix }}
+                                        <span class="remove-prefix">×</span>
+                                    </button>
+                                {% endfor %}
+                            </div>
+                            <input type="hidden" name="prefixes" id="prefixesInput" value="{{ ','.join(settings.get('prefixes', ['.'])) }}">
+                            <small class="prefix-counter">{{ settings.get('prefixes', ['.'])|length }} total prefixes</small>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="welcome">
+                    <h2>Welcome Settings</h2>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" name="welcome_enabled" 
+                                   {% if settings.get('welcome', {}).get('enabled') %}checked{% endif %}>
+                            Enable Welcome Messages
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Welcome Channel</label>
+                        <select name="welcome_channel">
+                            <option value="">Select Channel</option>
+                            <!-- Add channel options here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Welcome Message</label>
+                        <textarea name="welcome_message">{{ settings.get('welcome', {}).get('message', '') }}</textarea>
+                    </div>
+                </section>
+
+                <section id="moderation"></section>
+                    <h2>Moderation Settings</h2>
+                    <div class="form-group">
+                        <label>Log Channel</label>
+                        <select name="log_channel"></select>
+                            <option value="">Select Channel</option>
+                            <!-- Add channel options here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Mute Role</label>
+                        <select name="mute_role">
+                            <option value="">Select Role</option>
+                            <!-- Add role options here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Jail Role</label>
+                        <select name="jail_role">
+                            <option value="">Select Role</option>
+                            <!-- Add role options here -->
+                        </select>
+                    </div>
+                </section>
+
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </form>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

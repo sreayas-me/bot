@@ -7,14 +7,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!uptimeElement) return;
 
         const botStartTime = parseInt(uptimeElement.dataset.uptime);
-        const currentServerTime = initialServerTime + Math.floor((Date.now() - window.performance.timeOrigin) / 1000);
-        const diff = currentServerTime - botStartTime;
-        
-        // Ensure diff is not negative
-        if (diff < 0) {
-            uptimeElement.textContent = '0d 0h 0m 0s';
-            return;
-        }
+        const now = Math.floor(new Date().getTime() / 1000);
+        const diff = Math.max(0, now - botStartTime); // Ensure positive difference
         
         const days = Math.floor(diff / 86400);
         const hours = Math.floor((diff % 86400) / 3600);
@@ -78,4 +72,65 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize uptime
     setInterval(updateUptime, 1000);
     updateUptime();
+
+    // Prefix Management
+    const prefixInput = document.getElementById('newPrefix');
+    const prefixContainer = document.getElementById('prefixContainer');
+    const prefixesHiddenInput = document.getElementById('prefixesInput');
+    
+    if (prefixInput && prefixContainer) {
+        // Add new prefix
+        prefixInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const prefix = prefixInput.value.trim();
+                if (prefix && !getPrefixes().includes(prefix)) {
+                    addPrefix(prefix);
+                    prefixInput.value = '';
+                    updatePrefixCounter();
+                }
+            }
+        });
+
+        // Remove prefix
+        prefixContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('prefix-tag') || e.target.classList.contains('remove-prefix')) {
+                const button = e.target.closest('.prefix-tag');
+                if (button && getPrefixes().length > 1) {  // Prevent removing last prefix
+                    button.style.animation = 'slideIn 0.3s ease reverse';
+                    setTimeout(() => {
+                        button.remove();
+                        updatePrefixCounter();
+                        updateHiddenInput();
+                    }, 300);
+                }
+            }
+        });
+
+        function addPrefix(prefix) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'prefix-tag';
+            button.dataset.prefix = prefix;
+            button.innerHTML = `${prefix}<span class="remove-prefix">×</span>`;
+            prefixContainer.appendChild(button);
+            updateHiddenInput();
+        }
+
+        function getPrefixes() {
+            return Array.from(prefixContainer.children).map(btn => btn.dataset.prefix);
+        }
+
+        function updateHiddenInput() {
+            prefixesHiddenInput.value = getPrefixes().join(',');
+        }
+
+        function updatePrefixCounter() {
+            const counter = document.querySelector('.prefix-counter');
+            if (counter) {
+                const count = getPrefixes().length;
+                counter.textContent = `${count} total ${count === 1 ? 'prefix' : 'prefixes'}`;
+            }
+        }
+    }
 });

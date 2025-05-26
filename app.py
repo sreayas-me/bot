@@ -4,6 +4,7 @@ import requests
 import json
 from functools import wraps
 import time
+from utils.db import db
 
 app = Flask(__name__)
 server = None
@@ -82,6 +83,7 @@ def callback():
         resp = make_response(redirect('/'))
         resp.set_cookie('user_id', user['id'])
         resp.set_cookie('username', user['username'])
+        resp.set_cookie('access_token', access_token)  # Store access token in cookie
         return resp
     return 'Authentication failed', 400
 
@@ -90,7 +92,106 @@ def logout():
     resp = make_response(redirect('/'))
     resp.delete_cookie('user_id')
     resp.delete_cookie('username')
+    resp.delete_cookie('access_token')  # Remove access token cookie
     return resp
+
+def get_user_guilds(access_token):
+    """Fetch user's Discord servers"""
+    response = requests.get('https://discord.com/api/users/@me/guilds', headers={
+        'Authorization': f'Bearer {access_token}'
+    })
+    if response.status_code == 200:
+        return response.json()
+    return []
+
+def get_bot_guilds():
+    """Fetch bot's server list from stats"""
+    global bot_stats
+    return bot_stats.get('guilds', [])
+
+@app.route('/servers')
+@login_required
+def servers():
+    """Show list of servers the user has access to"""
+    access_token = request.cookies.get('access_token')
+    if not access_token:
+        return redirect('/login')
+        
+    user_guilds = get_user_guilds(access_token)
+    bot_guilds = get_bot_guilds()
+    
+    # Filter guilds where user has manage server permission
+    manage_guilds = [
+        guild for guild in user_guilds 
+        if (int(guild['permissions']) & 0x20) == 0x20  # Check for MANAGE_GUILD permission
+    ]
+    
+    # Mark guilds where bot is present
+    for guild in manage_guilds:
+        guild['bot_present'] = guild['id'] in bot_guilds
+        
+    return render_template('servers.html', 
+        guilds=manage_guilds,
+        username=request.cookies.get('username', 'User')
+    )
+
+@app.route('/servers/<guild_id>/settings')
+@login_required
+async def server_settings(guild_id):
+    """Show settings for a specific server"""
+    access_token = request.cookies.get('access_token')
+    if not access_token:
+        return redirect('/login')
+        
+    # Verify user has access to this server
+    user_guilds = get_user_guilds(access_token)
+    if not any(g['id'] == guild_id and (int(g['permissions']) & 0x20) == 0x20 for g in user_guilds):
+        return "Unauthorized", 403
+        
+    # Get server settings from database
+    settings = await db.get_guild_settings(guild_id)
+    
+    # Get guild info from Discord
+    guild_info = next((g for g in user_guilds if g['id'] == guild_id), None)
+    
+    return render_template('settings.html',
+        guild=guild_info,
+        settings=settings,
+        username=request.cookies.get('username', 'User')
+    )
+
+@app.route('/servers/<guild_id>/settings/update', methods=['POST'])
+@login_required
+async def update_settings(guild_id):
+    """Update settings for a specific server"""
+    access_token = request.cookies.get('access_token')
+    if not access_token:
+        return redirect('/login')
+        
+    # Verify user has access to this server
+    user_guilds = get_user_guilds(access_token)
+    if not any(g['id'] == guild_id and (int(g['permissions']) & 0x20) == 0x20 for g in user_guilds):
+        return "Unauthorized", 403
+        
+    # Get settings from form
+    settings = {
+        'prefixes': request.form.getlist('prefixes'),
+        'welcome': {
+            'enabled': bool(request.form.get('welcome_enabled')),
+            'channel_id': request.form.get('welcome_channel'),
+            'message': request.form.get('welcome_message')
+        },
+        'moderation': {
+            'log_channel': request.form.get('log_channel'),
+            'mute_role': request.form.get('mute_role'),
+            'jail_role': request.form.get('jail_role')
+        }
+    }
+    
+    # Update database
+    await db.update_guild_settings(guild_id, settings)
+    
+    return redirect(f'/servers/{guild_id}/settings')
 
 def run_server():
     global server
