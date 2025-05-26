@@ -6,4 +6,5 @@ cogs/__pycache__
 cogs/bronx/__pycache__
 cogs/misc/__pycache__
 cogs/unique/__pycache__
-utils/__pycache__/db.cpython-312.pyc
+utils/__pycache__/
+cogs/admin/__pycache__

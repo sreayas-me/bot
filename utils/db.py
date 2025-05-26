@@ -1,6 +1,6 @@
 import motor
 from motor.motor_asyncio import AsyncIOMotorClient
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import os
 import asyncio
 import pymongo
@@ -26,7 +26,7 @@ class Database:
         while not self.connected and retries < max_retries:
             try:
                 self.client = AsyncIOMotorClient(self.uri)
-                await self.client.admin.command('ping')  # Test connection
+                await self.client.admin.command('ping')
                 self.db = self.client.bronxbot
                 self.connected = True
                 logger.info("Successfully connected to MongoDB")
@@ -35,7 +35,7 @@ class Database:
                 retries += 1
                 logger.warning(f"Database connection attempt {retries} failed: {e}")
                 if retries < max_retries:
-                    await asyncio.sleep(5)  # Wait before retrying
+                    await asyncio.sleep(5) 
                 else:
                     logger.error("Failed to connect to database after maximum retries")
                     raise
@@ -98,10 +98,8 @@ class Database:
         try:
             await self.ensure_connected()
             
-            # Get existing stats first
             stats = await self.db.stats.find_one({"_id": guild_id})
             if not stats:
-                # Initialize new guild stats
                 stats = {
                     "_id": guild_id,
                     "stats": {
@@ -113,7 +111,6 @@ class Database:
                 }
                 await self.db.stats.insert_one(stats)
 
-            # Use dot notation for nested updates
             update_field = f"stats.{stat_type}"
             await self.db.stats.update_one(
                 {"_id": guild_id},
@@ -168,5 +165,210 @@ class Database:
             logger.error(f"Error resetting stats for guild {guild_id}: {e}")
             return False
 
-# environment variable or default to localhost
+    async def get_wallet_balance(self, user_id: int, guild_id: int = None) -> int:
+        """Get user's wallet balance for specific server"""
+        try:
+            await self.ensure_connected()
+            key = f"{user_id}_{guild_id}" if guild_id else str(user_id)
+            user = await self.db.economy.find_one({"_id": key})
+            return user.get("wallet", 0) if user else 0
+        except Exception as e:
+            logger.error(f"Failed to get wallet: {e}")
+            return 0
+
+    async def get_bank_balance(self, user_id: int, guild_id: int = None) -> int:
+        """Get user's bank balance for specific server"""
+        try:
+            await self.ensure_connected()
+            key = f"{user_id}_{guild_id}" if guild_id else str(user_id)
+            user = await self.db.economy.find_one({"_id": key})
+            return user.get("bank", 0) if user else 0
+        except Exception as e:
+            logger.error(f"Failed to get bank: {e}")
+            return 0
+
+    async def update_wallet(self, user_id: int, amount: int, guild_id: int = None) -> bool:
+        """Update user's wallet balance for specific server"""
+        try:
+            await self.ensure_connected()
+            key = f"{user_id}_{guild_id}" if guild_id else str(user_id)
+            result = await self.db.economy.update_one(
+                {"_id": key},
+                {"$inc": {"wallet": amount}},
+                upsert=True
+            )
+            return bool(result.modified_count or result.upserted_id)
+        except Exception as e:
+            logger.error(f"Failed to update wallet: {e}")
+            return False
+
+    async def update_bank(self, user_id: int, amount: int, guild_id: int = None) -> bool:
+        """Update user's bank balance for specific server"""
+        try:
+            await self.ensure_connected()
+            key = f"{user_id}_{guild_id}" if guild_id else str(user_id)
+            result = await self.db.economy.update_one(
+                {"_id": key},
+                {"$inc": {"bank": amount}},
+                upsert=True
+            )
+            return bool(result.modified_count or result.upserted_id)
+        except Exception as e:
+            logger.error(f"Failed to update bank: {e}")
+            return False
+
+    async def get_global_net_worth(self, user_id: int, excluded_guilds: list = None) -> int:
+        """Get user's total net worth across all servers excluding specified ones"""
+        try:
+            await self.ensure_connected()
+            total = 0
+            pattern = f"^{user_id}_"
+            async for doc in self.db.economy.find({"_id": {"$regex": pattern}}):
+                guild_id = int(doc["_id"].split("_")[1])
+                if excluded_guilds and guild_id in excluded_guilds:
+                    continue
+                total += doc.get("wallet", 0) + doc.get("bank", 0)
+            return total
+        except Exception as e:
+            logger.error(f"Failed to get global net worth: {e}")
+            return 0
+
+    async def add_potion(self, user_id: int, potion_data: dict) -> bool:
+        """Add active potion effect to user"""
+        try:
+            await self.ensure_connected()
+            expires_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=potion_data['duration'])
+            
+            await self.db.potions.insert_one({
+                "user_id": user_id,
+                "potion": potion_data['name'],
+                "type": potion_data['type'],
+                "multiplier": potion_data['multiplier'],
+                "expires_at": expires_at
+            })
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add potion for user {user_id}: {e}")
+            return False
+
+    async def get_active_potions(self, user_id: int) -> list:
+        """Get user's active potion effects"""
+        try:
+            await self.ensure_connected()
+            current_time = datetime.datetime.utcnow()
+            
+            # Clean expired potions first
+            await self.db.potions.delete_many({
+                "user_id": user_id,
+                "expires_at": {"$lt": current_time}
+            })
+            
+            # Get active potions
+            return await self.db.potions.find({
+                "user_id": user_id,
+                "expires_at": {"$gt": current_time}
+            }).to_list(length=None)
+            
+        except Exception as e:
+            logger.error(f"Failed to get potions for user {user_id}: {e}")
+            return []
+
+    async def apply_potion_effects(self, user_id: int, amount: int, effect_type: str) -> int:
+        """Apply active potion effects to a value"""
+        try:
+            potions = await self.get_active_potions(user_id)
+            multiplier = 1.0
+            
+            for potion in potions:
+                if potion['type'] == effect_type:
+                    multiplier *= potion['multiplier']
+            
+            return int(amount * multiplier)
+            
+        except Exception as e:
+            logger.error(f"Failed to apply potion effects for user {user_id}: {e}")
+            return amount
+
+    async def add_buff(self, user_id: int, buff_data: dict) -> bool:
+        """Add buff to user"""
+        try:
+            await self.ensure_connected()
+            await self.db.buffs.insert_one({
+                "user_id": user_id,
+                "type": buff_data["type"],
+                "multiplier": buff_data["multiplier"],
+                "expires_at": buff_data["expires_at"]
+            })
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add buff for user {user_id}: {e}")
+            return False
+
+    async def remove_buff(self, user_id: int, buff_type: str) -> bool:
+        """Remove buff from user"""
+        try:
+            await self.ensure_connected()
+            result = await self.db.buffs.delete_one({
+                "user_id": user_id,
+                "type": buff_type
+            })
+            return result.deleted_count > 0
+        except Exception as e:
+            logger.error(f"Failed to remove buff from user {user_id}: {e}")
+            return False
+
+    async def get_active_buffs(self, user_id: int) -> List[dict]:
+        """Get user's active buffs"""
+        try:
+            await self.ensure_connected()
+            current_time = datetime.datetime.utcnow().timestamp()
+            return await self.db.buffs.find({
+                "user_id": user_id,
+                "expires_at": {"$gt": current_time}
+            }).to_list(None)
+        except Exception as e:
+            logger.error(f"Failed to get buffs for user {user_id}: {e}")
+            return []
+
+    async def apply_buffs(self, user_id: int, amount: int, buff_type: str) -> int:
+        """Apply active buffs to a value"""
+        try:
+            buffs = await self.get_active_buffs(user_id)
+            multiplier = 1.0
+            
+            for buff in buffs:
+                if buff["type"] == buff_type:
+                    multiplier *= buff["multiplier"]
+            
+            return int(amount * multiplier)
+        except Exception as e:
+            logger.error(f"Failed to apply buffs for user {user_id}: {e}")
+            return amount
+
+    async def add_global_buff(self, buff_data: dict) -> bool:
+        """Add a global buff"""
+        try:
+            await self.ensure_connected()
+            # Remove any existing global buffs
+            await self.db.global_buffs.delete_many({})
+            # Add new buff
+            await self.db.global_buffs.insert_one(buff_data)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add global buff: {e}")
+            return False
+
+    async def get_global_buff(self) -> Optional[dict]:
+        """Get current global buff if active"""
+        try:
+            await self.ensure_connected()
+            current_time = datetime.datetime.utcnow().timestamp()
+            buff = await self.db.global_buffs.find_one({
+                "expires_at": {"$gt": current_time}
+            })
+            return buff
+        except Exception as e:
+            logger.error(f"Failed to get global buff: {e}")
+            return None
+
 db = Database(config["MONGO_URI"] if "MONGO_URI" in config else "mongodb://localhost:27017")

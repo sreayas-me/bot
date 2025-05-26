@@ -6,6 +6,7 @@ from discord.ext import commands
 from cogs.logging.logger import CogLogger
 from utils.db import db
 from cogs.Help import HelpPaginator  # Add this import
+from utils.betting import parse_bet
 
 def format_cooldown(seconds: float) -> str:
     """Format seconds into human readable time"""
@@ -61,13 +62,143 @@ class Economy(commands.Cog):
         """Remove user from active games"""
         self.active_games.discard(ctx.author.id)
 
-    @commands.command(name="balance", aliases=["bal"])
+    @commands.command(name="deposit", aliases=["dep"])
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def deposit(self, ctx, amount: str = None):
+        """Deposit money into your bank"""
+        if not amount:
+            wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+            bank = await db.get_bank_balance(ctx.author.id, ctx.guild.id)
+            limit = await db.get_bank_limit(ctx.author.id, ctx.guild.id)
+            space = limit - bank
+            
+            embed = discord.Embed(
+                description=(
+                    "**Bank Deposit Guide**\n\n"
+                    f"Your Wallet: **{wallet}** 💰\n"
+                    f"Bank Space: **{space}** 💰\n\n"
+                    "**Usage:**\n"
+                    "`.deposit <amount>`\n"
+                    "`.deposit 50%` - Deposit 50% of wallet\n"
+                    "`.deposit all` - Deposit maximum amount\n"
+                    "`.deposit 1k` - Deposit 1,000\n"
+                    "`.deposit 1.5m` - Deposit 1,500,000"
+                ),
+                color=0x2b2d31
+            )
+            return await ctx.reply(embed=embed)
+
+        wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+        bank = await db.get_bank_balance(ctx.author.id, ctx.guild.id)
+        limit = await db.get_bank_limit(ctx.author.id, ctx.guild.id)
+        space = limit - bank
+
+        # Parse amount
+        if amount.lower() in ['all', 'max']:
+            amount = min(wallet, space)
+        elif amount.endswith('%'):
+            try:
+                percentage = float(amount[:-1])
+                if not 0 < percentage <= 100:
+                    return await ctx.reply("Percentage must be between 0 and 100!")
+                amount = min(round((percentage / 100) * wallet), space)
+            except ValueError:
+                return await ctx.reply("Invalid percentage!")
+        else:
+            try:
+                amount = int(amount)
+                if amount > space:
+                    return await ctx.reply(f"Your bank can only hold {space} more coins!")
+            except ValueError:
+                return await ctx.reply("Invalid amount!")
+
+        if amount <= 0:
+            return await ctx.reply("Amount must be positive!")
+        if amount > wallet:
+            return await ctx.reply("You don't have that much in your wallet!")
+
+        # Update balances
+        if await db.update_wallet(ctx.author.id, -amount, ctx.guild.id):
+            if await db.update_bank(ctx.author.id, amount, ctx.guild.id):
+                await ctx.reply(f"Deposited **{amount}** 💰 into your bank!")
+                return
+            await db.update_wallet(ctx.author.id, amount, ctx.guild.id)  # Refund if bank update fails
+
+        await ctx.reply("Failed to deposit money!")
+
+    @commands.command(name="withdraw", aliases=["with"])
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def withdraw(self, ctx, amount: str = None):
+        """Withdraw money from your bank"""
+        if not amount:
+            wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+            bank = await db.get_bank_balance(ctx.author.id, ctx.guild.id)
+            
+            embed = discord.Embed(
+                description=(
+                    "**Bank Withdrawal Guide**\n\n"
+                    f"Your Bank: **{bank}** 💰\n"
+                    f"Your Wallet: **{wallet}** 💰\n\n"
+                    "**Usage:**\n"
+                    "`.withdraw <amount>`\n"
+                    "`.withdraw 50%` - Withdraw 50% of bank\n"
+                    "`.withdraw all` - Withdraw everything\n"
+                    "`.withdraw 1k` - Withdraw 1,000\n"
+                    "`.withdraw 1.5m` - Withdraw 1,500,000"
+                ),
+                color=0x2b2d31
+            )
+            return await ctx.reply(embed=embed)
+
+        bank = await db.get_bank_balance(ctx.author.id, ctx.guild.id)
+
+        # Parse amount
+        if amount.lower() in ['all', 'max']:
+            amount = bank
+        elif amount.endswith('%'):
+            try:
+                percentage = float(amount[:-1])
+                if not 0 < percentage <= 100:
+                    return await ctx.reply("Percentage must be between 0 and 100!")
+                amount = round((percentage / 100) * bank)
+            except ValueError:
+                return await ctx.reply("Invalid percentage!")
+        else:
+            try:
+                amount = int(amount)
+            except ValueError:
+                return await ctx.reply("Invalid amount!")
+
+        if amount <= 0:
+            return await ctx.reply("Amount must be positive!")
+        if amount > bank:
+            return await ctx.reply("You don't have that much in your bank!")
+
+        # Update balances
+        if await db.update_bank(ctx.author.id, -amount, ctx.guild.id):
+            if await db.update_wallet(ctx.author.id, amount, ctx.guild.id):
+                await ctx.reply(f"Withdrew **{amount}** 💰 from your bank!")
+                return
+            await db.update_bank(ctx.author.id, amount, ctx.guild.id)  # Refund if wallet update fails
+
+        await ctx.reply("Failed to withdraw money!")
+
+    @commands.command(aliases=['bal'])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def balance(self, ctx, member: discord.Member = None):
         """Check your balance or someone else's"""
         member = member or ctx.author
-        balance = await db.get_user_balance(member.id)
-        await ctx.reply(f"{member.mention}'s balance: **{balance}** {self.currency}")
+        wallet = await db.get_wallet_balance(member.id, ctx.guild.id)
+        bank = await db.get_bank_balance(member.id, ctx.guild.id)
+        
+        embed = discord.Embed(
+            title=f"{member.display_name}'s Balance",
+            description=f"Wallet: **{wallet:,}** 💰\n" \
+                       f"Bank: **{bank:,}** 💰\n" \
+                       f"Net Worth: **{wallet + bank:,}** 💰",
+            color=member.color or discord.Color.green()
+        )
+        await ctx.reply(embed=embed)
 
     @commands.command(name="pay", aliases=["transfer"])
     @commands.cooldown(1, 3, commands.BucketType.user)
@@ -79,19 +210,25 @@ class Economy(commands.Cog):
         if member == ctx.author:
             return await ctx.reply("You can't pay yourself!")
         
-        if await db.transfer_money(ctx.author.id, member.id, amount):
+        if await db.transfer_money(ctx.author.id, member.id, amount, ctx.guild.id):
             await ctx.reply(f"Transferred **{amount}** {self.currency} to {member.mention}")
         else:
             await ctx.reply("Insufficient funds!")
 
     @commands.command(aliases=['slot'])
     @commands.cooldown(1, 3, commands.BucketType.user)
-    async def slots(self, ctx, bet: int = 10):
+    async def slots(self, ctx, bet_amount: str = "10"):
         """Play the slot machine"""
+        balance = await db.get_user_balance(ctx.author.id, ctx.guild.id)
+        bet, error = parse_bet(bet_amount, balance)
+        
+        if error:
+            return await ctx.reply(error)
+        
         if bet < 10:
             return await ctx.reply("Minimum bet is 10!")
             
-        if not await db.update_balance(ctx.author.id, -bet):
+        if bet > balance:
             return await ctx.reply("Insufficient funds!")
         
         # Spinning animation
@@ -118,7 +255,7 @@ class Economy(commands.Cog):
             winnings = 0
             result = "Better luck next time!"
         
-        await db.update_balance(ctx.author.id, winnings)
+        await db.update_balance(ctx.author.id, winnings, ctx.guild.id)
         
         embed = discord.Embed(
             description=f"🎰 `{display}`\n\n{result}\n\n**Bet:** {bet}\n**Won:** {winnings}",
@@ -131,23 +268,16 @@ class Economy(commands.Cog):
     async def daily(self, ctx):
         """Claim your daily reward"""
         amount = random.randint(100, 500)
-        await db.update_balance(ctx.author.id, amount)
+        await db.update_balance(ctx.author.id, amount, ctx.guild.id)
         await ctx.reply(f"Daily reward claimed! +**{amount}** {self.currency}")
 
     @commands.command()
     @commands.cooldown(1, 3600, commands.BucketType.user)
     async def work(self, ctx):
         """Work for some money"""
-        jobs = [
-            "You wrote some code for a client",
-            "You fixed a bug",
-            "You designed a website",
-            "You moderated a server",
-            "You helped someone with their homework"
-        ]
         amount = random.randint(50, 200)
-        await db.update_balance(ctx.author.id, amount)
-        await ctx.reply(f"{random.choice(jobs)}! +**{amount}** {self.currency}")
+        await db.update_wallet(ctx.author.id, amount, ctx.guild.id)
+        await ctx.reply(f"You worked and earned **{amount}** 💰")
 
     @commands.command()
     @commands.cooldown(1, 300, commands.BucketType.user)
@@ -156,19 +286,19 @@ class Economy(commands.Cog):
         if victim == ctx.author:
             return await ctx.reply("You can't rob yourself!")
         
-        victim_bal = await db.get_user_balance(victim.id)
+        victim_bal = await db.get_user_balance(victim.id, ctx.guild.id)
         if victim_bal < 100:
             return await ctx.reply("They're too poor to rob!")
         
         chance = random.random()
         if chance < 0.6:  # 60% chance to fail
             fine = random.randint(50, 200)
-            await db.update_balance(ctx.author.id, -fine)
+            await db.update_balance(ctx.author.id, -fine, ctx.guild.id)
             return await ctx.reply(f"You got caught and paid **{fine}** {self.currency} in fines!")
         
         stolen = random.randint(50, min(victim_bal, 500))
-        await db.update_balance(victim.id, -stolen)
-        await db.update_balance(ctx.author.id, stolen)
+        await db.update_balance(victim.id, -stolen, ctx.guild.id)
+        await db.update_balance(ctx.author.id, stolen, ctx.guild.id)
         await ctx.reply(f"You stole **{stolen}** {self.currency} from {victim.mention}!")
 
     @commands.command(aliases=['lb'])
@@ -189,37 +319,129 @@ class Economy(commands.Cog):
         )
         await ctx.reply(embed=embed)
 
-    @commands.command()
+    @commands.command(aliases=['ghop', 'globalb', 'gtop', 'globaltop', 'glb'])
+    @commands.cooldown(1, 30, commands.BucketType.user)
+    async def globalboard(self, ctx):
+        """View global leaderboard across all servers (excludes small servers and admin servers)"""
+        # Get valid servers (30+ members, user not admin)
+        valid_servers = []
+        excluded_guilds = []
+        total_servers = 0
+        
+        for guild in self.bot.guilds:
+            total_servers += 1
+            if len(guild.members) < 30:
+                excluded_guilds.append(guild.id)
+                continue
+                
+            member = guild.get_member(ctx.author.id)
+            if member and member.guild_permissions.administrator:
+                excluded_guilds.append(guild.id)
+                continue
+                
+            valid_servers.append(guild)
+        
+        if not valid_servers:
+            return await ctx.reply("No eligible servers found for global leaderboard!")
+
+        # Get global net worth for all users
+        user_totals = {}
+        for guild in valid_servers:
+            for member in guild.members:
+                if member.bot:
+                    continue
+                    
+                if member.id not in user_totals:
+                    net_worth = await db.get_global_net_worth(member.id, excluded_guilds)
+                    if net_worth > 0:  # Only include users with money
+                        user_totals[member.id] = {
+                            "name": str(member),
+                            "total": net_worth
+                        }
+
+        # Sort users by total
+        sorted_users = sorted(user_totals.items(), key=lambda x: x[1]["total"], reverse=True)[:10]
+
+        if not sorted_users:
+            return await ctx.reply("No users found with money in eligible servers!")
+
+        # Create leaderboard embed
+        embed = discord.Embed(
+            title="🌎 Global Economy Leaderboard",
+            color=discord.Color.gold()
+        )
+        
+        embed.description = f"**Eligible Servers:** {len(valid_servers)}/{total_servers}\n" \
+                          f"*Excludes servers with <30 members and servers where you're admin*\n\n"
+        
+        for i, (user_id, data) in enumerate(sorted_users, 1):
+            embed.description += f"`#{i}` {data['name']}: **{data['total']:,}** 💰\n"
+
+        await ctx.reply(embed=embed)
+
+    @commands.command(aliases=['ghop'])
     @commands.cooldown(1, 3, commands.BucketType.user)
-    async def shop(self, ctx):
-        """View available items in the shop"""
+    async def globalshop(self, ctx):
+        """View available items in the global shop"""
         pages = []
         
-        # Overview page
-        pages.append(discord.Embed(
-            description=(f"🛍️ **Shop**\n\n"
-                      f"Use the buttons to browse items\n"
-                      f"Your Balance: **{await db.get_user_balance(ctx.author.id)}** {self.currency}"),
-            color=discord.Color.blue()
-        ))
+        # Get 3 random items for flash sale
+        available_items = list(self.SHOP_ITEMS.items())
+        flash_items = random.sample(available_items, min(3, len(available_items)))
         
-        # Split items into pages
+        # Count duplicates and calculate discount
+        item_counts = {}
+        for item_id, _ in flash_items:
+            item_counts[item_id] = item_counts.get(item_id, 0) + 1
+        
+        # Calculate discounts based on duplicates
+        discounted_items = {}
+        for item_id, count in item_counts.items():
+            if count > 1:
+                discount = 0.45 if count == 3 else 0.20
+                discounted_items[item_id] = discount
+        
+        # Overview page with flash sales
+        overview = discord.Embed(
+            description=f"🛍️ **Global Shop**\n\nYour Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}\n\n"
+                       f"**🔥 Flash Sales**\n",
+            color=discord.Color.blue()
+        )
+        
+        for item_id, _ in flash_items:
+            item = self.SHOP_ITEMS[item_id]
+            if item_id in discounted_items:
+                discount = discounted_items[item_id]
+                discounted_price = int(item['price'] * (1 - discount))
+                overview.description += f"**{item['name']}** - ~~{item['price']}~~ **{discounted_price}** {self.currency} "
+                overview.description += f"(**{int(discount * 100)}% OFF!**)\n"
+            else:
+                overview.description += f"**{item['name']}** - {item['price']} {self.currency}\n"
+        
+        pages.append(overview)
+        
+        # Regular shop pages
         items = list(self.SHOP_ITEMS.items())
         for i in range(0, len(items), 4):
             page_items = items[i:i+4]
             content = []
             
             for item_id, item in page_items:
-                content.append(f"**{item['name']}** - {item['price']} {self.currency}")
+                if item_id in discounted_items:
+                    discount = discounted_items[item_id]
+                    discounted_price = int(item['price'] * (1 - discount))
+                    content.append(f"**{item['name']}** - ~~{item['price']}~~ **{discounted_price}** {self.currency} "
+                                f"(**{int(discount * 100)}% OFF!**)")
+                else:
+                    content.append(f"**{item['name']}** - {item['price']} {self.currency}")
                 content.append(f"{item['description']}")
                 content.append(f"`buy {item_id}` to purchase\n")
             
             pages.append(discord.Embed(
                 description="\n".join(content),
                 color=discord.Color.blue()
-            ).set_footer(text=f"Balance: {await db.get_user_balance(ctx.author.id)} {self.currency}"))
+            ).set_footer(text=f"Balance: {await db.get_wallet_balance(ctx.author.id)} {self.currency}"))
 
-        # Create and send paginator
         view = HelpPaginator(pages, ctx.author)
         view.update_buttons()
         message = await ctx.reply(embed=pages[0], view=view)
@@ -232,7 +454,7 @@ class Economy(commands.Cog):
             return await ctx.reply("Invalid item! Use `shop` to see available items.")
         
         item = self.SHOP_ITEMS[item_id]
-        if not await db.update_balance(ctx.author.id, -item['price']):
+        if not await db.update_balance(ctx.author.id, -item['price'], ctx.guild.id):
             return await ctx.reply("Insufficient funds!")
         
         # Handle special items
@@ -259,22 +481,28 @@ class Economy(commands.Cog):
                 )
                 await ctx.author.add_roles(role)
             except:
-                await db.update_balance(ctx.author.id, item['price'])  # Refund
+                await db.update_balance(ctx.author.id, item['price'], ctx.guild.id)  # Refund
                 return await ctx.reply("Color selection failed. You've been refunded.")
         
         await ctx.reply(f"Successfully purchased **{item['name']}**!")
 
     @commands.command(aliases=['cf'])
     @commands.cooldown(1, 3, commands.BucketType.user)
-    async def coinflip(self, ctx, bet: int, choice: str):
+    async def coinflip(self, ctx, bet_amount: str, choice: str):
         """Bet on a coinflip (heads/tails)"""
+        balance = await db.get_user_balance(ctx.author.id, ctx.guild.id)
+        bet, error = parse_bet(bet_amount, balance)
+        
+        if error:
+            return await ctx.reply(error)
+        
         if bet < 10:
             return await ctx.reply("Minimum bet is 10!")
         
         if choice.lower() not in ['heads', 'tails', 'h', 't']:
             return await ctx.reply("Choose either 'heads' or 'tails'!")
         
-        if not await db.update_balance(ctx.author.id, -bet):
+        if not await db.update_balance(ctx.author.id, -bet, ctx.guild.id):
             return await ctx.reply("Insufficient funds!")
         
         result = random.choice(['heads', 'tails'])
@@ -282,76 +510,226 @@ class Economy(commands.Cog):
         
         if (user_choice == 'h' and result == 'heads') or (user_choice == 't' and result == 'tails'):
             winnings = bet * 2
-            await db.update_balance(ctx.author.id, winnings)
+            await db.update_balance(ctx.author.id, winnings, ctx.guild.id)
             await ctx.reply(f"It's **{result}**! You won **{winnings}** {self.currency}!")
         else:
             await ctx.reply(f"It's **{result}**! You lost **{bet}** {self.currency}!")
 
-    async def cog_command_error(self, ctx, error):
-        """Global error handler for economy commands"""
-        if hasattr(error, "original"):
-            error = error.original
+    @commands.command(aliases=['bj'])
+    @commands.cooldown(1, 5, commands.BucketType.user)  # 5 second cooldown
+    async def blackjack(self, ctx, bet_amount: str = None):
+        """Play blackjack against the dealer
+        Usage: !blackjack <amount/all/max/50%/1k/1m>"""
+        if not bet_amount:
+            return await ctx.reply("Please specify a bet amount! (all/max/50%/1k/1m)")
+
+        balance = await db.get_user_balance(ctx.author.id, ctx.guild.id)
+        bet, error = parse_bet(bet_amount, balance)
         
-        self.logger.error(f"Unhandled error in {ctx.command}: {error}")
-        await ctx.reply("An error occurred while processing your command")
+        if error:
+            return await ctx.reply(error)
 
-    @daily.error
-    async def daily_error(self, ctx, error):
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"You already claimed your daily reward!\nTry again in **{format_cooldown(error.retry_after)}**")
+        if bet < 10:
+            return await ctx.reply("Minimum bet is 10!")
+        if bet > balance:
+            return await ctx.reply("You don't have enough money!")
+
+        # Deduct initial bet
+        await db.update_balance(ctx.author.id, -bet, ctx.guild.id)
+
+        def calculate_hand(hand):
+            total = 0
+            aces = 0
+            for card in hand:
+                if card == 1:  # Ace
+                    aces += 1
+                else:
+                    total += min(card, 10)
+            
+            # Handle aces
+            for _ in range(aces):
+                if total + 11 <= 21:
+                    total += 11
+                else:
+                    total += 1
+            return total
+
+        def format_card(card):
+            if card == 1:
+                return 'A'
+            elif card == 11:
+                return 'J'
+            elif card == 12:
+                return 'Q'
+            elif card == 13:
+                return 'K'
+            return str(card)
+
+        # Deal initial cards
+        player_hands = [[random.randint(1, 13), random.randint(1, 13)]]
+        dealer_hand = [random.randint(1, 13), random.randint(1, 13)]
+        current_hand = 0
+        doubled = [False]  # Track doubled hands
+        
+        while current_hand < len(player_hands):
+            hand = player_hands[current_hand]
+            player_total = calculate_hand(hand)
+            dealer_total = calculate_hand(dealer_hand)
+
+            # Format cards
+            player_cards = ' '.join(format_card(c) for c in hand)
+            dealer_cards = f"{format_card(dealer_hand[0])} ??"
+
+            # Check for split option
+            can_split = (len(hand) == 2 and 
+                        min(hand[0], 10) == min(hand[1], 10) and 
+                        len(player_hands) < 4 and 
+                        await db.get_user_balance(ctx.author.id, ctx.guild.id) >= bet)
+
+            # Check for double down option
+            can_double = (len(hand) == 2 and 
+                         not doubled[current_hand] and 
+                         await db.get_user_balance(ctx.author.id, ctx.guild.id) >= bet)
+
+            # Show game state
+            embed = discord.Embed(
+                title="Blackjack Game",
+                description=(
+                    f"**Dealer's Hand:** {dealer_cards}\n"
+                    f"**Your Hand {current_hand + 1}:** {player_cards} (Total: {player_total})\n"
+                    f"**Current Bet:** {bet}\n\n"
+                    "Options:\n"
+                    "• Type `hit` to take another card\n"
+                    "• Type `stand` to keep your hand\n" +
+                    ("• Type `double` to double your bet and take one card\n" if can_double else "") +
+                    ("• Type `split` to split your hand\n" if can_split else "")
+                ),
+                color=discord.Color.blue()
+            )
+            await ctx.send(embed=embed)
+
+            # Get player action
+            valid_actions = ['hit', 'stand', 'h', 's']
+            if can_double:
+                valid_actions.extend(['double', 'd'])
+            if can_split:
+                valid_actions.extend(['split', 'sp'])
+
+            def check(m):
+                return (m.author == ctx.author and 
+                        m.channel == ctx.channel and 
+                        m.content.lower() in valid_actions)
+
+            try:
+                action = await self.bot.wait_for('message', timeout=30, check=check)
+                action = action.content.lower()
+
+                if action in ['hit', 'h']:
+                    hand.append(random.randint(1, 13))
+                    if calculate_hand(hand) > 21:
+                        current_hand += 1  # Bust, move to next hand
+
+                elif action in ['stand', 's']:
+                    current_hand += 1  # Stand, move to next hand
+
+                elif action in ['double', 'd'] and can_double:
+                    # Double the bet
+                    if not await db.update_balance(ctx.author.id, -bet, ctx.guild.id):
+                        await ctx.send("Not enough money to double down!")
+                        continue
+                    
+                    bet *= 2
+                    hand.append(random.randint(1, 13))
+                    doubled[current_hand] = True
+                    current_hand += 1
+
+                elif action in ['split', 'sp'] and can_split:
+                    # Split the hand
+                    if not await db.update_balance(ctx.author.id, -bet, ctx.guild.id):
+                        await ctx.send("Not enough money to split!")
+                        continue
+                    
+                    new_hand = [hand.pop()]
+                    hand.append(random.randint(1, 13))
+                    new_hand.append(random.randint(1, 13))
+                    player_hands.append(new_hand)
+                    doubled.append(False)
+
+            except asyncio.TimeoutError:
+                await ctx.send("Time's up! Standing with current hand.")
+                current_hand += 1
+
+        # Dealer's turn
+        dealer_cards = ' '.join(format_card(c) for c in dealer_hand)
+        while calculate_hand(dealer_hand) < 17:
+            dealer_hand.append(random.randint(1, 13))
+        
+        dealer_total = calculate_hand(dealer_hand)
+        dealer_cards = ' '.join(format_card(c) for c in dealer_hand)
+
+        # Calculate results
+        results = []
+        total_winnings = 0
+        
+        for i, hand in enumerate(player_hands):
+            player_total = calculate_hand(hand)
+            hand_bet = bet * 2 if doubled[i] else bet
+            
+            if player_total > 21:
+                result = "Bust"
+                winnings = -hand_bet
+            elif dealer_total > 21 or player_total > dealer_total:
+                result = "Win"
+                winnings = hand_bet
+            elif player_total < dealer_total:
+                result = "Lose"
+                winnings = -hand_bet
+            else:
+                result = "Push"
+                winnings = 0
+            
+            total_winnings += winnings
+            results.append(f"Hand {i + 1}: {' '.join(format_card(c) for c in hand)} ({player_total}) - {result}")
+
+        # Update balance
+        if total_winnings > 0:
+            await db.update_balance(ctx.author.id, total_winnings, ctx.guild.id)
+
+        # Show final results
+        embed = discord.Embed(
+            title="Blackjack Results",
+            description=(
+                f"**Dealer's Hand:** {dealer_cards} (Total: {dealer_total})\n\n" +
+                "\n".join(results) + "\n\n" +
+                f"**Total {'Winnings' if total_winnings >= 0 else 'Loss'}:** {abs(total_winnings)}"
+            ),
+            color=discord.Color.green() if total_winnings > 0 else discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(invoke_without_command=True)
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def shop(self, ctx):
+        """View the server's shop"""
+        # Get shop data
+        guild_shop = self.get_server_shop(ctx.guild.id)
+        
+        # Display shop using Admin cog's display method
+        admin_cog = self.bot.get_cog('Admin')
+        if admin_cog:
+            await admin_cog.display_shop(ctx, guild_shop, title="Server Shop")
         else:
-            await ctx.reply("Failed to claim daily reward")
-            self.logger.error(f"Daily error: {error}")
+            await ctx.send("Shop system is currently unavailable.")
 
-    @pay.error
-    @rob.error
-    async def transfer_error(self, ctx, error):
-        if isinstance(error, commands.MemberNotFound):
-            await ctx.reply("Could not find that user!")
-        elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.reply("Please specify both a user and an amount!")
-        elif isinstance(error, commands.BadArgument):
-            await ctx.reply("Invalid amount specified!")
-        elif isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"A good robber doesnt move so fast!\nTry again in **{format_cooldown(error.retry_after)}**")
+    @commands.command()
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def globalshop(self, ctx):
+        """View the global shop"""
+        admin_cog = self.bot.get_cog('Admin')
+        if admin_cog:
+            await admin_cog.display_shop(ctx, admin_cog.shop_data, title="Global Shop")
         else:
-            await ctx.reply("Failed to process transaction")
-            self.logger.error(f"Transfer error in {ctx.command}: {error}")
+            await ctx.send("Shop system is currently unavailable.")
 
-    @slots.error
-    @coinflip.error
-    async def gambling_error(self, ctx, error):
-        if isinstance(error, commands.BadArgument):
-            await ctx.reply("Please provide a valid bet amount!")
-        elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.reply("Please specify a bet amount!")
-        else:
-            await ctx.reply("Failed to process gambling command")
-            self.logger.error(f"Gambling error in {ctx.command}: {error}")
-
-    @buy.error
-    async def buy_error(self, ctx, error):
-        if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.reply("Please specify an item to buy!")
-        elif isinstance(error, discord.Forbidden):
-            await ctx.reply("I don't have permission to create/assign roles!")
-            await db.update_balance(ctx.author.id, self.SHOP_ITEMS[ctx.kwargs.get('item_id', '')]['price'])  # Refund
-        else:
-            await ctx.reply("Failed to process purchase")
-            self.logger.error(f"Shop error: {error}")
-
-    @work.error
-    async def work_error(self, ctx, error):
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"You're tired from working!\nTry again in **{format_cooldown(error.retry_after)}**")
-        else:
-            await ctx.reply("Failed to complete work")
-            self.logger.error(f"Work error: {error}")
-
-    @leaderboard.error
-    async def leaderboard_error(self, ctx, error):
-        await ctx.reply("Failed to fetch leaderboard data")
-        self.logger.error(f"Leaderboard error: {error}")
-
-async def setup(bot):
-    await bot.add_cog(Economy(bot))
+def setup(bot):
+    bot.add_cog(Economy(bot))

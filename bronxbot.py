@@ -5,6 +5,7 @@ import time
 import sys
 import os
 import asyncio
+import traceback
 from discord.ext import commands
 from typing import Dict, List, Tuple
 
@@ -40,13 +41,13 @@ class BronxBot(commands.AutoShardedBot):
             self.cog_load_times[cog_name] = load_time
             return False, load_time
 
-# Replace bot initialization
 bot = BronxBot(command_prefix='.', intents=intents)
 bot.remove_command('help')
 
 # loading config
 COG_DATA = {
     "cogs": {
+        "cogs.admin.Admin": "warning",
         "cogs.misc.Cypher": "cog", 
         "cogs.misc.MathRace": "cog", 
         "cogs.misc.TicTacToe": "cog",
@@ -75,108 +76,68 @@ COG_DATA = {
 }
 
 class CogLoader:
-    """Handles loading and displaying cog status with colored output"""
-    
     @staticmethod
     def get_color_escape(color_name: str) -> str:
-        """Return ANSI escape sequence for color name"""
         return COG_DATA['colors'].get(color_name, COG_DATA['colors']['default'])
-    
-    @staticmethod
-    def categorize_error(error: Exception) -> Tuple[str, str]:
-        """Categorize error and provide helpful message"""
-        if isinstance(error, ImportError):
-            return "Import Failed", "Missing required module or dependency"
-        elif isinstance(error, SyntaxError):
-            return "Syntax Error", f"Invalid syntax at line {error.lineno}"
-        elif isinstance(error, AttributeError):
-            return "Setup Failed", "Missing setup() function or invalid cog class"
-        elif isinstance(error, TypeError):
-            return "Type Error", "Invalid argument types in cog setup"
-        elif isinstance(error, discord.ClientException):
-            return "Discord Error", "Invalid event or command setup"
-        else:
-            return "Unknown Error", str(error)
 
     @classmethod
-    async def load_cog_with_retries(cls, bot: BronxBot, cog: str, max_retries: int = 3) -> Tuple[bool, float, str]:
-        """Attempt to load a cog with retries for critical cogs"""
-        start_time = time.time()
-        error_msg = ""
-        
-        for attempt in range(max_retries):
-            try:
-                success, load_time = await bot.load_cog_with_timing(cog)
-                if success:
-                    return True, load_time, ""
-            except Exception as e:
-                error_type, error_desc = cls.categorize_error(e)
-                error_msg = f"{error_type}: {error_desc}"
-                if attempt < max_retries - 1 and cog in ["cogs.Help", "cogs.ModMail", "cogs.unique.SyncRoles"]:
-                    await asyncio.sleep(1)  # Wait before retry
-                    continue
-                break
-        
-        return False, time.time() - start_time, error_msg
+    async def load_extension_safe(cls, bot: BronxBot, cog: str) -> Tuple[bool, str, float]:
+        """Safely load an extension and return status, error (if any), and load time"""
+        start = time.time()
+        try:
+            await bot.load_extension(cog)
+            return True, "", time.time() - start
+        except Exception as e:
+            tb = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+            return False, tb, time.time() - start
 
     @classmethod
     async def load_all_cogs(cls, bot: BronxBot) -> Tuple[int, int]:
-        """Load all cogs with enhanced error handling"""
-        start_time = time.time()
+        """Load all cogs and display results grouped by type"""
         results = []
-        failed_cogs = []
-        max_cog_length = max(len(cog) for cog in COG_DATA['cogs'])
+        errors = []
         
-        for cog, cog_type in COG_DATA['cogs'].items():
-            color_code = cls.get_color_escape(cog_type)
-            success, load_time, error_msg = await cls.load_cog_with_retries(bot, cog)
-            
-            if success:
-                status = "LOADED"
-                status_color = cls.get_color_escape('success')
-            else:
-                status = "ERROR"
-                status_color = cls.get_color_escape('error')
-                failed_cogs.append((cog, error_msg))
-            
-            cog_display = f"{color_code}{cog.ljust(max_cog_length)}\033[0m"
-            status_display = f"{status_color}{status}\033[0m"
-            time_display = f"{load_time:.2f}s"
-            
-            result_line = f"[bronxbot] {cog_display} : {status_display} ({time_display})"
-            if not success:
-                result_line += f"\n         {cls.get_color_escape('error')}→ {error_msg}\033[0m"
-            
-            results.append((cog_type, result_line))
+        print(f"{cls.get_color_escape('info')}=== COG LOADING STATUS ===\033[0m")
         
-        total_time = time.time() - start_time
-        results.append(('info', f"\nTotal loading time: {total_time:.2f}s"))
-        
-        # Add critical failures section if any essential cogs failed
-        critical_cogs = {"cogs.Help", "cogs.ModMail", "cogs.unique.SyncRoles"}
-        critical_failures = [cog for cog, _ in failed_cogs if cog in critical_cogs]
-        if critical_failures:
-            results.append(('error', "\n⚠️ Critical cog(s) failed to load:"))
-            for cog in critical_failures:
-                results.append(('error', f"  • {cog}"))
-        
-        cls.display_results(results)
-        return len([r for r in results if "LOADED" in r[1]]), len(failed_cogs)
+        cog_groups = {}
+        for cog, cog_type in COG_DATA["cogs"].items():
+            if cog_type not in cog_groups:
+                cog_groups[cog_type] = []
+            cog_groups[cog_type].append(cog)
 
-    @staticmethod
-    def display_results(results: List[Tuple[str, str]]) -> None:
-        """Display cog loading results with enhanced formatting"""
-        results.sort(key=lambda x: x[0])
-        print(f"{CogLoader.get_color_escape('info')}=== COG LOADING STATUS ===\033[0m")
-    
-        for _, line in results:
-            print(line)
+        for cog_type in sorted(cog_groups.keys()):
+            cog_results = []
+            
+            for cog in cog_groups[cog_type]:
+                success, error, load_time = await cls.load_extension_safe(bot, cog)
+                
+                status = "LOADED" if success else "ERROR"
+                color = cls.get_color_escape('success' if success else 'error')
+                cog_color = cls.get_color_escape(cog_type)
+                
+                line = f"[bronxbot] {cog_color}{cog:<24}\033[0m : {color}{status}\033[0m ({load_time:.2f}s)"
+                cog_results.append(line)
+                
+                if not success:
+                    errors.append((cog, error))
+            
+            print('\n'.join(cog_results))
+            print()
+
+        # summary
+        success_count = len(COG_DATA["cogs"]) - len(errors)
+        total = len(COG_DATA["cogs"])
         
-        success_count = sum(1 for _, line in results if "LOADED" in line)
-        error_count = len(results) - success_count
-        summary_color = CogLoader.get_color_escape('success') if error_count == 0 else CogLoader.get_color_escape('warning')
+        print(f"{cls.get_color_escape('success' if not errors else 'warning')}[SUMMARY] Loaded {success_count}/{total} cogs ({len(errors)} errors)\033[0m")
         
-        print(f"\n{summary_color}[SUMMARY] Loaded {success_count}/{len(results)} cogs ({error_count} errors)\033[0m")
+        # detailed error report if needed
+        if errors:
+            print("\nDetailed error report:")
+            for cog, error in errors:
+                print(f"\n{cls.get_color_escape('error')}[ERROR] {cog}:\033[0m")
+                print(f"{error.strip()}")
+        
+        return success_count, len(errors)
 
 @bot.event
 async def on_ready():
@@ -231,17 +192,14 @@ async def restart(ctx):
     )
     msg = await ctx.reply(embed=embed)
     
-    # Save restart info to file
     with open("data/restart_info.json", "w") as f:
         json.dump({
             "channel_id": ctx.channel.id,
             "message_id": msg.id
         }, f)
     
-    # Execute the restart
     os.execv(sys.executable, ['python'] + sys.argv)
 
-# Add restart info loading at startup
 if os.path.exists("data/restart_info.json"):
     try:
         with open("data/restart_info.json", "r") as f:
