@@ -252,4 +252,3 @@ class ServerSettings(commands.Cog, ErrorHandler):
 
 async def setup(bot):
     await bot.add_cog(ServerSettings(bot))
-    logger.info("ServerSettings cog loaded successfully")

@@ -42,7 +42,6 @@ class Stats(commands.Cog):
 async def setup(bot):
     try:
         await bot.add_cog(Stats(bot))
-        logger.info("Stats cog loaded successfully")
 
     except Exception as e:
         logger.error(f"Failed to load Stats cog: {e}")

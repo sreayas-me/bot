@@ -546,7 +546,6 @@ async def setup(bot):
     try:
         logger = CogLogger("Fun")
         await bot.add_cog(Fun(bot))
-        logger.info("Fun cog loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load Fun cog: {e}")
         raise e

@@ -155,7 +155,6 @@ class Help(commands.Cog, ErrorHandler):
 async def setup(bot):
     try:
         await bot.add_cog(Help(bot))
-        logger.info("Help cog loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load Help cog: {e}")
         raise e

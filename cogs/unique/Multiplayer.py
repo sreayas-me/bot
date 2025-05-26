@@ -420,7 +420,6 @@ class Multiplayer(commands.Cog):
 async def setup(bot):
     try:
         await bot.add_cog(Multiplayer(bot))
-        logger.info("Multiplayer cog loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load Multiplayer cog: {e}")
         raise e

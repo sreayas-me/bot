@@ -605,7 +605,6 @@ class VoteBans(commands.Cog):
 async def setup(bot):
     try:
         await bot.add_cog(VoteBans(bot))
-        logger.info("VoteBans cog loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load VoteBans cog: {e}")
         raise e

@@ -224,7 +224,6 @@ async def setup(bot):
     logger = CogLogger("SyncRoles")
     try:
         await bot.add_cog(SyncRoles(bot))
-        logger.info("SyncRoles cog loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load SyncRoles cog: {e}")
         raise

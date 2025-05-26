@@ -66,7 +66,6 @@ class Welcoming(commands.Cog):
 async def setup(bot):
     try:
         await bot.add_cog(Welcoming(bot))
-        logger.info("Welcoming cog loaded successfully")
 
     except Exception as e:
         logger.error(f"Failed to load Welcoming cog: {e}")

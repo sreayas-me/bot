@@ -89,36 +89,39 @@ class Utility(commands.Cog, ErrorHandler):
             description=(f"**{user.display_name}**\n\n"
                       f"Joined: `{user.joined_at.strftime('%Y-%m-%d')}`\n"
                       f"Registered: `{user.created_at.strftime('%Y-%m-%d')}`\n"
-                        f"ID: `{user.id}`\n"
                         f"Nickname: `{user.nick}`\n"
                         f"Status: `{user.status}`\n"
-                        f"Bot: `{user.bot}`\n"
                         f"Roles: `{len(user.roles)}`\n"
-                        f"Avatar: [Click Here]({user.display_avatar.url})\n"
-                        f"Banner: [Click Here]({user.banner.url})" if user.banner else "",
+                            f"Avatar: [Click Here]({user.display_avatar.url})\n"
+                            f"Banner: [Click Here]({user.banner.url})" if user.banner else "",
                         f"\n\n**Badges:**\n"
-                        f"Staff: `{user.guild_permissions.administrator}`\n"
-                        f"Verified: `{user.public_flags.verified_bot}`\n"
-                        f"Bot Developer: `{user.public_flags.bot_developer}`\n"
-                        f"Partnered: `{user.public_flags.partnered}`\n"
-                        f"Premium: `{user.public_flags.premium}`\n"
-                        f"Discord Employee: `{user.public_flags.discord_employee}`\n"
-                        f"Discord Partner: `{user.public_flags.discord_partner}`\n"
-                        f"Active Developer: `{user.public_flags.active_developer}`\n"
+                            f"Staff: `{user.guild_permissions.administrator}`\n"
+                            f"Verified: `{user.public_flags.verified_bot}`\n"
+                            f"Bot Developer: `{user.public_flags.bot_developer}`\n"
+                            f"Partnered: `{user.public_flags.partnered}`\n"
+                            f"Premium: `{user.public_flags.premium}`\n"
+                            f"Discord Employee: `{user.public_flags.discord_employee}`\n"
+                            f"Discord Partner: `{user.public_flags.discord_partner}`\n"
+                            f"Active Developer: `{user.public_flags.active_developer}`\n"
                         f"\n**Roles:**\n"
-                        f"{', '.join(role.name for role in user.roles if role.name != '@everyone') or 'None'}\n"
+                            f"{', '.join(role.name for role in user.roles if role.name != '@everyone') or 'None'}\n"
                         f"\n**Top Role:**\n"
-                        f"{user.top_role.name if user.top_role.name != '@everyone' else 'None'}\n"
+                            f"{user.top_role.name if user.top_role.name != '@everyone' else 'None'}\n"
                         f"\n**Account Created:**\n"
-                        f"`{user.created_at.strftime('%Y-%m-%d')}`\n"
+                            f"`{user.created_at.strftime('%Y-%m-%d')}`\n"
                         f"**Joined Server:**\n"
-                        f"`{user.joined_at.strftime('%Y-%m-%d')}`"
+                            f"`{user.joined_at.strftime('%Y-%m-%d')}`"
                         f"\n**Presence:**\n"
-                        f"`{user.activity.name if user.activity else 'None'}`\n"
-                        f"**Voice State:**\n"
-                        f"`{f'Connected in {user.voice.channel.mention}' if user.voice else 'Not Connected'}`\n"),
+                            f"`{user.activity.name if user.activity else 'None'}`\n"
+                            f"**Voice State:**\n"
+                                f"`{f'Connected in {user.voice.channel.mention}' if user.voice else 'Not Connected'}`\n"),
             color=user.color or 0x2b2d31
         )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        embed.set_author(name=str(user), icon_url=user.display_avatar.url)
+        embed.set_footer(text=f"ID: {user.id}")
+        if user.banner:
+            embed.set_image(url=user.banner.url)
         await ctx.reply(embed=embed)
 
     @commands.command(aliases=["ask", "yn", "yesno"])
@@ -326,7 +329,6 @@ async def setup(bot):
     logger = CogLogger("Utility")
     try:
         await bot.add_cog(Utility(bot))
-        logger.info("Utility cog loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load Utility cog: {e}")
         raise

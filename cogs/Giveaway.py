@@ -37,7 +37,6 @@ async def setup(bot):
     logger = CogLogger("Giveaway")
     try:
         await bot.add_cog(Giveaway(bot))
-        logger.info("Giveaway cog loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load Giveaway cog: {e}")
         raise

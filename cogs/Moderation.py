@@ -93,7 +93,6 @@ async def setup(bot):
     logger = CogLogger("Moderation")
     try:
         await bot.add_cog(Moderation(bot))
-        logger.info("Moderation cog loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load Moderation cog: {e}")
         raise
