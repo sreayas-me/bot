@@ -745,17 +745,39 @@ class Economy(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    def get_server_shop(self, guild_id: int) -> dict:
+    async def get_server_shop(self, guild_id: int) -> dict:
         """Get shop items for a specific server"""
-        # For now, return the default shop items
-        # This can be expanded later to support per-server customization
-        return self.SHOP_ITEMS
+        shop = await db.db.shops.find_one({"_id": f"server_{guild_id}"})
+        if shop:
+            return shop.get("items", {})
+            
+        # Initialize default server shop
+        default_items = {
+            "role_token": {
+                "name": "Custom Role Token",
+                "price": 5000,
+                "description": "Create a custom role with a color of your choice"
+            },
+            "exp_boost": {
+                "name": "XP Boost",
+                "price": 2500,
+                "description": "Get 2x XP for 1 hour"
+            }
+        }
+        
+        # Save the default shop for this server
+        await db.db.shops.insert_one({
+            "_id": f"server_{guild_id}",
+            "items": default_items
+        })
+        
+        return default_items
 
     @commands.command(invoke_without_command=True)
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop(self, ctx):
         """View the server's shop"""
-        shop_items = self.get_server_shop(ctx.guild.id)
+        shop_items = await self.get_server_shop(ctx.guild.id)
         
         embed = discord.Embed(
             title="Server Shop",
