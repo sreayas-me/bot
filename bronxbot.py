@@ -51,7 +51,8 @@ class BronxBot(commands.AutoShardedBot):
         self.cog_load_times = {}
         self.restart_channel = None
         self.restart_message = None
-        self.MAIN_GUILD_IDS = MAIN_GUILD_IDS  # Add this line to fix the error
+        self.MAIN_GUILD_IDS = MAIN_GUILD_IDS
+        self.guild_list = []  # Add this line to store guild IDs
 
     async def load_cog_with_timing(self, cog_name: str) -> Tuple[bool, float]:
         """Load a cog and measure its loading time"""
@@ -87,6 +88,24 @@ class BronxBot(commands.AutoShardedBot):
 
     @update_stats.before_loop
     async def before_update_stats(self):
+        await self.wait_until_ready()
+
+    @tasks.loop(minutes=5)  # Check every 5 minutes, no need to do it as frequently as stats
+    async def update_guilds(self):
+        """Update guild list for the web interface"""
+        try:
+            self.guild_list = [str(g.id) for g in self.guilds]
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post('http://localhost:5000/api/stats', 
+                                      json={'guilds': self.guild_list}) as resp:
+                    if resp.status != 200:
+                        print(f"Failed to update guild list: {resp.status}")
+        except Exception as e:
+            print(f"Error updating guild list: {e}")
+
+    @update_guilds.before_loop
+    async def before_update_guilds(self):
         await self.wait_until_ready()
 
 bot = BronxBot(command_prefix='.', intents=intents)
@@ -190,9 +209,11 @@ class CogLoader:
 @bot.event
 async def on_ready():
     """Called when the bot is ready"""
-    # Start the stats update loop
+    # Start the stats and guild update loops
     if not bot.update_stats.is_running():
         bot.update_stats.start()
+    if not bot.update_guilds.is_running():
+        bot.update_guilds.start()
 
     guild_cache_start = time.time()
     # Build guild cache
