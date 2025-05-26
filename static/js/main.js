@@ -1,19 +1,23 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Update uptime counter
     const initialServerTime = Math.floor(Date.now() / 1000);
+    let uptimeOffset = 0;
     
     function updateUptime() {
         const uptimeElement = document.getElementById('uptime');
         if (!uptimeElement) return;
 
-        const uptimeSeconds = parseInt(uptimeElement.dataset.uptime);
+        const baseUptime = parseInt(uptimeElement.dataset.uptime);
+        // Add the time elapsed since page load
+        const currentUptime = baseUptime + uptimeOffset;
         
-        const days = Math.floor(uptimeSeconds / 86400);
-        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
-        const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-        const seconds = uptimeSeconds % 60;
+        const days = Math.floor(currentUptime / 86400);
+        const hours = Math.floor((currentUptime % 86400) / 3600);
+        const minutes = Math.floor((currentUptime % 3600) / 60);
+        const seconds = currentUptime % 60;
         
         uptimeElement.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+        uptimeOffset++;
     }
 
     // Link hover effect
