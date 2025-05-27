@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, request, make_response, url_for, jsonify
+from flask import Flask, render_template, redirect, request, make_response, url_for, jsonify, Response
 import requests
 import json
 from functools import wraps
@@ -424,6 +424,23 @@ def run(as_thread=False):
 def shutdown_server():
     """Shutdown the Flask server (placeholder for now)"""
     pass
+
+@app.route('/api/stats/live')
+def live_stats():
+    def generate():
+        while True:
+            # Read the latest stats from the file
+            try:
+                with open('data/stats.json', 'r') as f:
+                    stats = json.load(f)
+                    data = f"data: {json.dumps(stats)}\n\n"
+                    yield data
+            except Exception as e:
+                print(f"Error reading stats: {e}")
+                yield "data: {}\n\n"
+            time.sleep(1)  # Update every second
+
+    return Response(generate(), mimetype='text/event-stream')
 
 if __name__ == "__main__":
     try:
