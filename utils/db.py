@@ -273,20 +273,33 @@ class SyncDatabase:
         self._connected = False
         self.logger = logging.getLogger('SyncDatabase')
         
+        # Ensure data directory exists
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        
+        # Get database path from environment or use default
+        db_path = os.getenv('SQLITE_DATABASE_PATH', os.path.join(data_dir, 'database.sqlite'))
+        self.logger.info(f"Using SQLite database at {db_path}")
+        
         try:
-            # Ensure data directory exists
-            data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
-            os.makedirs(data_dir, exist_ok=True)
-            
-            # Get database path from environment or use default
-            db_path = os.getenv('SQLITE_DATABASE_PATH', os.path.join(data_dir, 'database.sqlite'))
-            
             # Initialize SQLite connection
             import sqlite3
             self.conn = sqlite3.connect(db_path, check_same_thread=False)
             self.cursor = self.conn.cursor()
             
             # Create tables if they don't exist
+            self._create_tables()
+            self.conn.commit()
+            
+            self.logger.info("SQLite database initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize SQLite database: {e}")
+            raise
+            
+    def _create_tables(self):
+        """Create database tables if they don't exist"""
+        try:
+            # Economy table
             self.cursor.execute("""
                 CREATE TABLE IF NOT EXISTS economy (
                     user_id INTEGER,
@@ -296,6 +309,8 @@ class SyncDatabase:
                     PRIMARY KEY (user_id, guild_id)
                 )
             """)
+            
+            # Guild stats table
             self.cursor.execute("""
                 CREATE TABLE IF NOT EXISTS guild_stats (
                     guild_id INTEGER,
@@ -304,11 +319,8 @@ class SyncDatabase:
                     PRIMARY KEY (guild_id, stat_type)
                 )
             """)
-            self.conn.commit()
-            self.logger.info(f"SQLite database initialized at {db_path}")
-            
         except Exception as e:
-            self.logger.error(f"Failed to initialize SQLite database: {e}")
+            self.logger.error(f"Error creating tables: {e}")
             raise
 
     @property
