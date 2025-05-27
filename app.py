@@ -4,15 +4,13 @@ import json
 from functools import wraps
 import time
 import os
-from utils.db import db  # This now uses the synchronous databasek import Flask, render_template, redirect, request, make_response, url_for, jsonify
+from utils.db import db  # This now uses the synchronous database
 from werkzeug.serving import make_server
 import asyncio
 import functools
-import requests
-import json
-from functools import wraps
-import time
-from utils.db import db  # This now uses the synchronous # For local development
+
+app = Flask(__name__)  # Initialize Flask app at module level
+
 def run():
     app.run(host='127.0.0.1', port=5000)
 
@@ -20,7 +18,7 @@ def shutdown_server():
     pass
 
 if __name__ == "__main__":
-    app = Flask(__name__)
+    run()
 
 # Add thousands filter
 @app.template_filter('thousands')
