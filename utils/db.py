@@ -8,8 +8,26 @@ import logging
 from typing import Dict, Any, Optional
 import threading
 
-with open('data/config.json') as f:
-    config = json.load(f)
+# Initialize default config
+config = {
+    "MONGO_URI": os.getenv("MONGO_URI"),
+    "TOKEN": os.getenv("DISCORD_TOKEN"),
+    "CLIENT_ID": os.getenv("DISCORD_CLIENT_ID"),
+    "CLIENT_SECRET": os.getenv("DISCORD_CLIENT_SECRET"),
+    "OWNER_ID": os.getenv("DISCORD_BOT_OWNER_ID")
+}
+
+# Try to load from config file if environment variables are not set
+if not all([config["MONGO_URI"], config["TOKEN"], config["CLIENT_ID"]]):
+    try:
+        with open('data/config.json') as f:
+            file_config = json.load(f)
+            # Update config with file values only if env vars are not set
+            for key in config:
+                if not config[key] and key in file_config:
+                    config[key] = file_config[key]
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logging.warning(f"Could not load config.json: {e}. Using environment variables only.")
 
 class AsyncDatabase:
     """Async database class for use with Discord bot"""

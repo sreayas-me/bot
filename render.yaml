@@ -11,5 +11,15 @@ services:
         value: production
       - key: PYTHONPATH
         value: .
+      - key: MONGO_URI
+        sync: false
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_BOT_OWNER_ID
+        sync: false
     healthCheckPath: /debug
     autoDeploy: true
