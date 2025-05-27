@@ -8,10 +8,14 @@ import asyncio
 import aiohttp
 import traceback
 import threading
-from app import run
+from app import run as run_webapp
 # BronxBot - A Discord bot for the Bronx community
 from discord.ext import commands, tasks
 from typing import Dict, List, Tuple
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 
 # config
 with open("data/config.json", "r") as f:
@@ -69,25 +73,35 @@ class BronxBot(commands.AutoShardedBot):
 
     @tasks.loop(seconds=30)
     async def update_stats(self):
-        """Update bot stats via API every 30 seconds"""
+        """Update bot stats for the web interface"""
         try:
             stats = {
                 'server_count': len(self.guilds),
                 'user_count': sum(g.member_count for g in self.guilds),
-                'uptime': time.time() - self.start_time,
-                'latency': round(self.latency * 1000, 2)
+                'uptime': int(time.time() - self.start_time),
+                'latency': round(self.latency * 1000, 2),
+                'guilds': [str(g.id) for g in self.guilds],
+                'shard_stats': {
+                    str(shard_id): {
+                        'status': 'online',
+                        'latency': shard.latency * 1000,
+                        'guild_count': len([g for g in self.guilds if (g.id >> 22) % self.shard_count == shard_id]),
+                        'uptime': int(time.time() - self.start_time)
+                    }
+                    for shard_id, shard in enumerate(self.shards.values())
+                }
             }
             
             async with aiohttp.ClientSession() as session:
-                async with session.post('http://localhost:5000/api/stats', 
-                                      json=stats) as resp:
+                async with session.post('http://127.0.0.1:5000/api/stats', json=stats) as resp:
                     if resp.status != 200:
-                        print(f"Failed to update stats: {resp.status}")
+                        logging.warning(f"Failed to update stats: HTTP {resp.status}")
         except Exception as e:
-            print(f"Error updating stats: {e}")
-
+            logging.error(f"Error updating stats: {e}")
+    
     @update_stats.before_loop
     async def before_update_stats(self):
+        """Wait until the bot is ready before starting the stats update loop"""
         await self.wait_until_ready()
 
     @tasks.loop(minutes=5)  # Check every 5 minutes, no need to do it as frequently as stats
@@ -384,9 +398,23 @@ if os.path.exists("data/restart_info.json"):
 
 if __name__ == "__main__":
     from app import run, shutdown_server
-    run()  # This now starts the web server in a daemon thread
     
+    # Initialize the bot
+    bot = BronxBot(
+        command_prefix=commands.when_mentioned_or("."),
+        intents=intents,
+        description="BronxBot - A Discord bot for the Bronx community"
+    )
+    
+    # Start web server in a daemon thread
+    logging.info("Starting web server...")
+    run(as_thread=True)
+    
+    # Run the Discord bot
+    logging.info("Starting Discord bot...")
     try:
         bot.run(config['TOKEN'])
+    except Exception as e:
+        logging.error(f"Failed to start the bot: {e}")
     finally:
         shutdown_server()
