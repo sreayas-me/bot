@@ -268,12 +268,21 @@ class SyncDatabase:
     def __init__(self):
         self._connected = False
         self.logger = logging.getLogger('SyncDatabase')
+        
+        # Ensure data directory exists
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        
+        # Get database path from environment or use default
+        db_path = os.getenv('SQLITE_DATABASE_PATH', os.path.join(data_dir, 'database.sqlite'))
+        
         # Initialize SQLite connection
         import sqlite3
-        self.conn = sqlite3.connect('data/database.sqlite', check_same_thread=False)
-        self.cursor = self.conn.cursor()
-        # Create tables if they don't exist
-        self.cursor.execute("""
+        try:
+            self.conn = sqlite3.connect(db_path, check_same_thread=False)
+            self.cursor = self.conn.cursor()
+            # Create tables if they don't exist
+            self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS economy (
                 user_id INTEGER,
                 guild_id INTEGER DEFAULT 0,
