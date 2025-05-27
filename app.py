@@ -2,12 +2,11 @@ from flask import Flask, render_template, redirect, request, make_response, url_
 from werkzeug.serving import make_server
 import asyncio
 import functools
-from asgiref.sync import sync_to_async
 import requests
 import json
 from functools import wraps
 import time
-from utils.db import db
+from utils.db import db  # This now uses the synchronous database
 
 app = Flask(__name__)
 server = None
@@ -29,21 +28,6 @@ bot_stats = {
     'latency': 0,
     'guilds': []  # List of guild IDs where bot is present
 }
-
-def async_route(f):
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(f(*args, **kwargs))
-        finally:
-            if not asyncio._get_running_loop():
-                loop.close()
-    return wrapper
 
 def login_required(f):
     @wraps(f)
@@ -161,8 +145,7 @@ def servers():
 
 @app.route('/servers/<guild_id>/settings')
 @login_required
-@async_route
-async def server_settings(guild_id):
+def server_settings(guild_id):
     """Show settings for a specific server"""
     access_token = request.cookies.get('access_token')
     if not access_token:
@@ -173,8 +156,8 @@ async def server_settings(guild_id):
     if not any(g['id'] == guild_id and (int(g['permissions']) & 0x20) == 0x20 for g in user_guilds):
         return "Unauthorized", 403
         
-    # Get server settings from database
-    settings = await db.get_guild_settings(guild_id)
+    # Get server settings from database (now synchronous)
+    settings = db.get_guild_settings(guild_id)
     
     # Get guild info from Discord
     guild_info = next((g for g in user_guilds if g['id'] == guild_id), None)
@@ -187,8 +170,7 @@ async def server_settings(guild_id):
 
 @app.route('/servers/<guild_id>/settings/update', methods=['POST'])
 @login_required
-@async_route
-async def update_settings(guild_id):
+def update_settings(guild_id):
     """Update settings for a specific server"""
     access_token = request.cookies.get('access_token')
     if not access_token:
@@ -214,10 +196,13 @@ async def update_settings(guild_id):
         }
     }
     
-    # Update database
-    await db.update_guild_settings(guild_id, settings)
+    # Update database (now synchronous)
+    success = db.update_guild_settings(guild_id, settings)
     
-    return redirect(f'/servers/{guild_id}/settings')
+    if success:
+        return redirect(f'/servers/{guild_id}/settings?success=1')
+    else:
+        return redirect(f'/servers/{guild_id}/settings?error=1')
 
 @app.route('/settings')
 @login_required
@@ -244,21 +229,42 @@ def settings_select():
     # Sort guilds to show bot-present servers first
     manage_guilds.sort(key=lambda g: (not g['bot_present'], g['name'].lower()))
     
-    return render_template('settings.html',
+    return render_template('settings_select.html',
         guilds=manage_guilds,
         username=request.cookies.get('username', 'User'),
         config={'CLIENT_ID': DISCORD_CLIENT_ID}
     )
 
+@app.route('/api/user/<user_id>/balance')
+@login_required
+def get_user_balance(user_id):
+    """API endpoint to get user balance"""
+    # Only allow the user to see their own balance or allow bot owner to see any balance
+    requester_id = request.cookies.get('user_id')
+    if requester_id != user_id and requester_id != DISCORD_BOT_OWNER_ID:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    balance = db.get_user_balance(user_id)
+    return jsonify(balance)
+
+@app.route('/api/guild/<guild_id>/stats')
+@login_required
+def get_guild_stats(guild_id):
+    """API endpoint to get guild stats"""
+    access_token = request.cookies.get('access_token')
+    if not access_token:
+        return jsonify({"error": "No access token"}), 401
+        
+    # Verify user has access to this server
+    user_guilds = get_user_guilds(access_token)
+    if not any(g['id'] == guild_id and (int(g['permissions']) & 0x20) == 0x20 for g in user_guilds):
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    stats = db.get_guild_stats(guild_id)
+    return jsonify(stats)
+
 def run_server():
     global server
-    # Use the current event loop if one exists, otherwise create a new one
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
     server = make_server('127.0.0.1', 5000, app)
     server.serve_forever()
 
@@ -272,4 +278,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-

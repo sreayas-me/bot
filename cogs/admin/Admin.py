@@ -27,7 +27,11 @@ class Admin(commands.Cog):
         self.global_buff_task = None 
         self.buff_types = {
             # Economy Buffs
-            "money": {"name": "Money Boost", "description": "Increases money earned from all sources", "commands": ["work", "daily", "slots"]},
+            "money": {
+                "name": "Money Boost",
+                "description": "Increases money earned from all sources",
+                "commands": ["work", "daily", "slots"]
+            },
             "luck": {"name": "Lucky Charm", "description": "Increases winning chances in games", "commands": ["slots", "blackjack", "coinflip"]},
             "multiplier": {"name": "Prize Multiplier", "description": "Multiplies all rewards", "commands": ["all"]},
             "xp": {"name": "XP Boost", "description": "Increases XP gained from actions", "commands": ["chat", "work"]},
@@ -840,7 +844,7 @@ async def setup(bot):
         if not hasattr(bot, 'session'):
             bot.session = aiohttp.ClientSession()
     
-        await db.ensure_connected()
+        db.ensure_connected()
         await bot.add_cog(Admin(bot))
         return True
         

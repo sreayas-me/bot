@@ -1,15 +1,18 @@
 import motor.motor_asyncio
+import pymongo
 import json
 import datetime
 import os
+import asyncio
 import logging
 from typing import Dict, Any, Optional
+import threading
 
 with open('data/config.json') as f:
     config = json.load(f)
 
-# Create singleton class for database access that manages its own client
 class AsyncDatabase:
+    """Async database class for use with Discord bot"""
     _instance = None
     _client = None
     _db = None
@@ -21,34 +24,9 @@ class AsyncDatabase:
         return cls._instance
 
     def __init__(self):
-        self.logger = logging.getLogger('Database')
+        self.logger = logging.getLogger('AsyncDatabase')
         self._connected = False
-        
 
-    @property
-    def client(self):
-        if self._client is None:
-            MONGO_URI = os.getenv('MONGO_URI', config['MONGO_URI'])
-            self._client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
-        return self._client
-        
-    @property
-    def db(self):
-        if self._db is None:
-            self._db = self.client.bronxbot
-        return self._db
-class Database:
-    _instance = None
-    _client = None
-    _db = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(Database, cls).__new__(cls)
-            cls._instance._connected = False
-            cls._instance.logger = logging.getLogger('Database')
-        return cls._instance
-        
     @property
     def client(self):
         if self._client is None:
@@ -68,9 +46,9 @@ class Database:
             try:
                 await self.client.admin.command('ping')
                 self._connected = True
-                self.logger.info("Database connection established")
+                self.logger.info("Async database connection established")
             except Exception as e:
-                self.logger.error(f"Database connection failed: {e}")
+                self.logger.error(f"Async database connection failed: {e}")
                 return False
         return True
 
@@ -166,5 +144,104 @@ class Database:
         result = await self.db.global_buffs.insert_one(buff_data)
         return result.inserted_id is not None
 
-# Create global database instance
-db = Database()
+
+class SyncDatabase:
+    """Synchronous database class for use with Flask web interface"""
+    _instance = None
+    _client = None
+    _db = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(SyncDatabase, cls).__new__(cls)
+                    cls._instance._connected = False
+                    cls._instance.logger = logging.getLogger('SyncDatabase')
+        return cls._instance
+        
+    @property
+    def client(self):
+        if self._client is None:
+            MONGO_URI = os.getenv('MONGO_URI', config['MONGO_URI'])
+            # Use pymongo for synchronous operations
+            self._client = pymongo.MongoClient(MONGO_URI)
+        return self._client
+        
+    @property
+    def db(self):
+        if self._db is None:
+            self._db = self.client.bronxbot
+        return self._db
+
+    def ensure_connected(self) -> bool:
+        """Ensure database connection is active"""
+        if not self._connected:
+            try:
+                self.client.admin.command('ping')
+                self._connected = True
+                self.logger.info("Sync database connection established")
+            except Exception as e:
+                self.logger.error(f"Sync database connection failed: {e}")
+                return False
+        return True
+
+    def get_guild_settings(self, guild_id: str) -> Dict[str, Any]:
+        """Get guild settings synchronously"""
+        if not self.ensure_connected():
+            return {}
+        try:
+            settings = self.db.guild_settings.find_one({"_id": str(guild_id)})
+            return settings if settings else {}
+        except Exception as e:
+            self.logger.error(f"Error getting guild settings: {e}")
+            return {}
+
+    def update_guild_settings(self, guild_id: str, settings: Dict[str, Any]) -> bool:
+        """Update guild settings synchronously"""
+        if not self.ensure_connected():
+            return False
+        try:
+            result = self.db.guild_settings.update_one(
+                {"_id": str(guild_id)},
+                {"$set": settings},
+                upsert=True
+            )
+            return result.modified_count > 0 or result.upserted_id is not None
+        except Exception as e:
+            self.logger.error(f"Error updating guild settings: {e}")
+            return False
+
+    def get_user_balance(self, user_id: str) -> Dict[str, int]:
+        """Get user's wallet and bank balance synchronously"""
+        if not self.ensure_connected():
+            return {"wallet": 0, "bank": 0, "bank_limit": 10000}
+        try:
+            user = self.db.users.find_one({"_id": str(user_id)})
+            if user:
+                return {
+                    "wallet": user.get("wallet", 0),
+                    "bank": user.get("bank", 0),
+                    "bank_limit": user.get("bank_limit", 10000)
+                }
+            return {"wallet": 0, "bank": 0, "bank_limit": 10000}
+        except Exception as e:
+            self.logger.error(f"Error getting user balance: {e}")
+            return {"wallet": 0, "bank": 0, "bank_limit": 10000}
+
+    def get_guild_stats(self, guild_id: str) -> Dict[str, int]:
+        """Get guild stats synchronously"""
+        if not self.ensure_connected():
+            return {}
+        try:
+            stats = self.db.stats.find_one({"_id": str(guild_id)})
+            return stats if stats else {}
+        except Exception as e:
+            self.logger.error(f"Error getting guild stats: {e}")
+            return {}
+
+
+# Create global database instances
+async_db = AsyncDatabase.get_instance()  # For Discord bot
+db = SyncDatabase()  # For Flask web interface
