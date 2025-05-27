@@ -21,5 +21,7 @@ services:
         sync: false
       - key: DISCORD_BOT_OWNER_ID
         sync: false
+      - key: SQLITE_DATABASE_PATH
+        value: /data/database.sqlite
     healthCheckPath: /debug
     autoDeploy: true
