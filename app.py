@@ -52,7 +52,7 @@ def home():
     if user_id and user_id == DISCORD_BOT_OWNER_ID:
         username = request.cookies.get('username', 'User')
         return render_template('index.html', username=username, stats=bot_stats)
-    return render_template('home.html')
+    return render_template('intro.html', stats=bot_stats, config=config)
 
 @app.route('/login')
 def login():
@@ -155,16 +155,34 @@ def server_settings(guild_id):
     user_guilds = get_user_guilds(access_token)
     if not any(g['id'] == guild_id and (int(g['permissions']) & 0x20) == 0x20 for g in user_guilds):
         return "Unauthorized", 403
-        
-    # Get server settings from database (now synchronous)
+
+    # Get server settings from database
     settings = db.get_guild_settings(guild_id)
     
-    # Get guild info from Discord
-    guild_info = next((g for g in user_guilds if g['id'] == guild_id), None)
+    # Get guild info from Discord API
+    headers = {'Authorization': f'Bot {config["TOKEN"]}'}
+    guild_response = requests.get(f'https://discord.com/api/v10/guilds/{guild_id}', headers=headers)
+    channels_response = requests.get(f'https://discord.com/api/v10/guilds/{guild_id}/channels', headers=headers)
+    roles_response = requests.get(f'https://discord.com/api/v10/guilds/{guild_id}/roles', headers=headers)
+    
+    guild_info = guild_response.json() if guild_response.ok else None
+    channels = channels_response.json() if channels_response.ok else []
+    roles = roles_response.json() if roles_response.ok else []
+    
+    # Filter text channels only and sort by position
+    text_channels = sorted(
+        [c for c in channels if c['type'] == 0],  # 0 is text channel
+        key=lambda c: c.get('position', 0)
+    )
+    
+    # Sort roles by position
+    roles = sorted(roles, key=lambda r: r.get('position', 0), reverse=True)
     
     return render_template('settings.html',
         guild=guild_info,
         settings=settings,
+        channels=text_channels,
+        roles=roles,
         username=request.cookies.get('username', 'User')
     )
 
@@ -183,7 +201,7 @@ def update_settings(guild_id):
         
     # Get settings from form
     settings = {
-        'prefixes': request.form.getlist('prefixes'),
+        'prefixes': [p.strip() for p in request.form.get('prefixes', '').split(',') if p.strip()],  # Fix prefix splitting
         'welcome': {
             'enabled': bool(request.form.get('welcome_enabled')),
             'channel_id': request.form.get('welcome_channel'),

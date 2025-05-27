@@ -118,7 +118,7 @@
                                     </button>
                                 {% endfor %}
                             </div>
-                            <input type="hidden" name="prefixes" id="prefixesInput" value="{{ ','.join(settings.get('prefixes', ['.'])) }}">
+                            <input type="hidden" name="prefixes" id="prefixesInput" value="{{ ','.join(settings.get('prefixes', [])) if settings.get('prefixes') else '.' }}">
                             <small class="prefix-counter">{{ settings.get('prefixes', ['.'])|length }} total prefixes</small>
                         </div>
                     </div>
@@ -135,9 +135,13 @@
                     </div>
                     <div class="form-group">
                         <label>Welcome Channel</label>
-                        <select name="welcome_channel">
+                        <select name="welcome_channel" class="form-control">
                             <option value="">Select Channel</option>
-                            <!-- Add channel options here -->
+                            {% for channel in channels %}
+                                <option value="{{ channel.id }}" {% if settings.get('welcome', {}).get('channel_id') == channel.id %}selected{% endif %}>
+                                    #{{ channel.name }}
+                                </option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="form-group">
@@ -150,23 +154,35 @@
                     <h2>Moderation Settings</h2>
                     <div class="form-group">
                         <label>Log Channel</label>
-                        <select name="log_channel">
+                        <select name="log_channel" class="form-control">
                             <option value="">Select Channel</option>
-                            <!-- Add channel options here -->
+                            {% for channel in channels %}
+                                <option value="{{ channel.id }}" {% if settings.get('moderation', {}).get('log_channel') == channel.id %}selected{% endif %}>
+                                    #{{ channel.name }}
+                                </option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="form-group">
                         <label>Mute Role</label>
-                        <select name="mute_role">
+                        <select name="mute_role" class="form-control">
                             <option value="">Select Role</option>
-                            <!-- Add role options here -->
+                            {% for role in roles %}
+                                <option value="{{ role.id }}" {% if settings.get('moderation', {}).get('mute_role') == role.id %}selected{% endif %}>
+                                    {{ role.name }}
+                                </option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="form-group">
                         <label>Jail Role</label>
-                        <select name="jail_role">
+                        <select name="jail_role" class="form-control">
                             <option value="">Select Role</option>
-                            <!-- Add role options here -->
+                            {% for role in roles %}
+                                <option value="{{ role.id }}" {% if settings.get('moderation', {}).get('jail_role') == role.id %}selected{% endif %}>
+                                    {{ role.name }}
+                                </option>
+                            {% endfor %}
                         </select>
                     </div>
                 </section>
@@ -178,5 +194,6 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/prefix-handler.js') }}"></script>
 </body>
 </html>
