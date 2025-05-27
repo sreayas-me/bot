@@ -31,7 +31,7 @@ class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.logger = CogLogger(self.__class__.__name__)
-        self.currency = "💰"
+        self.currency = "<:bronkbuk:1377106993495412789>"
         self.active_games = set()
         self.db = db  
 
@@ -131,9 +131,9 @@ class Economy(commands.Cog):
                 
                 embed = discord.Embed(
                     description=(
-                        "**Bank Deposit Guide**\n\n"
-                        f"Your Wallet: **{wallet}** 💰\n"
-                        f"Bank Space: **{space}** 💰\n\n"
+                        "**BronkBuks Bank Deposit Guide**\n\n"
+                        f"Your Wallet: **{wallet}** {self.currency}\n"
+                        f"Bank Space: **{space}** {self.currency}\n\n"
                         "**Usage:**\n"
                         "`.deposit <amount>`\n"
                         "`.deposit 50%` - Deposit 50% of wallet\n"
@@ -181,7 +181,7 @@ class Economy(commands.Cog):
 
             # Update balances using transactions
             if await db.transfer_money(ctx.author.id, ctx.author.id, amount, ctx.guild.id):
-                await ctx.reply(f"Deposited **{amount:,}** 💰 into your bank!")
+                await ctx.reply(f"Deposited **{amount:,}** {self.currency} into your bank!")
             else:
                 await ctx.reply("Failed to deposit money!")
                 
@@ -199,9 +199,9 @@ class Economy(commands.Cog):
             
             embed = discord.Embed(
                 description=(
-                    "**Bank Withdrawal Guide**\n\n"
-                    f"Your Bank: **{bank}** 💰\n"
-                    f"Your Wallet: **{wallet}** 💰\n\n"
+                    "**BronkBuks Bank Withdrawal Guide**\n\n"
+                    f"Your Bank: **{bank}** {self.currency}\n"
+                    f"Your Wallet: **{wallet}** {self.currency}\n\n"
                     "**Usage:**\n"
                     "`.withdraw <amount>`\n"
                     "`.withdraw 50%` - Withdraw 50% of bank\n"
@@ -240,7 +240,7 @@ class Economy(commands.Cog):
         # Update balances
         if await db.update_bank(ctx.author.id, -amount, ctx.guild.id):
             if await db.update_wallet(ctx.author.id, amount, ctx.guild.id):
-                await ctx.reply(f"Withdrew **{amount}** 💰 from your bank!")
+                await ctx.reply(f"Withdrew **{amount}** {self.currency} from your bank!")
                 return
             await db.update_bank(ctx.author.id, amount, ctx.guild.id)  # Refund if wallet update fails
 
@@ -253,12 +253,13 @@ class Economy(commands.Cog):
         member = member or ctx.author
         wallet = await db.get_wallet_balance(member.id, ctx.guild.id)
         bank = await db.get_bank_balance(member.id, ctx.guild.id)
+        bank_limit = await db.get_bank_limit(member.id, ctx.guild.id)
         
         embed = discord.Embed(
-            title=f"{member.display_name}'s Balance",
-            description=f"Wallet: **{wallet:,}** 💰\n" \
-                       f"Bank: **{bank:,}** 💰\n" \
-                       f"Net Worth: **{wallet + bank:,}** 💰",
+            title=f"{member.display_name}'s BronkBuks Balance",
+            description=f"Wallet: **{wallet:,}** {self.currency}\n" \
+                       f"Bank: **{bank:,}**/**{bank_limit:,}** {self.currency}\n" \
+                       f"Net Worth: **{wallet + bank:,}** {self.currency}",
             color=member.color or discord.Color.green()
         )
         await ctx.reply(embed=embed)
@@ -346,7 +347,7 @@ class Economy(commands.Cog):
         """Work for some money"""
         amount = random.randint(50, 200)
         await db.update_wallet(ctx.author.id, amount, ctx.guild.id)
-        await ctx.reply(f"You worked and earned **{amount}** 💰")
+        await ctx.reply(f"You worked and earned **{amount}** {self.currency}")
 
     @commands.command()
     @commands.cooldown(1, 300, commands.BucketType.user)
@@ -373,79 +374,81 @@ class Economy(commands.Cog):
     @commands.command(aliases=['lb'])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def leaderboard(self, ctx):
-        """View the richest users"""
-        users = await db.db.economy.find().sort('balance', -1).limit(10).to_list(10)
+        """View the richest users in the current server"""
+        pipeline = [
+            {"$match": {"guild_id": ctx.guild.id}},
+            {"$project": {
+                "_id": "$user_id",
+                "total": {"$sum": ["$wallet", "$bank"]}
+            }},
+            {"$sort": {"total": -1}},
+            {"$limit": 10}
+        ]
         
-        content = ["🏆 **Richest Users**\n"]
+        users = await db.db.economy.aggregate(pipeline).to_list(10)
+        
+        if not users:
+            return await ctx.reply(embed=discord.Embed(description="No economy data for this server", color=0x2b2d31))
+
+        content = []
         for i, user in enumerate(users, 1):
             member = ctx.guild.get_member(user['_id'])
             if member:
-                content.append(f"`#{i}` {member.mention}: **{user['balance']}** {self.currency}")
+                content.append(f"`{i}.` {member.mention} • **{user['total']:,}** {self.currency}")
         
+        if not content:
+            return await ctx.reply(embed=discord.Embed(description="No active users found", color=0x2b2d31))
+
         embed = discord.Embed(
+            title=f"Richest Users in {ctx.guild.name}",
             description="\n".join(content),
-            color=discord.Color.gold()
+            color=0x2b2d31
         )
         await ctx.reply(embed=embed)
 
     @commands.command(aliases=['ghop', 'globalb', 'gtop', 'globaltop', 'glb'])
     @commands.cooldown(1, 30, commands.BucketType.user)
     async def globalboard(self, ctx):
-        """View global leaderboard across all servers (excludes small servers and admin servers)"""
-        # Get valid servers (30+ members, user not admin)
-        valid_servers = []
-        excluded_guilds = []
-        total_servers = 0
+        """View global leaderboard across all servers"""
+        pipeline = [
+            {"$group": {
+                "_id": "$user_id",
+                "total": {"$sum": {"$add": ["$wallet", "$bank"]}}
+            }},
+            {"$sort": {"total": -1}},
+            {"$limit": 10}
+        ]
         
-        for guild in self.bot.guilds:
-            total_servers += 1
-            if len(guild.members) < 30:
-                excluded_guilds.append(guild.id)
-                continue
-                
-            member = guild.get_member(ctx.author.id)
-            if member and member.guild_permissions.administrator:
-                excluded_guilds.append(guild.id)
-                continue
-                
-            valid_servers.append(guild)
+        users = await db.db.economy.aggregate(pipeline).to_list(10)
         
-        if not valid_servers:
-            return await ctx.reply("No eligible servers found for global leaderboard!")
+        if not users:
+            return await ctx.reply(embed=discord.Embed(description="No global economy data found", color=0x2b2d31))
 
-        # Get global net worth for all users
-        user_totals = {}
-        for guild in valid_servers:
-            for member in guild.members:
-                if member.bot:
-                    continue
-                    
-                if member.id not in user_totals:
-                    net_worth = await db.get_global_net_worth(member.id, excluded_guilds)
-                    if net_worth > 0:  # Only include users with money
-                        user_totals[member.id] = {
-                            "name": str(member),
-                            "total": net_worth
-                        }
+        content = []
+        for i, user in enumerate(users, 1):
+            user_id = user['_id']
+            total = user['total']
+            
+            # Try to get member from current guild first
+            member = ctx.guild.get_member(user_id)
+            if not member:
+                # Try to find user in any mutual guild
+                for guild in self.bot.guilds:
+                    member = guild.get_member(user_id)
+                    if member:
+                        break
+            
+            if member:
+                content.append(f"`{i}.` {member.name} • **{total:,}** {self.currency}")
+        
+        if not content:
+            return await ctx.reply(embed=discord.Embed(description="No active users found", color=0x2b2d31))
 
-        # Sort users by total
-        sorted_users = sorted(user_totals.items(), key=lambda x: x[1]["total"], reverse=True)[:10]
-
-        if not sorted_users:
-            return await ctx.reply("No users found with money in eligible servers!")
-
-        # Create leaderboard embed
         embed = discord.Embed(
             title="🌎 Global Economy Leaderboard",
-            color=discord.Color.gold()
+            description="\n".join(content),
+            color=0x2b2d31
         )
-        
-        embed.description = f"**Eligible Servers:** {len(valid_servers)}/{total_servers}\n" \
-                          f"*Excludes servers with <30 members and servers where you're admin*\n\n"
-        
-        for i, (user_id, data) in enumerate(sorted_users, 1):
-            embed.description += f"`#{i}` {data['name']}: **{data['total']:,}** 💰\n"
-
         await ctx.reply(embed=embed)
 
     @commands.command(aliases=['ghop'])
@@ -561,8 +564,8 @@ class Economy(commands.Cog):
         elif item_id == "bank_upgrade":
             if await db.increase_bank_limit(ctx.author.id, 5000, ctx.guild.id):
                 embed = discord.Embed(
-                    description=f"✨ Bank storage increased by **5,000** 💰\n" \
-                              f"New limit: **{await db.get_bank_limit(ctx.author.id, ctx.guild.id)}** 💰",
+                    description=f"✨ Bank storage increased by **5,000** {self.currency}\n" \
+                              f"New limit: **{await db.get_bank_limit(ctx.author.id, ctx.guild.id)}** {self.currency}",
                     color=discord.Color.green()
                 )
                 return await ctx.reply(embed=embed)
@@ -835,7 +838,7 @@ class Economy(commands.Cog):
         
         for item_id, item in shop_items.items():
             embed.add_field(
-                name=f"{item['name']} - {item['price']} 💰",
+                name=f"{item['name']} - {item['price']} {self.currency}",
                 value=f"{item['description']}\nID: `{item_id}`",
                 inline=False
             )
@@ -872,7 +875,7 @@ class Economy(commands.Cog):
         # Overview page
         overview = discord.Embed(
             title="🧪 Available Potions",
-            description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id, ctx.guild.id)}** 💰\n\n",
+            description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id, ctx.guild.id)}** {self.currency}\n\n",
             color=discord.Color.blue()
         )
         
@@ -880,7 +883,7 @@ class Economy(commands.Cog):
         sample_potions = list(potions.items())[:3]
         for potion_id, potion in sample_potions:
             overview.description += (
-                f"**{potion['name']}** - {potion['price']} 💰\n"
+                f"**{potion['name']}** - {potion['price']} {self.currency}\n"
                 f"• {potion['multiplier']}x {potion['type']} buff for {potion['duration']}min\n"
                 f"• {potion.get('description', '')}\n"
                 f"`buy {potion_id}` to purchase\n\n"
@@ -902,7 +905,7 @@ class Economy(commands.Cog):
             
             for potion_id, potion in chunk:
                 embed.add_field(
-                    name=f"{potion['name']} - {potion['price']} 💰",
+                    name=f"{potion['name']} - {potion['price']} {self.currency}",
                     value=(
                         f"Type: {potion['type']}\n"
                         f"Effect: {potion['multiplier']}x for {potion['duration']}min\n"

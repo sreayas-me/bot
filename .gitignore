@@ -14,3 +14,4 @@ bronxbot-nginx.conf
 vercel.json
 vercel_requirements.txt
 dashboard/bronxbot-web.service
+**/__pycache__/
