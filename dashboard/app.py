@@ -108,6 +108,9 @@ def home():
     # Only check bot owner ID if Discord config is loaded
     if DISCORD_BOT_OWNER_ID and user_id and user_id == DISCORD_BOT_OWNER_ID:
         username = request.cookies.get('username', 'User')
+        return render_template('DEVindex.html', username=username, stats=bot_stats) 
+    elif user_id:
+        username = request.cookies.get('username', 'User')
         return render_template('index.html', username=username, stats=bot_stats)
     return render_template('home.html', stats=bot_stats)
 
