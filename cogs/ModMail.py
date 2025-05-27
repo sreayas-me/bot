@@ -103,23 +103,42 @@ class ModMail(commands.Cog, ErrorHandler):
             os.makedirs("data", exist_ok=True)
             stats_file = "data/stats.json"
             
+            # Load existing data or create new structure
             if os.path.exists(stats_file):
                 with open(stats_file, "r") as f:
                     data = json.load(f)
             else:
-                data = {"stats": {}}
+                data = {}
+            
+            # Ensure required structures exist
+            if "stats" not in data:
+                data["stats"] = {}
+            if "guilds" not in data:
+                data["guilds"] = []
             
             # Initialize guild stats if not exists
             guild_id = str(message.guild.id)
             if guild_id not in data["stats"]:
-                data["stats"][guild_id] = {"messages": 0}
+                data["stats"][guild_id] = {
+                    "messages": 0,
+                    "name": message.guild.name,
+                    "last_message": discord.utils.utcnow().isoformat()
+                }
             
+            # Update message count and last message time
             data["stats"][guild_id]["messages"] += 1
+            data["stats"][guild_id]["last_message"] = discord.utils.utcnow().isoformat()
             
+            # Ensure guild is in guilds list
+            if guild_id not in data["guilds"]:
+                data["guilds"].append(guild_id)
+            
+            # Save the updated data
             with open(stats_file, "w") as f:
                 json.dump(data, f, indent=2)
+                
         except Exception as e:
-            self.logger.error(f"Failed to update stats: {e}")
+            self.logger.error(f"Failed to update stats for guild {message.guild.id}: {e}")
     
     async def can_use_modmail(self, user: discord.User) -> bool:
         """Check if user is in any of the allowed guilds"""
