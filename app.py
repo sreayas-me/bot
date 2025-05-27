@@ -29,8 +29,16 @@ def thousands_filter(value):
     except (ValueError, TypeError):
         return "0"
 
-# Load config from environment variables with optional config.json fallback
-try:
+# Initialize configuration with default empty values
+DISCORD_CLIENT_ID = None
+DISCORD_CLIENT_SECRET = None
+DISCORD_BOT_OWNER_ID = None
+config = {}
+
+def load_config():
+    """Load configuration from environment variables or config file"""
+    global DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_OWNER_ID, config
+    
     # First try environment variables
     DISCORD_CLIENT_ID = os.environ.get('DISCORD_CLIENT_ID')
     DISCORD_CLIENT_SECRET = os.environ.get('DISCORD_CLIENT_SECRET')
@@ -48,14 +56,25 @@ try:
             print("Config file not found, using environment variables only")
         except json.JSONDecodeError:
             print("Invalid JSON in config file, using environment variables only")
+    
+    return all([DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_OWNER_ID])
 
-    # Validate required configuration
-    if not all([DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_OWNER_ID]):
-        raise ValueError("Missing required configuration. Please set DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, and DISCORD_BOT_OWNER_ID environment variables or provide them in config.json")
-        
+def require_discord_config(f):
+    """Decorator to ensure Discord configuration is available"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not load_config():
+            return jsonify({
+                "error": "Discord configuration is not set up. Please configure DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, and DISCORD_BOT_OWNER_ID."
+            }), 503
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Try initial config load but don't fail if unsuccessful
+try:
+    load_config()
 except Exception as e:
-    print(f"Error loading configuration: {e}")
-    raise
+    print(f"Warning: Error loading initial configuration: {e}")
 
 # Set callback URI based on environment
 if os.environ.get('RENDER_EXTERNAL_URL'):
@@ -92,16 +111,19 @@ def api_stats():
 @app.route('/')
 def home():
     user_id = request.cookies.get('user_id')
-    if user_id and user_id == DISCORD_BOT_OWNER_ID:
+    # Only check bot owner ID if Discord config is loaded
+    if DISCORD_BOT_OWNER_ID and user_id and user_id == DISCORD_BOT_OWNER_ID:
         username = request.cookies.get('username', 'User')
         return render_template('index.html', username=username, stats=bot_stats)
-    return render_template('home.html', stats=bot_stats, config=config)
+    return render_template('home.html', stats=bot_stats)
 
 @app.route('/login')
+@require_discord_config
 def login():
     return redirect(f'https://discord.com/api/oauth2/authorize?client_id={DISCORD_CLIENT_ID}&redirect_uri={DISCORD_REDIRECT_URI}&response_type=code&scope=identify+guilds')
 
 @app.route('/callback')
+@require_discord_config
 def callback():
     code = request.args.get('code')
     data = {
@@ -157,6 +179,7 @@ def get_bot_guilds():
 
 @app.route('/servers')
 @login_required
+@require_discord_config
 def servers():
     """Show list of servers the user has access to"""
     access_token = request.cookies.get('access_token')
@@ -188,6 +211,7 @@ def servers():
 
 @app.route('/servers/<guild_id>/settings')
 @login_required
+@require_discord_config
 def server_settings(guild_id):
     """Show settings for a specific server"""
     access_token = request.cookies.get('access_token')
@@ -231,6 +255,7 @@ def server_settings(guild_id):
 
 @app.route('/servers/<guild_id>/settings/update', methods=['POST'])
 @login_required
+@require_discord_config
 def update_settings(guild_id):
     """Update settings for a specific server"""
     access_token = request.cookies.get('access_token')
@@ -267,6 +292,7 @@ def update_settings(guild_id):
 
 @app.route('/settings')
 @login_required
+@require_discord_config
 def settings_select():
     """Show server selection for settings"""
     access_token = request.cookies.get('access_token')
@@ -298,6 +324,7 @@ def settings_select():
 
 @app.route('/api/user/<user_id>/balance')
 @login_required
+@require_discord_config
 def get_user_balance(user_id):
     """API endpoint to get user balance"""
     # Only allow the user to see their own balance or allow bot owner to see any balance
@@ -310,6 +337,7 @@ def get_user_balance(user_id):
 
 @app.route('/api/guild/<guild_id>/stats')
 @login_required
+@require_discord_config
 def get_guild_stats(guild_id):
     """API endpoint to get guild stats"""
     access_token = request.cookies.get('access_token')
@@ -330,8 +358,13 @@ def debug():
     return jsonify({
         'status': 'ok',
         'env': os.environ.get('FLASK_ENV'),
-        'discord_configured': bool(DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET),
-        'redirect_uri': DISCORD_REDIRECT_URI
+        'discord_configured': load_config(),
+        'redirect_uri': DISCORD_REDIRECT_URI,
+        'config_source': 'env' if any([os.environ.get('DISCORD_CLIENT_ID'),
+                                     os.environ.get('DISCORD_CLIENT_SECRET'),
+                                     os.environ.get('DISCORD_BOT_OWNER_ID')]) else 'config_file',
+        'missing_config': [k for k in ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_BOT_OWNER_ID']
+                          if not os.environ.get(k) and not config.get(k.split('_', 1)[1])]
     })
 
 def create_app():
