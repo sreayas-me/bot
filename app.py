@@ -19,11 +19,8 @@ def run():
 def shutdown_server():
     pass
 
-# For Vercel serverless deployment
-app.config['SERVER_NAME'] = None  # Allow any host
-
 if __name__ == "__main__":
-    run()= Flask(__name__)
+    app = Flask(__name__)
 
 # Add thousands filter
 @app.template_filter('thousands')
