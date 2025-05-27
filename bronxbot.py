@@ -222,7 +222,17 @@ async def on_ready():
     """Called when the bot is ready"""
     logging.info(f"Bot ready as {bot.user.name} ({bot.user.id})")
     
-    # Start the stats update loop
+    # Load cogs first
+    try:
+        logging.info("Loading cogs...")
+        success, errors = await CogLoader.load_all_cogs(bot)
+        if errors > 0:
+            logging.error(f"Failed to load {errors} cog(s)")
+    except Exception as e:
+        logging.error(f"Error during cog loading: {e}")
+        traceback.print_exc()
+    
+    # Start the stats update loop after cogs are loaded
     if not hasattr(bot, 'update_stats'):
         logging.error("update_stats task not found")
         return
