@@ -556,3 +556,58 @@ section h2 {
 .add-bot-link:hover {
     color: var(--text);
 }
+
+.shard-status {
+    margin: 2rem 0;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+}
+
+.shard-status h2 {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.shard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.shard-card {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 1rem;
+    transition: transform 0.2s;
+}
+
+.shard-card:hover {
+    transform: translateY(-2px);
+}
+
+.shard-card.online {
+    border-left: 4px solid #43b581;
+}
+
+.shard-card.offline {
+    border-left: 4px solid #f04747;
+}
+
+.shard-card h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+}
+
+.shard-card p {
+    margin: 0.25rem 0;
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.shard-card .uptime {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    opacity: 0.7;
+}

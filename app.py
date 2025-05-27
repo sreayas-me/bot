@@ -9,7 +9,15 @@ import time
 from utils.db import db  # This now uses the synchronous database
 
 app = Flask(__name__)
-server = None
+
+# Add thousands filter
+@app.template_filter('thousands')
+def thousands_filter(value):
+    """Format a number with thousands separator"""
+    try:
+        return "{:,}".format(int(value))
+    except (ValueError, TypeError):
+        return "0"
 
 # Load config
 with open("data/config.json", "r") as f:
