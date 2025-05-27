@@ -400,17 +400,22 @@ def run(as_thread=False):
         raise RuntimeError("No available ports found")
         
     host = '0.0.0.0' if os.environ.get('FLASK_ENV') == 'production' else '127.0.0.1'
-    debug = os.environ.get('FLASK_ENV') != 'production'
     
     if as_thread:
         import threading
+        from werkzeug.serving import make_server
+        
+        server = make_server(host, port, app, threaded=True)
+        print(f"Web server starting on http://{host}:{port}")
+        
         def run_server():
-            print(f"Web server starting on http://{host}:{port}")
-            app.run(host=host, port=port, debug=debug)
+            server.serve_forever()
+            
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
     else:
-        print(f"Starting server on {host}:{port}")
+        # Only use debug mode when running directly (not in thread)
+        debug = os.environ.get('FLASK_ENV') != 'production'
         app.run(host=host, port=port, debug=debug)
 
 def shutdown_server():

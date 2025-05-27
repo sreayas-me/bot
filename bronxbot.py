@@ -224,17 +224,29 @@ class CogLoader:
 @bot.event
 async def on_ready():
     """Called when the bot is ready"""
-    # Start the stats and guild update loops
+    logging.info(f"Bot ready as {bot.user.name} ({bot.user.id})")
+    
+    # Start the stats update loop
+    if not hasattr(bot, 'update_stats'):
+        logging.error("update_stats task not found")
+        return
     if not bot.update_stats.is_running():
         bot.update_stats.start()
-    if not bot.update_guilds.is_running():
-        bot.update_guilds.start()
+        logging.info("Started stats update loop")
 
     guild_cache_start = time.time()
     # Build guild cache
     for guild in bot.guilds:
         await guild.chunk()
     bot.boot_metrics['guild_cache_time'] = time.time() - guild_cache_start
+    
+    # Update presence
+    await bot.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.playing,
+            name=f"with {len(bot.guilds)} servers | .help"
+        )
+    )
     
     if bot.restart_channel and bot.restart_message:
         try:
@@ -398,23 +410,32 @@ if os.path.exists("data/restart_info.json"):
 
 if __name__ == "__main__":
     from app import run, shutdown_server
+    import platform
     
-    # Initialize the bot
+    # Initialize the bot with all required intents and settings
     bot = BronxBot(
         command_prefix=commands.when_mentioned_or("."),
         intents=intents,
-        description="BronxBot - A Discord bot for the Bronx community"
+        description="BronxBot - A Discord bot for the Bronx community",
+        shard_count=2,  # Using 2 shards for better performance
+        case_insensitive=True,
+        strip_after_prefix=True,
     )
     
-    # Start web server in a daemon thread
+    # Start web server in a daemon thread first
     logging.info("Starting web server...")
     run(as_thread=True)
     
+    # Print startup info
+    logging.info(f"Python version: {platform.python_version()}")
+    logging.info(f"Discord.py version: {discord.__version__}")
+    logging.info(f"Starting BronxBot with {bot.shard_count} shards")
+    
     # Run the Discord bot
-    logging.info("Starting Discord bot...")
     try:
-        bot.run(config['TOKEN'])
+        bot.run(config['TOKEN'], log_handler=None)  # Disable default discord.py logging
     except Exception as e:
         logging.error(f"Failed to start the bot: {e}")
+        traceback.print_exc()
     finally:
         shutdown_server()
