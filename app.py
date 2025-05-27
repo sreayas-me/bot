@@ -11,14 +11,8 @@ import functools
 
 app = Flask(__name__)  # Initialize Flask app at module level
 
-def run():
-    app.run(host='127.0.0.1', port=5000)
-
-def shutdown_server():
-    pass
-
-if __name__ == "__main__":
-    run()
+# Configure for production
+app.config['SERVER_NAME'] = None
 
 # Add thousands filter
 @app.template_filter('thousands')
@@ -118,12 +112,11 @@ def home():
     return render_template('home.html', stats=bot_stats)
 
 @app.route('/login')
-@require_discord_config
 def login():
     return redirect(f'https://discord.com/api/oauth2/authorize?client_id={DISCORD_CLIENT_ID}&redirect_uri={DISCORD_REDIRECT_URI}&response_type=code&scope=identify+guilds')
 
 @app.route('/callback')
-@require_discord_config
+
 def callback():
     code = request.args.get('code')
     data = {
@@ -179,7 +172,6 @@ def get_bot_guilds():
 
 @app.route('/servers')
 @login_required
-@require_discord_config
 def servers():
     """Show list of servers the user has access to"""
     access_token = request.cookies.get('access_token')
@@ -211,7 +203,7 @@ def servers():
 
 @app.route('/servers/<guild_id>/settings')
 @login_required
-@require_discord_config
+
 def server_settings(guild_id):
     """Show settings for a specific server"""
     access_token = request.cookies.get('access_token')
@@ -255,7 +247,7 @@ def server_settings(guild_id):
 
 @app.route('/servers/<guild_id>/settings/update', methods=['POST'])
 @login_required
-@require_discord_config
+
 def update_settings(guild_id):
     """Update settings for a specific server"""
     access_token = request.cookies.get('access_token')
@@ -292,7 +284,7 @@ def update_settings(guild_id):
 
 @app.route('/settings')
 @login_required
-@require_discord_config
+
 def settings_select():
     """Show server selection for settings"""
     access_token = request.cookies.get('access_token')
@@ -324,7 +316,7 @@ def settings_select():
 
 @app.route('/api/user/<user_id>/balance')
 @login_required
-@require_discord_config
+
 def get_user_balance(user_id):
     """API endpoint to get user balance"""
     # Only allow the user to see their own balance or allow bot owner to see any balance
@@ -337,7 +329,7 @@ def get_user_balance(user_id):
 
 @app.route('/api/guild/<guild_id>/stats')
 @login_required
-@require_discord_config
+
 def get_guild_stats(guild_id):
     """API endpoint to get guild stats"""
     access_token = request.cookies.get('access_token')
@@ -367,41 +359,68 @@ def debug():
                           if not os.environ.get(k) and not config.get(k.split('_', 1)[1])]
     })
 
-def create_app():
-    app = Flask(__name__)
-    
-    # Add thousands filter
-    @app.template_filter('thousands')
-    def thousands_filter(value):
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors"""
+    if request.headers.get('Accept', '').startswith('application/json'):
+        return jsonify({"error": "Not found"}), 404
+    return render_template('home.html', stats=bot_stats), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    if request.headers.get('Accept', '').startswith('application/json'):
+        return jsonify({"error": "Internal server error"}), 500
+    return render_template('home.html', stats=bot_stats, error="Internal server error"), 500
+
+def get_available_port(start_port, max_port=65535):
+    """Find first available port in range"""
+    import socket
+    for port in range(start_port, max_port + 1):
         try:
-            return "{:,}".format(int(value))
-        except (ValueError, TypeError):
-            return "0"
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('127.0.0.1', port))
+                s.close()
+                return port
+        except OSError:
+            continue
+    return None
 
-    # Configure for production
-    app.config['SERVER_NAME'] = None
+def run(as_thread=False):
+    """Run the Flask application server
     
-    return app
-
-app = create_app()
-
-def run():
-    """Development server in a thread for the Discord bot"""
-    import threading
-    def run_server():
-        app.run(host='127.0.0.1', port=5000)
-    server_thread = threading.Thread(target=run_server, daemon=True)
-    server_thread.start()
-    print("Web server started on http://localhost:5000")
+    Args:
+        as_thread (bool): If True, run in a separate thread for the Discord bot
+    """
+    default_port = int(os.environ.get('PORT', 5000))
+    port = get_available_port(default_port)
+    if not port:
+        port = get_available_port(8000)  # Try alternate port range
+    if not port:
+        raise RuntimeError("No available ports found")
+        
+    host = '0.0.0.0' if os.environ.get('FLASK_ENV') == 'production' else '127.0.0.1'
+    debug = os.environ.get('FLASK_ENV') != 'production'
+    
+    if as_thread:
+        import threading
+        def run_server():
+            print(f"Web server starting on http://{host}:{port}")
+            app.run(host=host, port=port, debug=debug)
+        server_thread = threading.Thread(target=run_server, daemon=True)
+        server_thread.start()
+    else:
+        print(f"Starting server on {host}:{port}")
+        app.run(host=host, port=port, debug=debug)
 
 def shutdown_server():
+    """Shutdown the Flask server (placeholder for now)"""
     pass
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    if os.environ.get('FLASK_ENV') == 'production':
-        # Production mode (Render)
-        app.run(host='0.0.0.0', port=port)
-    else:
-        # Development mode
-        app.run(host='127.0.0.1', port=5000, debug=True)
+    try:
+        run()
+    except Exception as e:
+        print(f"Error starting server: {e}")
+        import sys
+        sys.exit(1)
