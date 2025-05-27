@@ -1,12 +1,18 @@
+# Web Framework
 flask==3.0.0
-gunicorn==21.2.0
-requests==2.31.0
-python-dotenv==1.0.0
-sqlalchemy==2.0.25
 werkzeug==3.0.6
-aiosqlite==0.19.0
 click==8.1.7
 itsdangerous==2.1.2
 jinja2==3.1.3
 markupsafe==2.1.5
+gunicorn==21.2.0
+
+# Database
 pymongo==4.6.1
+motor==3.3.2
+sqlalchemy==2.0.25
+aiosqlite==0.19.0
+
+# Utils
+python-dotenv==1.0.0
+requests==2.31.0
