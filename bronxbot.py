@@ -436,7 +436,7 @@ if __name__ == "__main__":
     # Print startup info
     logging.info(f"Python version: {platform.python_version()}")
     logging.info(f"Discord.py version: {discord.__version__}")
-    logging.info(f"Starting BronxBot with 2 shards")
+    logging.info(f"Starting BronxBot with {bot.shard_count} shards")
     
     # Run the Discord bot
     try:
