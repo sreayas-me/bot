@@ -7,9 +7,6 @@ import os
 import asyncio
 import aiohttp
 import traceback
-import threading
-from app import run as run_webapp
-# BronxBot - A Discord bot for the Bronx community
 from discord.ext import commands, tasks
 from typing import Dict, List, Tuple
 import logging
@@ -73,7 +70,8 @@ class BronxBot(commands.AutoShardedBot):
 
     @tasks.loop(seconds=30)
     async def update_stats(self):
-        """Update bot stats for the web interface"""
+        """Update bot stats"""
+        # Remove web interface stats update
         try:
             stats = {
                 'server_count': len(self.guilds),
@@ -91,14 +89,12 @@ class BronxBot(commands.AutoShardedBot):
                     for shard_id, shard in enumerate(self.shards.values())
                 }
             }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post('http://127.0.0.1:5000/api/stats', json=stats) as resp:
-                    if resp.status != 200:
-                        logging.warning(f"Failed to update stats: HTTP {resp.status}")
+            # Store stats locally instead of sending to web app
+            with open('data/stats.json', 'w') as f:
+                json.dump(stats, f, indent=2)
         except Exception as e:
             logging.error(f"Error updating stats: {e}")
-    
+
     @update_stats.before_loop
     async def before_update_stats(self):
         """Wait until the bot is ready before starting the stats update loop"""
@@ -111,7 +107,7 @@ class BronxBot(commands.AutoShardedBot):
             self.guild_list = [str(g.id) for g in self.guilds]
             
             async with aiohttp.ClientSession() as session:
-                async with session.post('http://localhost:5000/api/stats', 
+                async with session.post('https://bronxbot.onrender.com/api/stats', 
                                       json={'guilds': self.guild_list}) as resp:
                     if resp.status != 200:
                         print(f"Failed to update guild list: {resp.status}")
@@ -409,7 +405,6 @@ if os.path.exists("data/restart_info.json"):
         print(f"Failed to load restart info: {e}")
 
 if __name__ == "__main__":
-    from app import run, shutdown_server
     import platform
     
     # Initialize the bot with all required intents and settings
@@ -422,10 +417,6 @@ if __name__ == "__main__":
         strip_after_prefix=True,
     )
     
-    # Start web server in a daemon thread first
-    logging.info("Starting web server...")
-    run(as_thread=True)
-    
     # Print startup info
     logging.info(f"Python version: {platform.python_version()}")
     logging.info(f"Discord.py version: {discord.__version__}")
@@ -437,5 +428,3 @@ if __name__ == "__main__":
     except Exception as e:
         logging.error(f"Failed to start the bot: {e}")
         traceback.print_exc()
-    finally:
-        shutdown_server()
