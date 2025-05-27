@@ -222,11 +222,12 @@ async def on_ready():
     """Called when the bot is ready"""
     logging.info(f"Bot ready as {bot.user.name} ({bot.user.id})")
     
-    # Load all cogs using CogLoader
+    # Load cogs first
     try:
         logging.info("Loading cogs...")
-        success_count, error_count = await CogLoader.load_all_cogs(bot)
-        logging.info(f"Loaded {success_count} cogs with {error_count} errors")
+        success, errors = await CogLoader.load_all_cogs(bot)
+        if errors > 0:
+            logging.error(f"Failed to load {errors} cog(s)")
     except Exception as e:
         logging.error(f"Error during cog loading: {e}")
         traceback.print_exc()
