@@ -89,9 +89,25 @@ class BronxBot(commands.AutoShardedBot):
                     for shard_id, shard in enumerate(self.shards.values())
                 }
             }
-            # Store stats locally instead of sending to web app
+            # Store stats locally
             with open('data/stats.json', 'w') as f:
                 json.dump(stats, f, indent=2)
+            
+            # Send stats to both prod and dev environments
+            async with aiohttp.ClientSession() as session:
+                endpoints = {
+                    'prod': 'https://bronxbot.onrender.com/api/stats',
+                    'dev': 'http://localhost:5000/api/stats'
+                }
+                
+                for env, url in endpoints.items():
+                    try:
+                        async with session.post(url, json=stats) as resp:
+                            result = await resp.text()
+                            logging.info(f"[{env.upper()}] Stats update status: {resp.status}")
+                            logging.info(f"[{env.upper()}] Response: {result}")
+                    except Exception as e:
+                        logging.error(f"[{env.upper()}] Failed to update stats: {e}")
         except Exception as e:
             logging.error(f"Error updating stats: {e}")
 
