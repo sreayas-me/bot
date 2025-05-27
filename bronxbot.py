@@ -222,12 +222,11 @@ async def on_ready():
     """Called when the bot is ready"""
     logging.info(f"Bot ready as {bot.user.name} ({bot.user.id})")
     
-    # Load cogs first
+    # Load all cogs using CogLoader
     try:
         logging.info("Loading cogs...")
-        success, errors = await CogLoader.load_all_cogs(bot)
-        if errors > 0:
-            logging.error(f"Failed to load {errors} cog(s)")
+        success_count, error_count = await CogLoader.load_all_cogs(bot)
+        logging.info(f"Loaded {success_count} cogs with {error_count} errors")
     except Exception as e:
         logging.error(f"Error during cog loading: {e}")
         traceback.print_exc()
@@ -283,13 +282,13 @@ async def on_ready():
         except Exception as e:
             print(f"Failed to update restart message: {e}")
 
-    success, errors = await CogLoader.load_all_cogs(bot)
+    """success, errors = await CogLoader.load_all_cogs(bot)
     status_msg = (
         f"[?] Logged in as {bot.user.name} (ID: {bot.user.id})\n"
         f"[!] Shards: {bot.shard_count}, Latency: {round(bot.latency * 1000, 2)}ms\n"
         f"[+] Cogs: {success} loaded, {errors} errors"
     )
-    print(status_msg)
+    print(status_msg)"""
     
     activity = discord.Activity(
         type=discord.ActivityType.playing,
@@ -323,7 +322,7 @@ async def on_guild_join(guild):
             "• Fun commands and games\n"
             "• Moderation tools\n\n"
             "*The bot is still in active development, so feel free to suggest new features!*\n\n"
-            "**Quick Start:**\n"
+           
             "• Use .help to see available commands\n"
             "• Use .help <command> for detailed info\n"
             "• Join the [support server](https://discord.gg/furryporn)\n\n"
@@ -417,20 +416,10 @@ if os.path.exists("data/restart_info.json"):
 if __name__ == "__main__":
     import platform
     
-    # Initialize the bot with all required intents and settings
-    bot = BronxBot(
-        command_prefix=commands.when_mentioned_or("."),
-        intents=intents,
-        description="BronxBot - A Discord bot for the Bronx community",
-        shard_count=2,  # Using 2 shards for better performance
-        case_insensitive=True,
-        strip_after_prefix=True,
-    )
-    
     # Print startup info
     logging.info(f"Python version: {platform.python_version()}")
     logging.info(f"Discord.py version: {discord.__version__}")
-    logging.info(f"Starting BronxBot with {bot.shard_count} shards")
+    logging.info(f"Starting BronxBot with 2 shards")
     
     # Run the Discord bot
     try:
