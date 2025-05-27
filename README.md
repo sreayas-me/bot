@@ -61,3 +61,4 @@ This project is licensed under the "Do Whatever You Want But Don't Blame Me" lic
 - Coffee
 
 > Made with 💖 and questionable code quality
+> [ADD THE BOT](https://discord.com/oauth2/authorize?client_id=828380019406929962&permissions=8&integration_type=0&scope=bot)
