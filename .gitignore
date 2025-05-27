@@ -9,3 +9,7 @@ cogs/unique/__pycache__
 utils/__pycache__/
 cogs/admin/__pycache__
 __pycache__
+.env
+bronxbot-nginx.conf
+vercel.json
+vercel_requirements.txt

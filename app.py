@@ -1,4 +1,10 @@
 from flask import Flask, render_template, redirect, request, make_response, url_for, jsonify
+import requests
+import json
+from functools import wraps
+import time
+import os
+from utils.db import db  # This now uses the synchronous databasek import Flask, render_template, redirect, request, make_response, url_for, jsonify
 from werkzeug.serving import make_server
 import asyncio
 import functools
@@ -6,9 +12,18 @@ import requests
 import json
 from functools import wraps
 import time
-from utils.db import db  # This now uses the synchronous database
+from utils.db import db  # This now uses the synchronous # For local development
+def run():
+    app.run(host='127.0.0.1', port=5000)
 
-app = Flask(__name__)
+def shutdown_server():
+    pass
+
+# For Vercel serverless deployment
+app.config['SERVER_NAME'] = None  # Allow any host
+
+if __name__ == "__main__":
+    run()= Flask(__name__)
 
 # Add thousands filter
 @app.template_filter('thousands')
@@ -25,7 +40,7 @@ with open("data/config.json", "r") as f:
 
 DISCORD_CLIENT_ID = config['CLIENT_ID']
 DISCORD_CLIENT_SECRET = config['CLIENT_SECRET']
-DISCORD_REDIRECT_URI = 'http://localhost:5000/callback'
+DISCORD_REDIRECT_URI = 'http://localhost/callback'  # Updated for production
 DISCORD_BOT_OWNER_ID = config['OWNER_ID']
 
 # Global stats dictionary
@@ -289,18 +304,25 @@ def get_guild_stats(guild_id):
     stats = db.get_guild_stats(guild_id)
     return jsonify(stats)
 
-def run_server():
-    global server
-    server = make_server('127.0.0.1', 5000, app)
-    server.serve_forever()
+def run():
+    import threading
+    def run_server():
+        app.run(host='127.0.0.1', port=5000)
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+    print("Web server started on http://localhost:5000")
 
 def shutdown_server():
-    global server
-    if server:
-        server.shutdown()
+    pass
 
-def run():
-    run_server()
+# Configure for production
+app.config['SERVER_NAME'] = None
+port = int(os.environ.get('PORT', 5000))
 
 if __name__ == "__main__":
-    run()
+    if os.environ.get('FLASK_ENV') == 'production':
+        # Production mode (Render)
+        app.run(host='0.0.0.0', port=port)
+    else:
+        # Development mode
+        app.run(host='127.0.0.1', port=5000, debug=True)

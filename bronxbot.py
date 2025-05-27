@@ -108,7 +108,8 @@ class BronxBot(commands.AutoShardedBot):
     async def before_update_guilds(self):
         await self.wait_until_ready()
 
-bot = BronxBot(command_prefix='.', intents=intents)
+
+bot = BronxBot(command_prefix='.', intents=intents, shard_count=2, case_insensitive=True)
 bot.remove_command('help')
 
 # loading config
@@ -382,10 +383,8 @@ if os.path.exists("data/restart_info.json"):
         print(f"Failed to load restart info: {e}")
 
 if __name__ == "__main__":
-    from app import run_server, shutdown_server
-    flask_thread = threading.Thread(target=run_server)
-    flask_thread.daemon = True  # This ensures the thread stops when the main program exits
-    flask_thread.start()
+    from app import run, shutdown_server
+    run()  # This now starts the web server in a daemon thread
     
     try:
         bot.run(config['TOKEN'])
