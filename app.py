@@ -31,14 +31,29 @@ def thousands_filter(value):
     except (ValueError, TypeError):
         return "0"
 
-# Load config
-with open("data/config.json", "r") as f:
-    config = json.load(f)
+# Load config from environment variables or config file
+try:
+    DISCORD_CLIENT_ID = os.environ.get('DISCORD_CLIENT_ID')
+    DISCORD_CLIENT_SECRET = os.environ.get('DISCORD_CLIENT_SECRET')
+    DISCORD_BOT_OWNER_ID = os.environ.get('DISCORD_BOT_OWNER_ID')
+    
+    # If env vars not set, try config file
+    if not all([DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_OWNER_ID]):
+        with open("data/config.json", "r") as f:
+            config = json.load(f)
+        DISCORD_CLIENT_ID = DISCORD_CLIENT_ID or config['CLIENT_ID']
+        DISCORD_CLIENT_SECRET = DISCORD_CLIENT_SECRET or config['CLIENT_SECRET']
+        DISCORD_BOT_OWNER_ID = DISCORD_BOT_OWNER_ID or config['OWNER_ID']
+        
+except Exception as e:
+    print(f"Error loading configuration: {e}")
+    raise
 
-DISCORD_CLIENT_ID = config['CLIENT_ID']
-DISCORD_CLIENT_SECRET = config['CLIENT_SECRET']
-DISCORD_REDIRECT_URI = 'http://localhost/callback'  # Updated for production
-DISCORD_BOT_OWNER_ID = config['OWNER_ID']
+# Set callback URI based on environment
+if os.environ.get('RENDER_EXTERNAL_URL'):
+    DISCORD_REDIRECT_URI = f"{os.environ['RENDER_EXTERNAL_URL']}/callback"
+else:
+    DISCORD_REDIRECT_URI = 'http://localhost:5000/callback'
 
 # Global stats dictionary
 bot_stats = {
@@ -300,6 +315,16 @@ def get_guild_stats(guild_id):
     
     stats = db.get_guild_stats(guild_id)
     return jsonify(stats)
+
+@app.route('/debug')
+def debug():
+    """Debug endpoint to check application status"""
+    return jsonify({
+        'status': 'ok',
+        'env': os.environ.get('FLASK_ENV'),
+        'discord_configured': bool(DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET),
+        'redirect_uri': DISCORD_REDIRECT_URI
+    })
 
 def create_app():
     app = Flask(__name__)
