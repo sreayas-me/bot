@@ -29,19 +29,29 @@ def thousands_filter(value):
     except (ValueError, TypeError):
         return "0"
 
-# Load config from environment variables or config file
+# Load config from environment variables with optional config.json fallback
 try:
+    # First try environment variables
     DISCORD_CLIENT_ID = os.environ.get('DISCORD_CLIENT_ID')
     DISCORD_CLIENT_SECRET = os.environ.get('DISCORD_CLIENT_SECRET')
     DISCORD_BOT_OWNER_ID = os.environ.get('DISCORD_BOT_OWNER_ID')
     
     # If env vars not set, try config file
     if not all([DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_OWNER_ID]):
-        with open("data/config.json", "r") as f:
-            config = json.load(f)
-        DISCORD_CLIENT_ID = DISCORD_CLIENT_ID or config['CLIENT_ID']
-        DISCORD_CLIENT_SECRET = DISCORD_CLIENT_SECRET or config['CLIENT_SECRET']
-        DISCORD_BOT_OWNER_ID = DISCORD_BOT_OWNER_ID or config['OWNER_ID']
+        try:
+            with open("data/config.json", "r") as f:
+                config = json.load(f)
+            DISCORD_CLIENT_ID = DISCORD_CLIENT_ID or config.get('CLIENT_ID')
+            DISCORD_CLIENT_SECRET = DISCORD_CLIENT_SECRET or config.get('CLIENT_SECRET')
+            DISCORD_BOT_OWNER_ID = DISCORD_BOT_OWNER_ID or config.get('OWNER_ID')
+        except FileNotFoundError:
+            print("Config file not found, using environment variables only")
+        except json.JSONDecodeError:
+            print("Invalid JSON in config file, using environment variables only")
+
+    # Validate required configuration
+    if not all([DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_OWNER_ID]):
+        raise ValueError("Missing required configuration. Please set DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, and DISCORD_BOT_OWNER_ID environment variables or provide them in config.json")
         
 except Exception as e:
     print(f"Error loading configuration: {e}")
