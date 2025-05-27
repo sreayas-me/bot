@@ -301,7 +301,26 @@ def get_guild_stats(guild_id):
     stats = db.get_guild_stats(guild_id)
     return jsonify(stats)
 
+def create_app():
+    app = Flask(__name__)
+    
+    # Add thousands filter
+    @app.template_filter('thousands')
+    def thousands_filter(value):
+        try:
+            return "{:,}".format(int(value))
+        except (ValueError, TypeError):
+            return "0"
+
+    # Configure for production
+    app.config['SERVER_NAME'] = None
+    
+    return app
+
+app = create_app()
+
 def run():
+    """Development server in a thread for the Discord bot"""
     import threading
     def run_server():
         app.run(host='127.0.0.1', port=5000)
@@ -312,11 +331,8 @@ def run():
 def shutdown_server():
     pass
 
-# Configure for production
-app.config['SERVER_NAME'] = None
-port = int(os.environ.get('PORT', 5000))
-
 if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 5000))
     if os.environ.get('FLASK_ENV') == 'production':
         # Production mode (Render)
         app.run(host='0.0.0.0', port=port)
