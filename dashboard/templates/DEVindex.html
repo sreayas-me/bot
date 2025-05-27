@@ -138,5 +138,58 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        // Live stats updates using Server-Sent Events
+        const evtSource = new EventSource("/api/stats/live");
+        
+        function updateStats(stats) {
+            // Update server and user counts
+            document.querySelector('.stat-card:nth-child(1) p').textContent = stats.server_count || 0;
+            document.querySelector('.stat-card:nth-child(2) p').textContent = stats.user_count || 0;
+            
+            // Update latency
+            document.querySelector('.stat-card:nth-child(4) p').textContent = `${stats.latency || 0}ms`;
+            
+            // Update uptime (let the existing uptime function handle this)
+            const uptimeElement = document.getElementById('uptime');
+            if (uptimeElement) {
+                uptimeElement.setAttribute('data-uptime', stats.uptime || 0);
+            }
+            
+            // Update shard status if it exists
+            if (stats.shard_stats) {
+                const shardGrid = document.querySelector('.shard-grid');
+                if (shardGrid) {
+                    shardGrid.innerHTML = '';
+                    for (const [shard_id, shard] of Object.entries(stats.shard_stats)) {
+                        const shardCard = document.createElement('div');
+                        shardCard.className = `shard-card ${shard.status === 'online' ? 'online' : 'offline'}`;
+                        shardCard.innerHTML = `
+                            <h4>${shard.status === 'online' ? '🟢' : '🔴'} Shard ${shard_id}</h4>
+                            <p>Servers: ${shard.guild_count}</p>
+                            <p>Users: ${shard.user_count || 0}</p>
+                            <p>Latency: ${shard.latency.toFixed(1)}ms</p>
+                            <p class="uptime">Online for: ${shard.uptime}</p>
+                        `;
+                        shardGrid.appendChild(shardCard);
+                    }
+                }
+            }
+        }
+
+        evtSource.onmessage = (event) => {
+            const stats = JSON.parse(event.data);
+            updateStats(stats);
+        };
+
+        evtSource.onerror = (err) => {
+            console.error("SSE Error:", err);
+            evtSource.close();
+            // Try to reconnect after 5 seconds
+            setTimeout(() => {
+                window.location.reload();
+            }, 5000);
+        };
+    </script>
 </body>
 </html>
