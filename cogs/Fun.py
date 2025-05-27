@@ -7,6 +7,11 @@ import asyncio
 import string
 import time
 import aiohttp
+import sys
+import os
+
+# Add the project root to Python path to fix imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from cogs.logging.logger import CogLogger
 from utils.error_handler import ErrorHandler
 
