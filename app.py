@@ -1,5 +1,8 @@
 from flask import Flask, render_template, redirect, request, make_response, url_for, jsonify
 from werkzeug.serving import make_server
+import asyncio
+import functools
+from asgiref.sync import sync_to_async
 import requests
 import json
 from functools import wraps
@@ -26,6 +29,21 @@ bot_stats = {
     'latency': 0,
     'guilds': []  # List of guild IDs where bot is present
 }
+
+def async_route(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(f(*args, **kwargs))
+        finally:
+            if not asyncio._get_running_loop():
+                loop.close()
+    return wrapper
 
 def login_required(f):
     @wraps(f)
@@ -132,6 +150,9 @@ def servers():
         guild['bot_present'] = str(guild['id']) in bot_guilds
         guild['icon_url'] = f"https://cdn.discordapp.com/icons/{guild['id']}/{guild['icon']}.png" if guild['icon'] else None
     
+    # Sort guilds to show bot-present servers first
+    manage_guilds.sort(key=lambda g: (not g['bot_present'], g['name'].lower()))
+    
     return render_template('servers.html', 
         guilds=manage_guilds,
         username=request.cookies.get('username', 'User'),
@@ -140,6 +161,7 @@ def servers():
 
 @app.route('/servers/<guild_id>/settings')
 @login_required
+@async_route
 async def server_settings(guild_id):
     """Show settings for a specific server"""
     access_token = request.cookies.get('access_token')
@@ -165,6 +187,7 @@ async def server_settings(guild_id):
 
 @app.route('/servers/<guild_id>/settings/update', methods=['POST'])
 @login_required
+@async_route
 async def update_settings(guild_id):
     """Update settings for a specific server"""
     access_token = request.cookies.get('access_token')
@@ -218,6 +241,9 @@ def settings_select():
         guild['bot_present'] = str(guild['id']) in bot_guilds
         guild['icon_url'] = f"https://cdn.discordapp.com/icons/{guild['id']}/{guild['icon']}.png" if guild['icon'] else None
     
+    # Sort guilds to show bot-present servers first
+    manage_guilds.sort(key=lambda g: (not g['bot_present'], g['name'].lower()))
+    
     return render_template('settings.html',
         guilds=manage_guilds,
         username=request.cookies.get('username', 'User'),
@@ -226,6 +252,13 @@ def settings_select():
 
 def run_server():
     global server
+    # Use the current event loop if one exists, otherwise create a new one
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
     server = make_server('127.0.0.1', 5000, app)
     server.serve_forever()
 

@@ -131,7 +131,7 @@ body {
 }
 
 .stat-card p {
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--primary);
 }

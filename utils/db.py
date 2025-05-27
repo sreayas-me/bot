@@ -1,26 +1,66 @@
 import motor.motor_asyncio
+import json
 import datetime
 import os
 import logging
 from typing import Dict, Any, Optional
 
-# Initialize MongoDB client
-MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
-client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
-database = client.bronxbot
+with open('data/config.json') as f:
+    config = json.load(f)
 
-# Create singleton class for database access
+# Create singleton class for database access that manages its own client
+class AsyncDatabase:
+    _instance = None
+    _client = None
+    _db = None
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def __init__(self):
+        self.logger = logging.getLogger('Database')
+        self._connected = False
+        
+
+    @property
+    def client(self):
+        if self._client is None:
+            MONGO_URI = os.getenv('MONGO_URI', config['MONGO_URI'])
+            self._client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
+        return self._client
+        
+    @property
+    def db(self):
+        if self._db is None:
+            self._db = self.client.bronxbot
+        return self._db
 class Database:
     _instance = None
+    _client = None
+    _db = None
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(Database, cls).__new__(cls)
-            cls._instance.db = database
-            cls._instance.client = client
             cls._instance._connected = False
             cls._instance.logger = logging.getLogger('Database')
         return cls._instance
+        
+    @property
+    def client(self):
+        if self._client is None:
+            MONGO_URI = os.getenv('MONGO_URI', config['MONGO_URI'])
+            self._client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
+        return self._client
+        
+    @property
+    def db(self):
+        if self._db is None:
+            self._db = self.client.bronxbot
+        return self._db
 
     async def ensure_connected(self) -> bool:
         """Ensure database connection is active"""
