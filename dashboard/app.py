@@ -8,11 +8,18 @@ from utils.db import db  # This now uses the synchronous database
 from werkzeug.serving import make_server
 import asyncio
 import functools
+from config import Config
 
 app = Flask(__name__)  # Initialize Flask app at module level
+app.config.from_object(Config)  # Load configuration
 
 # Configure for production
 app.config['SERVER_NAME'] = None
+
+# Health check endpoint
+@app.route('/healthz')
+def health_check():
+    return jsonify({"status": "healthy", "timestamp": time.time()}), 200
 
 # Add thousands filter
 @app.template_filter('thousands')
@@ -361,6 +368,23 @@ def debug():
         'missing_config': [k for k in ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_BOT_OWNER_ID']
                           if not os.environ.get(k) and not config.get(k.split('_', 1)[1])]
     })
+
+# Error handlers
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({
+        'error': 'Internal Server Error',
+        'message': str(e),
+        'type': '500'
+    }), 500
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({
+        'error': 'Not Found',
+        'message': str(e),
+        'type': '404'
+    }), 404
 
 @app.errorhandler(404)
 def not_found_error(error):
