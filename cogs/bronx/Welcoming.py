@@ -36,11 +36,9 @@ class Welcoming(commands.Cog):
         if member.guild.id not in self.main_guilds:
             return
 
-        """Sync roles when a member joins any server"""
         logger.info(f"[+] Member joined: {member.name} in guild {member.guild.id}")
 
         randomEmoji = random.choice(member.guild.emojis)
-
         greeting = ["hi", "yo", "hola", "bonjour", "hhhjhhhiiiiii", "haiiiiii :3", "haaaaaaaiiiiiii", "hello", "hhiihihihiihihi"]
 
         if member.guild.id == 1259717095382319215:
@@ -48,7 +46,11 @@ class Welcoming(commands.Cog):
             await channel.send(f"{member.mention} {random.choice(greeting)} {randomEmoji}")
             embed = await welcomeEmbed(member)
             await member.send(embed=embed)
-            await db.store_stats(member.guild.id, "gained")
+            # Change to use the async version
+            try:
+                await db.store_stats(member.guild.id, "gained")
+            except Exception as e:
+                logger.error(f"Failed to store join stats: {e}")
 
     @commands.command()
     async def welcometest(self, ctx):
@@ -61,7 +63,11 @@ class Welcoming(commands.Cog):
             
         logger.info(f"[-] Member left: {member} in guild {member.guild.id}")
         if member.guild.id == 1259717095382319215:
-            await db.store_stats(member.guild.id, "lost")
+            # Change to use the async version
+            try:
+                await db.store_stats(member.guild.id, "lost")
+            except Exception as e:
+                logger.error(f"Failed to store leave stats: {e}")
 
 async def setup(bot):
     try:

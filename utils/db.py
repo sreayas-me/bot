@@ -161,6 +161,33 @@ class SyncDatabase:
                     cls._instance.logger = logging.getLogger('SyncDatabase')
         return cls._instance
         
+    def __init__(self):
+        self._connected = False
+        self.logger = logging.getLogger('SyncDatabase')
+        # Initialize SQLite connection
+        import sqlite3
+        self.conn = sqlite3.connect('data/database.sqlite', check_same_thread=False)
+        self.cursor = self.conn.cursor()
+        # Create tables if they don't exist
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS economy (
+                user_id INTEGER,
+                guild_id INTEGER DEFAULT 0,
+                wallet INTEGER DEFAULT 0,
+                bank INTEGER DEFAULT 0,
+                PRIMARY KEY (user_id, guild_id)
+            )
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS guild_stats (
+                guild_id INTEGER,
+                stat_type TEXT,
+                count INTEGER DEFAULT 0,
+                PRIMARY KEY (guild_id, stat_type)
+            )
+        """)
+        self.conn.commit()
+
     @property
     def client(self):
         if self._client is None:
@@ -213,32 +240,56 @@ class SyncDatabase:
             self.logger.error(f"Error updating guild settings: {e}")
             return False
 
-    def get_user_balance(self, user_id: str) -> Dict[str, int]:
-        """Get user's wallet and bank balance synchronously"""
-        if not self.ensure_connected():
-            return {"wallet": 0, "bank": 0, "bank_limit": 10000}
+    def get_user_balance(self, user_id: int, guild_id: int = None):
+        """Get user's wallet and bank balance"""
         try:
-            user = self.db.users.find_one({"_id": str(user_id)})
-            if user:
-                return {
-                    "wallet": user.get("wallet", 0),
-                    "bank": user.get("bank", 0),
-                    "bank_limit": user.get("bank_limit", 10000)
-                }
-            return {"wallet": 0, "bank": 0, "bank_limit": 10000}
+            self.cursor.execute("""
+                SELECT wallet, bank FROM economy 
+                WHERE user_id = ? AND guild_id = ?
+            """, (user_id, guild_id or 0))
+            result = self.cursor.fetchone()
+            if result:
+                return {"wallet": result[0], "bank": result[1]}
+            return {"wallet": 0, "bank": 0}
         except Exception as e:
-            self.logger.error(f"Error getting user balance: {e}")
-            return {"wallet": 0, "bank": 0, "bank_limit": 10000}
+            self.logger.error(f"Error getting balance: {e}")
+            return {"wallet": 0, "bank": 0}
 
-    def get_guild_stats(self, guild_id: str) -> Dict[str, int]:
-        """Get guild stats synchronously"""
-        if not self.ensure_connected():
-            return {}
+    # Change store_stats to be async-compatible
+    async def store_stats(self, guild_id: int, stat_type: str):
+        """Store guild statistics asynchronously"""
+        return self.store_stats_sync(guild_id, stat_type)
+    
+    def store_stats_sync(self, guild_id: int, stat_type: str):
+        """Store guild statistics synchronously"""
         try:
-            stats = self.db.stats.find_one({"_id": str(guild_id)})
-            return stats if stats else {}
+            valid_types = ["messages", "gained", "lost"]
+            if stat_type not in valid_types:
+                return False
+                
+            self.cursor.execute("""
+                INSERT INTO guild_stats (guild_id, stat_type, count)
+                VALUES (?, ?, 1)
+                ON CONFLICT(guild_id, stat_type) DO UPDATE 
+                SET count = count + 1
+            """, (guild_id, stat_type))
+            self.conn.commit()
+            return True
         except Exception as e:
-            self.logger.error(f"Error getting guild stats: {e}")
+            self.logger.error(f"Error storing stats: {e}")
+            return False
+
+    def get_stats(self, guild_id: int):
+        """Get guild statistics"""
+        try:
+            self.cursor.execute("""
+                SELECT stat_type, count FROM guild_stats
+                WHERE guild_id = ?
+            """, (guild_id,))
+            results = self.cursor.fetchall()
+            return {stat[0]: stat[1] for stat in results}
+        except Exception as e:
+            self.logger.error(f"Error getting stats: {e}")
             return {}
 
 
