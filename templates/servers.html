@@ -4,6 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Servers - BronxBot</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/southbronx.png') }}">
+    
+    <!-- Primary Meta Tags -->
+    <meta name="title" content="BronxBot - Server Management">
+    <meta name="description" content="Manage your Discord servers with BronxBot. Configure settings, view server statistics, and optimize your server experience all in one place.">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:title" content="BronxBot - Server Management">
+    <meta property="og:description" content="Manage your Discord servers with BronxBot. Configure settings, view server statistics, and optimize your server experience all in one place.">
+    <meta property="og:image" content="{{ url_for('static', filename='images/southbronx.png', _external=True) }}">
+    <meta name="theme-color" content="#5865F2">f
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="{{ request.url }}">
+    <meta property="twitter:title" content="BronxBot - Server Management">
+    <meta property="twitter:description" content="Manage your Discord servers with BronxBot. Configure settings, view server statistics, and optimize your server experience all in one place.">
+    <meta property="twitter:image" content="{{ url_for('static', filename='images/southbronx.png', _external=True) }}">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>

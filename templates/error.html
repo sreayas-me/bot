@@ -3,7 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Error - Bronx Bot</title>
+    <title>Error - BronxBot</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/southbronx.png') }}">
+    
+    <!-- Primary Meta Tags -->
+    <meta name="title" content="Error - BronxBot">
+    <meta name="description" content="Oops! Something went wrong with BronxBot, your Discord server's best friend for moderation, fun, and community management.">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:title" content="Error - BronxBot">
+    <meta property="og:description" content="Oops! Something went wrong with BronxBot, your Discord server's best friend for moderation, fun, and community management.">
+    <meta property="og:image" content="{{ url_for('static', filename='images/southbronx.png', _external=True) }}">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="{{ request.url }}">
+    <meta property="twitter:title" content="Error - BronxBot">
+    <meta property="twitter:description" content="Oops! Something went wrong with BronxBot, your Discord server's best friend for moderation, fun, and community management.">
+    <meta property="twitter:image" content="{{ url_for('static', filename='images/southbronx.png', _external=True) }}">
+    <meta name="theme-color" content="#5865F2">
+    
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>

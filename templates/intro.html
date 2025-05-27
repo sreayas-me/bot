@@ -4,6 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BronxBot - Your Discord Server's Best Friend</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/southbronx.png') }}">
+    
+    <!-- Primary Meta Tags -->
+    <meta name="title" content="BronxBot - Your Discord Server's Best Friend">
+    <meta name="description" content="Level up your Discord with games, economy, and smart moderation - where fun meets function! BronxBot makes server management a breeze.">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:title" content="BronxBot - Your Discord Server's Best Friend">
+    <meta property="og:description" content="Level up your Discord with games, economy, and smart moderation - where fun meets function! BronxBot makes server management a breeze.">
+    <meta property="og:image" content="{{ url_for('static', filename='images/southbronx.png', _external=True) }}">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="{{ request.url }}">
+    <meta property="twitter:title" content="BronxBot - Your Discord Server's Best Friend">
+    <meta property="twitter:description" content="Level up your Discord with games, economy, and smart moderation - where fun meets function! BronxBot makes server management a breeze.">
+    <meta property="twitter:image" content="{{ url_for('static', filename='images/southbronx.png', _external=True) }}">
+    <meta name="theme-color" content="#5865F2">
+    
     <style>
         * {
             margin: 0;
