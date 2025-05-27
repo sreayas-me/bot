@@ -144,6 +144,92 @@ class AsyncDatabase:
         result = await self.db.global_buffs.insert_one(buff_data)
         return result.inserted_id is not None
 
+    async def get_user_balance(self, user_id: int, guild_id: int = None) -> int:
+        """Get user's total balance"""
+        wallet = await self.get_wallet_balance(user_id, guild_id)
+        bank = await self.get_bank_balance(user_id, guild_id)
+        return wallet + bank
+
+    async def transfer_money(self, from_id: int, to_id: int, amount: int, guild_id: int = None) -> bool:
+        """Transfer money between users"""
+        if not await self.ensure_connected():
+            return False
+            
+        from_balance = await self.get_wallet_balance(from_id, guild_id)
+        if from_balance < amount:
+            return False
+            
+        async with await self.client.start_session() as session:
+            async with session.start_transaction():
+                if not await self.update_wallet(from_id, -amount, guild_id):
+                    return False
+                if not await self.update_wallet(to_id, amount, guild_id):
+                    await self.update_wallet(from_id, amount, guild_id)  # Rollback
+                    return False
+                return True
+
+    async def update_balance(self, user_id: int, amount: int, guild_id: int = None) -> bool:
+        """Update user's wallet balance, handling both positive and negative amounts"""
+        current = await self.get_wallet_balance(user_id, guild_id)
+        if amount < 0 and abs(amount) > current:  # Check if user has enough for deduction
+            return False
+        return await self.update_wallet(user_id, amount, guild_id)
+
+    async def increase_bank_limit(self, user_id: int, amount: int, guild_id: int = None) -> bool:
+        """Increase user's bank storage limit"""
+        if not await self.ensure_connected():
+            return False
+        result = await self.db.users.update_one(
+            {"_id": str(user_id)},
+            {"$inc": {"bank_limit": amount}},
+            upsert=True
+        )
+        return result.modified_count > 0 or result.upserted_id is not None
+
+    async def get_global_net_worth(self, user_id: int, excluded_guilds: list = None) -> int:
+        """Get user's total net worth across all guilds"""
+        if not await self.ensure_connected():
+            return 0
+        excluded_guilds = excluded_guilds or []
+        pipeline = [
+            {"$match": {"_id": str(user_id)}},
+            {"$project": {
+                "total": {"$add": ["$wallet", "$bank"]}
+            }}
+        ]
+        result = await self.db.users.aggregate(pipeline).to_list(1)
+        return result[0]["total"] if result else 0
+
+    async def get_inventory(self, user_id: int, guild_id: int = None) -> list:
+        """Get user's inventory"""
+        if not await self.ensure_connected():
+            return []
+        user = await self.db.users.find_one({"_id": str(user_id)})
+        return user.get("inventory", []) if user else []
+
+    async def add_potion(self, user_id: int, potion: dict) -> bool:
+        """Add active potion effect to user"""
+        if not await self.ensure_connected():
+            return False
+        expiry = datetime.datetime.utcnow() + datetime.timedelta(minutes=potion['duration'])
+        result = await self.db.active_potions.insert_one({
+            "user_id": str(user_id),
+            "type": potion['buff_type'],
+            "multiplier": potion['multiplier'],
+            "expires_at": expiry
+        })
+        return result.inserted_id is not None
+
+    async def remove_from_inventory(self, user_id: int, guild_id: int, item_id: str) -> bool:
+        """Remove item from user's inventory"""
+        if not await self.ensure_connected():
+            return False
+        result = await self.db.users.update_one(
+            {"_id": str(user_id)},
+            {"$pull": {"inventory": {"id": item_id}}}
+        )
+        return result.modified_count > 0
+
 
 class SyncDatabase:
     """Synchronous database class for use with Flask web interface"""

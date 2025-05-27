@@ -13,6 +13,7 @@ class HelpPaginator(discord.ui.View):
         self.author = author
         self.current_page = 0
         self.message = None
+        self.cog_page_map = {}  # Maps cog names to page indices
         
         # Update button states
         self.update_buttons()
@@ -57,6 +58,19 @@ class HelpPaginator(discord.ui.View):
         if self.message:
             await self.message.delete()
     
+    @discord.ui.select(
+        placeholder="Jump to category...",
+        custom_id="category_select",
+        row=1
+    )
+    async def select_category(self, interaction: discord.Interaction, select: discord.ui.Select):
+        if interaction.user != self.author:
+            return await interaction.response.send_message("This isn't your help menu!", ephemeral=True)
+        
+        self.current_page = int(select.values[0])
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.pages[self.current_page], view=self)
+
     async def on_timeout(self):
         """Disable all buttons when the view times out"""
         for item in self.children:
@@ -101,6 +115,8 @@ class Help(commands.Cog, ErrorHandler):
         # Paginated help menu
         pages = []
         total_commands = 0
+        cog_page_map = {}
+        page_index = 1  # Start at 1 because overview is at 0
         
         for cog_name, cog in sorted(self.bot.cogs.items(), key=lambda x: x[0].lower()):
             if cog_name.lower() in ['help', 'jishaku', 'dev', 'moderation', 'giveaway']:
@@ -109,6 +125,9 @@ class Help(commands.Cog, ErrorHandler):
             commands_list = [cmd for cmd in cog.get_commands() if not cmd.hidden]
             if not commands_list:
                 continue
+
+            cog_page_map[cog_name] = page_index
+            page_index += 1
 
             embed = discord.Embed(
                 description=f"**{cog_name.lower()}**\n\n",
@@ -139,9 +158,21 @@ class Help(commands.Cog, ErrorHandler):
         
         # Create and send paginator
         view = HelpPaginator(pages, ctx.author)
+        
+        # Add select menu options
+        select = view.select_category
+        select.add_option(label="Overview", value="0", description="View all categories")
+        for cog_name, page_num in cog_page_map.items():
+            select.add_option(
+                label=cog_name,
+                value=str(page_num),
+                description=f"View {cog_name.lower()} commands"
+            )
+        
         view.update_buttons()
         message = await ctx.reply(embed=pages[0], view=view)
         view.message = message
+        view.cog_page_map = cog_page_map
 
     @help.error
     async def help_error(self, ctx, error):

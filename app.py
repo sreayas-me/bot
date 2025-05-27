@@ -52,7 +52,7 @@ def home():
     if user_id and user_id == DISCORD_BOT_OWNER_ID:
         username = request.cookies.get('username', 'User')
         return render_template('index.html', username=username, stats=bot_stats)
-    return render_template('intro.html', stats=bot_stats, config=config)
+    return render_template('home.html', stats=bot_stats, config=config)
 
 @app.route('/login')
 def login():

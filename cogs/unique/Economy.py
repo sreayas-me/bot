@@ -5,7 +5,7 @@ import datetime
 import logging
 from discord.ext import commands
 from cogs.logging.logger import CogLogger
-from utils.db import db
+from utils.db import async_db as db 
 from cogs.Help import HelpPaginator
 from utils.betting import parse_bet
 
@@ -33,6 +33,7 @@ class Economy(commands.Cog):
         self.logger = CogLogger(self.__class__.__name__)
         self.currency = "💰"
         self.active_games = set()
+        self.db = db  
 
         # Slot machine configuration
         self.SLOT_EMOJIS = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
@@ -46,12 +47,31 @@ class Economy(commands.Cog):
         }
         self.CARD_SUITS = ["♠", "♥", "♦", "♣"]
 
+        # Add shop items
+        self.SHOP_ITEMS = {
+            "vip": {
+                "name": "VIP Role",
+                "price": 10000,
+                "description": "Get a special VIP role"
+            },
+            "color": {
+                "name": "Custom Color",
+                "price": 5000,
+                "description": "Create a custom colored role"
+            },
+            "bank_upgrade": {
+                "name": "Bank Upgrade",
+                "price": 2500,
+                "description": "Increase bank limit by 5000"
+            }
+        }
+
     async def get_shop_items(self, guild_id: int = None) -> dict:
         """Get shop items from database"""
         try:
             # Get server-specific or global shop items
             shop_id = f"server_{guild_id}" if guild_id else "global"
-            shop = await db.db.shops.find_one({"_id": shop_id})
+            shop = await db.shops.find_one({"_id": shop_id})
             
             if shop:
                 return shop.get("items", {})
@@ -75,7 +95,7 @@ class Economy(commands.Cog):
                         "description": "Increase your bank storage limit by 5000"
                     }
                 }
-                await db.db.shops.insert_one({
+                await db.shops.insert_one({
                     "_id": "global",
                     "items": default_items
                 })
@@ -95,71 +115,79 @@ class Economy(commands.Cog):
 
     async def cog_after_invoke(self, ctx):
         """Remove user from active games"""
-        self.active_games.discard(ctx.author.id)
+        if hasattr(self, 'active_games'):
+            self.active_games.discard(ctx.author.id)
 
     @commands.command(name="deposit", aliases=["dep"])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def deposit(self, ctx, amount: str = None):
         """Deposit money into your bank"""
-        if not amount:
+        try:
+            if not amount:
+                wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+                bank = await db.get_bank_balance(ctx.author.id, ctx.guild.id)
+                limit = await db.get_bank_limit(ctx.author.id, ctx.guild.id)
+                space = limit - bank
+                
+                embed = discord.Embed(
+                    description=(
+                        "**Bank Deposit Guide**\n\n"
+                        f"Your Wallet: **{wallet}** 💰\n"
+                        f"Bank Space: **{space}** 💰\n\n"
+                        "**Usage:**\n"
+                        "`.deposit <amount>`\n"
+                        "`.deposit 50%` - Deposit 50% of wallet\n"
+                        "`.deposit all` - Deposit maximum amount\n"
+                        "`.deposit 1k` - Deposit 1,000\n"
+                        "`.deposit 1.5m` - Deposit 1,500,000"
+                    ),
+                    color=0x2b2d31
+                )
+                return await ctx.reply(embed=embed)
+
             wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
             bank = await db.get_bank_balance(ctx.author.id, ctx.guild.id)
             limit = await db.get_bank_limit(ctx.author.id, ctx.guild.id)
             space = limit - bank
-            
-            embed = discord.Embed(
-                description=(
-                    "**Bank Deposit Guide**\n\n"
-                    f"Your Wallet: **{wallet}** 💰\n"
-                    f"Bank Space: **{space}** 💰\n\n"
-                    "**Usage:**\n"
-                    "`.deposit <amount>`\n"
-                    "`.deposit 50%` - Deposit 50% of wallet\n"
-                    "`.deposit all` - Deposit maximum amount\n"
-                    "`.deposit 1k` - Deposit 1,000\n"
-                    "`.deposit 1.5m` - Deposit 1,500,000"
-                ),
-                color=0x2b2d31
-            )
-            return await ctx.reply(embed=embed)
 
-        wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
-        bank = await db.get_bank_balance(ctx.author.id, ctx.guild.id)
-        limit = await db.get_bank_limit(ctx.author.id, ctx.guild.id)
-        space = limit - bank
+            # Parse amount with k/m suffix support
+            if amount.lower() in ['all', 'max']:
+                amount = min(wallet, space)
+            elif amount.endswith('%'):
+                try:
+                    percentage = float(amount[:-1])
+                    if not 0 < percentage <= 100:
+                        return await ctx.reply("Percentage must be between 0 and 100!")
+                    amount = min(int((percentage / 100) * wallet), space)
+                except ValueError:
+                    return await ctx.reply("Invalid percentage!")
+            else:
+                try:
+                    if amount.lower().endswith('k'):
+                        amount = int(float(amount[:-1]) * 1000)
+                    elif amount.lower().endswith('m'):
+                        amount = int(float(amount[:-1]) * 1000000)
+                    else:
+                        amount = int(amount)
+                except ValueError:
+                    return await ctx.reply("Invalid amount!")
 
-        # Parse amount
-        if amount.lower() in ['all', 'max']:
-            amount = min(wallet, space)
-        elif amount.endswith('%'):
-            try:
-                percentage = float(amount[:-1])
-                if not 0 < percentage <= 100:
-                    return await ctx.reply("Percentage must be between 0 and 100!")
-                amount = min(round((percentage / 100) * wallet), space)
-            except ValueError:
-                return await ctx.reply("Invalid percentage!")
-        else:
-            try:
-                amount = int(amount)
-                if amount > space:
-                    return await ctx.reply(f"Your bank can only hold {space} more coins!")
-            except ValueError:
-                return await ctx.reply("Invalid amount!")
+            if amount <= 0:
+                return await ctx.reply("Amount must be positive!")
+            if amount > wallet:
+                return await ctx.reply("You don't have that much in your wallet!")
+            if amount > space:
+                return await ctx.reply(f"Your bank can only hold {space} more coins!")
 
-        if amount <= 0:
-            return await ctx.reply("Amount must be positive!")
-        if amount > wallet:
-            return await ctx.reply("You don't have that much in your wallet!")
-
-        # Update balances
-        if await db.update_wallet(ctx.author.id, -amount, ctx.guild.id):
-            if await db.update_bank(ctx.author.id, amount, ctx.guild.id):
-                await ctx.reply(f"Deposited **{amount}** 💰 into your bank!")
-                return
-            await db.update_wallet(ctx.author.id, amount, ctx.guild.id)  # Refund if bank update fails
-
-        await ctx.reply("Failed to deposit money!")
+            # Update balances using transactions
+            if await db.transfer_money(ctx.author.id, ctx.author.id, amount, ctx.guild.id):
+                await ctx.reply(f"Deposited **{amount:,}** 💰 into your bank!")
+            else:
+                await ctx.reply("Failed to deposit money!")
+                
+        except Exception as e:
+            self.logger.error(f"Deposit error: {e}")
+            await ctx.reply("An error occurred while processing your deposit.")
 
     @commands.command(name="withdraw", aliases=["with"])
     @commands.cooldown(1, 3, commands.BucketType.user)
