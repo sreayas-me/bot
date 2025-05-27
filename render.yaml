@@ -3,11 +3,13 @@ services:
     name: bronxbot-web
     env: python
     buildCommand: pip install -r requirements.web.txt
-    startCommand: python -m gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --access-logfile -
+    startCommand: gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --log-level debug
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
       - key: FLASK_ENV
         value: production
-    healthCheckPath: /api/stats
+      - key: PYTHONPATH
+        value: .
+    healthCheckPath: /debug
     autoDeploy: true
