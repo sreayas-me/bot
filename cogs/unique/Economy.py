@@ -189,7 +189,7 @@ class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.logger = CogLogger(self.__class__.__name__)
-        self.currency = "<:bronkbuk:1377106993495412789>"
+        self.currency = "<:bronkbuk:1377389238290747582>"
         self.active_games = set()
         self.db = db  
 
