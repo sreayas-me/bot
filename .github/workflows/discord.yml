@@ -25,7 +25,7 @@ jobs:
                 "color": 3101622,
                 "footer": {
                   "icon_url": $author_avatar,
-                  "text": "Pushed by " + $author
+                  "text": "Pushed by "+ $author
                 },
                 "timestamp": $timestamp
               }
