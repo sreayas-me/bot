@@ -11,7 +11,7 @@ jobs:
       - name: Send Discord Embed via Curl
         run: |
           PAYLOAD=$(jq -n --arg author "${{ github.actor }}" \
-                          --arg author_avatar "${{ github.actor.author_avatar.url }}" \
+                          --arg author_avatar "${{ github.actor.author_avatar }}" \
                           --arg message "${{ github.event.head_commit.message }}" \
                           --arg url "${{ github.event.head_commit.url }}" \
                           --arg timestamp "${{ github.event.head_commit.timestamp }}" \
@@ -25,7 +25,7 @@ jobs:
                 "color": 3101622,
                 "footer": {
                   "icon_url": $author_avatar,
-                  "text": "Pushed by ", $author
+                  "text": "Pushed by " + $author
                 },
                 "timestamp": $timestamp
               }
