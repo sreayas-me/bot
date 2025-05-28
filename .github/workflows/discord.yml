@@ -11,5 +11,6 @@ jobs:
       - name: Discord Notification
         uses: Ilshidur/action-discord@master
         with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
-          message: "A new commit was pushed to the main branch!"
+          args: "A new commit was pushed to the main branch!"
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
