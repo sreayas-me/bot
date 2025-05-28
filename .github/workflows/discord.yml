@@ -1,0 +1,17 @@
+name: Discord notification
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord notification
+        uses: Ilshidur/action-discord@master
+        with:
+          args: 'The project ${{ github.repository }} has been deployed by ${{ github.actor }}.'
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
