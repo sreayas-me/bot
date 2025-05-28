@@ -27,7 +27,7 @@ class Giveaway(commands.Cog, ErrorHandler):
     async def check_giveaways(self):
         """Check for expired giveaways every 30 seconds"""
         try:
-            current_time = datetime.datetime.utcnow()
+            current_time = datetime.datetime.now()
             expired_giveaways = []
             
             for giveaway_id, giveaway_data in self.active_giveaways.items():
@@ -89,25 +89,25 @@ class Giveaway(commands.Cog, ErrorHandler):
         embed.add_field(
             name="**User Commands**",
             value=(
-                "`/giveaway donate <amount>` - Donate to server balance\n"
-                "`/giveaway balance` - Check server balance\n"
-                "`/giveaway list` - View active giveaways"
+                "`.giveaway donate <amount>` - Donate to server balance\n"
+                "`.giveaway balance` - Check server balance\n"
+                "`.giveaway list` - View active giveaways"
             ),
             inline=False
         )
         embed.add_field(
             name="**Admin Commands**",
             value=(
-                "`/giveaway create <amount> <duration> [description]` - Create giveaway\n"
-                "`/giveaway end <giveaway_id>` - End giveaway early"
+                "`.giveaway create <amount> <duration> [description]` - Create giveaway\n"
+                "`.giveaway end <giveaway_id>` - End giveaway early"
             ),
             inline=False
         )
         embed.add_field(
             name="**Examples**",
             value=(
-                "`/giveaway donate 1000` - Donate 1000 coins\n"
-                "`/giveaway create 5000 1h Epic Giveaway!` - Create 1 hour giveaway"
+                "`.giveaway donate 1000` - Donate 1000 coins\n"
+                "`.giveaway create 5000 1h Epic Giveaway!` - Create 1 hour giveaway"
             ),
             inline=False
         )
@@ -184,7 +184,7 @@ class Giveaway(commands.Cog, ErrorHandler):
             description=f"**{balance:,}** coins available for giveaways",
             color=discord.Color.blue()
         )
-        embed.set_footer(text=f"Use '/giveaway donate <amount>' to contribute!")
+        embed.set_footer(text=f"Use '.giveaway donate <amount>' to contribute!")
         await ctx.send(embed=embed)
 
     @giveaway_group.command(name='create')
@@ -220,8 +220,8 @@ class Giveaway(commands.Cog, ErrorHandler):
             return
 
         # Create giveaway embed
-        end_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=duration_seconds)
-        giveaway_id = f"{ctx.guild.id}_{int(datetime.datetime.utcnow().timestamp())}"
+        end_time = datetime.datetime.now() + datetime.timedelta(seconds=duration_seconds)
+        giveaway_id = f"{ctx.guild.id}_{int(datetime.datetime.now().timestamp())}"
 
         embed = discord.Embed(
             title="🎉 GIVEAWAY 🎉",
@@ -258,7 +258,7 @@ class Giveaway(commands.Cog, ErrorHandler):
             'description': description,
             'end_time': end_time,
             'host_id': ctx.author.id,
-            'participants': set()
+            'participants': []  # Changed from set() to []
         }
 
         # Save to database (persistent storage)
@@ -338,11 +338,13 @@ class Giveaway(commands.Cog, ErrorHandler):
 
             # Get participants from reactions
             participants = []
+            participant_ids = set()  # Use a set locally to track unique participants
             for reaction in message.reactions:
                 if str(reaction.emoji) == "🎉":
                     async for user in reaction.users():
-                        if not user.bot and user.id != giveaway_data['host_id']:
+                        if not user.bot and user.id != giveaway_data['host_id'] and user.id not in participant_ids:
                             participants.append(user)
+                            participant_ids.add(user.id)
 
             # Pick winner
             embed = discord.Embed(
@@ -395,7 +397,6 @@ class Giveaway(commands.Cog, ErrorHandler):
 
             # Send winner announcement
             if participants:
-                winner = random.choice(participants)
                 await channel.send(f"🎉 Congratulations {winner.mention}! You won **{giveaway_data['amount']:,}** coins!")
 
         except Exception as e:
@@ -452,7 +453,7 @@ class Giveaway(commands.Cog, ErrorHandler):
         if isinstance(error, commands.MissingPermissions):
             await ctx.reply("❌ You don't have permission to create giveaways!")
         elif isinstance(error, commands.BadArgument):
-            await ctx.reply("❌ Invalid giveaway parameters! Usage: `/giveaway create <amount> <duration> [description]`")
+            await ctx.reply("❌ Invalid giveaway parameters! Usage: `.giveaway create <amount> <duration> [description]`")
         else:
             await self.handle_error(ctx, error, "create_giveaway")
 

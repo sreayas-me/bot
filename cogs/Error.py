@@ -41,9 +41,6 @@ class Error(commands.Cog):
         elif isinstance(error, commands.BotMissingPermissions):
             await ctx.reply("❌ I don't have the required permissions for this command!")
             
-        elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.reply(f"❌ Missing required argument: {error.param.name}")
-            
         elif isinstance(error, commands.BadArgument):
             await ctx.reply(f"❌ Invalid argument provided: {str(error)}")
             
