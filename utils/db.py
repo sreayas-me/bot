@@ -92,23 +92,47 @@ class AsyncDatabase:
         return user.get("bank_limit", 10000) if user else 10000
 
     async def update_wallet(self, user_id: int, amount: int, guild_id: int = None) -> bool:
-        """Update user's wallet balance"""
+        """Update user's wallet balance with overflow protection"""
         if not await self.ensure_connected():
             return False
+            
+        # Get current balance
+        current = await self.get_wallet_balance(user_id)
+        
+        # Check for overflow/underflow
+        MAX_BALANCE = 9223372036854775807  # PostgreSQL bigint max
+        new_balance = current + amount
+        
+        if new_balance > MAX_BALANCE:
+            new_balance = MAX_BALANCE
+        elif new_balance < 0:
+            return False
+            
+        # Update with the safe balance
         result = await self.db.users.update_one(
             {"_id": str(user_id)},
-            {"$inc": {"wallet": amount}},
+            {"$set": {"wallet": new_balance}},
             upsert=True
         )
         return result.modified_count > 0 or result.upserted_id is not None
 
     async def update_bank(self, user_id: int, amount: int, guild_id: int = None) -> bool:
-        """Update user's bank balance"""
+        """Update user's bank balance with overflow protection"""
         if not await self.ensure_connected():
             return False
+            
+        current = await self.get_bank_balance(user_id)
+        MAX_BALANCE = 9223372036854775807
+        new_balance = current + amount
+        
+        if new_balance > MAX_BALANCE:
+            new_balance = MAX_BALANCE
+        elif new_balance < 0:
+            return False
+            
         result = await self.db.users.update_one(
             {"_id": str(user_id)},
-            {"$inc": {"bank": amount}},
+            {"$set": {"bank": new_balance}},
             upsert=True
         )
         return result.modified_count > 0 or result.upserted_id is not None
@@ -248,6 +272,193 @@ class AsyncDatabase:
         )
         return result.modified_count > 0
 
+    async def get_fish(self, user_id: int) -> list:
+        """Get user's caught fish"""
+        if not await self.ensure_connected():
+            return []
+        user = await self.db.users.find_one({"_id": str(user_id)})
+        return user.get("fish", []) if user else []
+
+    async def add_fish(self, user_id: int, fish: dict) -> bool:
+        """Add a fish to user's collection"""
+        if not await self.ensure_connected():
+            return False
+        result = await self.db.users.update_one(
+            {"_id": str(user_id)},
+            {"$push": {"fish": fish}}
+        )
+        return result.modified_count > 0
+
+    async def get_fishing_items(self, user_id: int) -> dict:
+        """Get user's fishing items (rods and bait)"""
+        if not await self.ensure_connected():
+            return {"rods": [], "bait": []}
+        user = await self.db.users.find_one({"_id": str(user_id)})
+        return {
+            "rods": user.get("fishing_rods", []),
+            "bait": user.get("fishing_bait", [])
+        } if user else {"rods": [], "bait": []}
+
+    async def add_fishing_item(self, user_id: int, item: dict, item_type: str) -> bool:
+        """Add a fishing item (rod or bait) to user's inventory"""
+        if not await self.ensure_connected():
+            return False
+        field = "fishing_rods" if item_type == "rod" else "fishing_bait"
+        result = await self.db.users.update_one(
+            {"_id": str(user_id)},
+            {"$push": {field: item}}
+        )
+        return result.modified_count > 0
+
+    async def remove_bait(self, user_id: int, bait_id: str, amount: int = 1) -> bool:
+        """Remove bait from user's inventory after use"""
+        if not await self.ensure_connected():
+            return False
+        result = await self.db.users.update_one(
+            {"_id": str(user_id)},
+            {"$inc": {"fishing_bait.$[bait].amount": -amount}},
+            array_filters=[{"bait.id": bait_id}]
+        )
+        if result.modified_count > 0:
+            # Remove the bait entry if amount reaches 0
+            await self.db.users.update_one(
+                {"_id": str(user_id)},
+                {"$pull": {"fishing_bait": {"amount": {"$lte": 0}}}}
+            )
+        return result.modified_count > 0
+
+    async def init_collections(self):
+        """Initialize database collections and indexes"""
+        if not await self.ensure_connected():
+            return False
+            
+        # Create collections if they don't exist
+        collections = [
+            "users",
+            "guild_settings", 
+            "stats",
+            "shops",
+            "shop_items",
+            "shop_potions",
+            "shop_upgrades",
+            "shop_fishing",
+            "active_potions",
+            "active_buffs"
+        ]
+        
+        for coll_name in collections:
+            if coll_name not in await self.db.list_collection_names():
+                await self.db.create_collection(coll_name)
+
+        # Set up indexes
+        await self.db.users.create_index("_id")  # User ID
+        await self.db.shops.create_index([("guild_id", 1), ("type", 1)])  # Shop lookups
+        await self.db.active_potions.create_index("expires_at", expireAfterSeconds=0)  # TTL index
+        await self.db.active_buffs.create_index("expires_at", expireAfterSeconds=0)  # TTL index
+        
+        # Initialize default shops if empty
+        if await self.db.shop_fishing.count_documents({}) == 0:
+            await self.db.shop_fishing.insert_many([
+                {
+                    "id": "beginner_rod",
+                    "type": "rod",
+                    "name": "Beginner Rod",
+                    "price": 0,
+                    "description": "Basic fishing rod",
+                    "multiplier": 1.0
+                },
+                {
+                    "id": "beginner_bait",
+                    "type": "bait",
+                    "name": "Beginner Bait",
+                    "price": 0,
+                    "amount": 10,
+                    "description": "Basic bait for catching fish",
+                    "catch_rates": {"normal": 1.0, "rare": 0.1}
+                }
+            ])
+            
+        if await self.db.shop_potions.count_documents({}) == 0:
+            await self.db.shop_potions.insert_many([
+                {
+                    "id": "fishing_luck",
+                    "name": "Fishing Luck",
+                    "price": 1000,
+                    "type": "fishing",
+                    "multiplier": 1.5,
+                    "duration": 60,
+                    "description": "50% better fishing luck for 1 hour"
+                },
+                {
+                    "id": "money_boost",
+                    "name": "Money Boost",
+                    "price": 2000,
+                    "type": "money",
+                    "multiplier": 2.0,
+                    "duration": 30,
+                    "description": "Double money from all sources for 30 minutes"
+                }
+            ])
+            
+        if await self.db.shop_upgrades.count_documents({}) == 0:
+            await self.db.shop_upgrades.insert_many([
+                {
+                    "id": "bank_upgrade",
+                    "name": "Bank Upgrade",
+                    "price": 2500,
+                    "type": "bank",
+                    "amount": 5000,
+                    "description": "Increase bank limit by 5000"
+                },
+                {
+                    "id": "rod_upgrade",
+                    "name": "Rod Enhancement",
+                    "price": 10000,
+                    "type": "fishing",
+                    "multiplier": 0.2,
+                    "description": "Upgrade your current rod's multiplier by 0.2x"
+                }
+            ])
+
+    async def get_shop_items(self, shop_type: str, guild_id: int = None) -> list:
+        """Get items from a specific shop type"""
+        if not await self.ensure_connected():
+            return []
+            
+        collection = getattr(self.db, f"shop_{shop_type}", None)
+        if not collection:
+            return []
+            
+        # Get global items
+        pipeline = []
+        if guild_id:
+            # Add guild-specific items if any
+            pipeline.extend([
+                {"$match": {"guild_id": str(guild_id)}},
+                {"$unionWith": {"coll": f"shop_{shop_type}", "pipeline": [{"$match": {"guild_id": None}}]}}
+            ])
+            
+        items = await collection.aggregate(pipeline).to_list(None)
+        return items
+        
+    async def add_shop_item(self, item: dict, shop_type: str, guild_id: int = None) -> bool:
+        """Add an item to a specific shop"""
+        if not await self.ensure_connected():
+            return False
+            
+        collection = getattr(self.db, f"shop_{shop_type}", None)
+        if not collection:
+            return False
+            
+        if guild_id:
+            item["guild_id"] = str(guild_id)
+            
+        result = await collection.update_one(
+            {"id": item["id"], "guild_id": str(guild_id) if guild_id else None},
+            {"$set": item},
+            upsert=True
+        )
+        return result.modified_count > 0 or result.upserted_id is not None
 
 class SyncDatabase:
     """Synchronous database class for use with Flask web interface"""
