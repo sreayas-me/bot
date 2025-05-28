@@ -4,7 +4,7 @@ import json
 from functools import wraps
 import time
 import os
-from utils.db import db  # This now uses the synchronous database
+from motor.motor_asyncio import AsyncIOMotorClient
 from werkzeug.serving import make_server
 import asyncio
 import functools
@@ -13,6 +13,11 @@ app = Flask(__name__)  # Initialize Flask app at module level
 
 # Configure for production
 app.config['SERVER_NAME'] = None
+
+# Initialize MongoDB client
+MONGODB_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017')
+mongo_client = AsyncIOMotorClient(MONGODB_URI)
+db = mongo_client.bronxbot  # Use 'bronxbot' database
 
 # Add thousands filter
 @app.template_filter('thousands')
