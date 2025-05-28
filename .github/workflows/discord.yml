@@ -8,29 +8,33 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Discord Notification
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        with:
-          args: >
-            json: {
-              "embeds": [
+      - name: Send Discord webhook manually
+        run: |
+          curl -H "Content-Type: application/json" \
+            -X POST \
+            -d "{
+              \"embeds\": [
                 {
-                  "title": "🔔 New Commit to Main",
-                  "description": "[View Commit](${{ github.event.head_commit.url }})",
-                  "color": 3447003,
-                  "fields": [
+                  \"title\": \"🔔 New Commit to Main\",
+                  \"description\": \"[View Commit](${GITHUB_EVENT_HEAD_COMMIT_URL})\",
+                  \"color\": 3447003,
+                  \"fields\": [
                     {
-                      "name": "Author",
-                      "value": "${{ github.actor }}"
+                      \"name\": \"Author\",
+                      \"value\": \"${GITHUB_ACTOR}\"
                     },
                     {
-                      "name": "Message",
-                      "value": "${{ github.event.head_commit.message }}"
+                      \"name\": \"Message\",
+                      \"value\": \"${GITHUB_EVENT_HEAD_COMMIT_MESSAGE}\"
                     }
                   ],
-                  "timestamp": "${{ github.event.head_commit.timestamp }}"
+                  \"timestamp\": \"${GITHUB_EVENT_HEAD_COMMIT_TIMESTAMP}\"
                 }
               ]
-            }
+            }" \
+            ${{ secrets.DISCORD_WEBHOOK }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_EVENT_HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          GITHUB_EVENT_HEAD_COMMIT_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
+          GITHUB_EVENT_HEAD_COMMIT_URL: ${{ github.event.head_commit.url }}
