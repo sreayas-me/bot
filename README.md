@@ -12,6 +12,7 @@ A multi-purpose Discord bot that probably won't break your server. Probably.
 - **Economy**: Capitalism simulator
 - **Games**: Pretend you're having fun
 - **Utility**: Actually useful stuff (rare)
+- [**Dashboard**:](https://bronxbot.onrender.com/) Setup the bot using the web!
 
 See [FEATURES.md](FEATURES.md) for the full feature list (it's longer than your todo list)
 
