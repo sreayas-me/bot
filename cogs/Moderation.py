@@ -76,6 +76,8 @@ class Moderation(commands.Cog, ErrorHandler):
             await ctx.reply("❌ Member not found!")
         elif isinstance(error, commands.BadArgument):
             await ctx.reply("❌ Invalid duration format! Use s/m/h/d/w (e.g. 1h, 1d)")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.reply("❌ Please mention a member to timeout. Usage: `!timeout <member> <duration> [reason]`")
         else:
             await self.handle_error(ctx, error, "timeout")
 
