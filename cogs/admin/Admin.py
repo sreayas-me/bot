@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from cogs.logging.logger import CogLogger
-from utils.db import db
+from utils.db import async_db as db
 import json
 import datetime
 import random
@@ -27,10 +27,16 @@ class Admin(commands.Cog):
 
         # Shop types configuration 
         self.SHOP_TYPES = {
+            # General shops
             "items": {"name": "Item Shop", "description": "General items", "icon": "🛍️"},
             "potions": {"name": "Potion Shop", "description": "Buff and boost potions", "icon": "🧪"},
             "upgrades": {"name": "Upgrades Shop", "description": "Permanent upgrades", "icon": "⚡"},
-            "fishing": {"name": "Fishing Shop", "description": "Fishing gear and items", "icon": "🎣"}
+            "fishing": {"name": "Fishing Shop", "description": "Fishing gear and items", "icon": "🎣"},
+            
+            # Fishing-specific shops
+            "bait": {"name": "Bait Shop", "description": "Buy fishing bait", "icon": "🪱"},
+            "rod": {"name": "Rod Shop", "description": "Buy fishing rods", "icon": "🎣"},
+            "fish": {"name": "Fish Shop", "description": "Buy and sell fish", "icon": "🐟"}
         }
 
         # Fishing configuration
@@ -54,25 +60,6 @@ class Admin(commands.Cog):
                 "name": "Mutated Fish",
                 "rarity": 0.02,
                 "value_range": (2000, 10000)
-            }
-        }
-
-        # Add fishing shops
-        self.SHOP_TYPES = {
-            "bait": {
-                "name": "Bait Shop",
-                "description": "Buy fishing bait",
-                "icon": "🪱"
-            },
-            "rod": {
-                "name": "Rod Shop",
-                "description": "Buy fishing rods",
-                "icon": "🎣"
-            },
-            "fish": {
-                "name": "Fish Shop",
-                "description": "Buy and sell fish",
-                "icon": "🐟"
             }
         }
 
@@ -573,24 +560,14 @@ class Admin(commands.Cog):
             return await ctx.reply(embed=embed)
             
         try:
-            # Reset user data
-            await self.db.users.update_many(
-                {},
-                {
-                    "$set": {
-                        "wallet": 0,
-                        "bank": 0,
-                        "bank_limit": 10000,
-                        "inventory": [],
-                        "fish": [],
-                        "fishing_rods": [],
-                        "fishing_bait": []
-                    }
-                }
-            )
+            # Delete all data from the economy table
+            await self.db.cursor.execute("DELETE FROM economy")
             
-            # Reset active effects
-            await self.db.active_potions.delete_many({})
+            # Delete all data from active potions
+            await self.db.cursor.execute("DELETE FROM active_potions")
+            
+            # Commit the changes
+            await self.db.conn.commit()
             
             # Reset shop data to defaults
             self.shop_data = {

@@ -88,11 +88,37 @@ class Help(commands.Cog, ErrorHandler):
         ErrorHandler.__init__(self)
         self.bot = bot
     
+    @commands.command(name="invite", aliases=["inv"])
+    async def invite(self, ctx):
+        await ctx.reply(embed=discord.Embed(
+            description=f"[Invite me](https://bronxbot.onrender.com/invite) to your server\nIf that link doesnt work [click here](https://discord.com/oauth2/authorize?client_id=828380019406929962&permissions=8&response_type=code&redirect_uri=https%3A%2F%2Fbronxbot.onrender.com%2Fcallback&integration_type=0&scope=identify+guilds+bot)",
+            color=discord.Color.green()
+        ))
+
     @commands.command(name="help", aliases=["h", "commands"])
     async def help(self, ctx, *, command=None):
         if command:
             # Check if it's a cog first
-            # ...existing code...
+            cog = self.bot.get_cog(command)
+            if cog:
+                # Help for a cog
+                commands_list = cog.get_commands()
+                if not commands_list:
+                    return await ctx.reply(embed=discord.Embed(
+                        description=f"no commands found in `{cog.qualified_name}`",
+                        color=discord.Color.red()
+                    ))
+                
+                embed = discord.Embed(
+                    title=f"{cog.qualified_name} commands",
+                    description="\n".join(
+                        f"`{ctx.prefix}{cmd.name} {cmd.signature}` - {cmd.help or 'no description'}"
+                        for cmd in sorted(commands_list, key=lambda x: x.name)
+                    ),
+                    color=ctx.author.accent_color or discord.Color.blue()
+                )
+                embed.set_footer(text=f"{len(commands_list)} commands")
+                return await ctx.reply(embed=embed)
 
             # Help for specific command
             cmd = self.bot.get_command(command.lower())
@@ -119,7 +145,7 @@ class Help(commands.Cog, ErrorHandler):
         page_index = 1  # Start at 1 because overview is at 0
         
         for cog_name, cog in sorted(self.bot.cogs.items(), key=lambda x: x[0].lower()):
-            if cog_name.lower() in ['help', 'jishaku', 'dev', 'moderation', 'giveaway']:
+            if cog_name.lower() in ['help', 'jishaku', 'dev', 'moderation', 'giveaway', 'admin', 'votebans', 'stats', 'welcoming']:
                 continue
             
             commands_list = [cmd for cmd in cog.get_commands() if not cmd.hidden]

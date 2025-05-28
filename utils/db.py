@@ -253,7 +253,7 @@ class AsyncDatabase:
         """Add active potion effect to user"""
         if not await self.ensure_connected():
             return False
-        expiry = datetime.datetime.utcnow() + datetime.timedelta(minutes=potion['duration'])
+        expiry = datetime.datetime.now() + datetime.timedelta(minutes=potion['duration'])
         result = await self.db.active_potions.insert_one({
             "user_id": str(user_id),
             "type": potion['buff_type'],
@@ -261,6 +261,201 @@ class AsyncDatabase:
             "expires_at": expiry
         })
         return result.inserted_id is not None
+
+    # Add this method to your AsyncDatabase class
+
+    async def buy_item(self, user_id: int, item_id: str, guild_id: int = None) -> tuple[bool, str]:
+        """Buy an item from any shop"""
+        if not await self.ensure_connected():
+            return False, "Database connection failed"
+            
+        try:
+            # Check all shop collections for the item
+            item = None
+            item_type = None
+            
+            # Check shop_items
+            item = await self.db.shop_items.find_one({"id": item_id})
+            if item:
+                item_type = "item"
+            
+            # Check shop_fishing
+            if not item:
+                item = await self.db.shop_fishing.find_one({"id": item_id})
+                if item:
+                    item_type = "fishing"
+            
+            # Check shop_potions
+            if not item:
+                item = await self.db.shop_potions.find_one({"id": item_id})
+                if item:
+                    item_type = "potion"
+                    
+            # Check shop_upgrades
+            if not item:
+                item = await self.db.shop_upgrades.find_one({"id": item_id})
+                if item:
+                    item_type = "upgrade"
+            
+            if not item:
+                return False, "Item not found in any shop"
+                
+            # Check if user has enough money
+            wallet_balance = await self.get_wallet_balance(user_id, guild_id)
+            if wallet_balance < item["price"]:
+                return False, f"Insufficient funds. Need {item['price']}, have {wallet_balance}"
+                
+            # Process the purchase based on item type
+            try:
+                async with await self.client.start_session() as session:
+                    async with session.start_transaction():
+                        # Deduct money
+                        if not await self.update_wallet(user_id, -item["price"], guild_id):
+                            return False, "Failed to deduct payment"
+                        
+                        # Handle different item types
+                        if item_type == "fishing":
+                            if item["type"] == "rod":
+                                if not await self.add_fishing_item(user_id, item, "rod"):
+                                    await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                                    return False, "Failed to add fishing rod"
+                            elif item["type"] == "bait":
+                                if not await self.add_fishing_item(user_id, item, "bait"):
+                                    await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                                    return False, "Failed to add fishing bait"
+                                    
+                        elif item_type == "potion":
+                            if not await self.add_potion(user_id, item):
+                                await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                                return False, "Failed to activate potion"
+                                
+                        elif item_type == "upgrade":
+                            if item["type"] == "bank":
+                                if not await self.increase_bank_limit(user_id, item["amount"], guild_id):
+                                    await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                                    return False, "Failed to upgrade bank"
+                            elif item["type"] == "fishing":
+                                # Handle rod upgrade logic here
+                                pass
+                                
+                        elif item_type == "item":
+                            # Add to inventory
+                            result = await self.db.users.update_one(
+                                {"_id": str(user_id)},
+                                {"$push": {"inventory": item}},
+                                upsert=True
+                            )
+                            if result.modified_count == 0 and not result.upserted_id:
+                                await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                                return False, "Failed to add item to inventory"
+                        
+                        await session.commit_transaction()
+                        return True, f"Successfully purchased {item['name']}!"
+                        
+            except Exception as transaction_error:
+                # If we're here, the transaction should have been automatically aborted
+                self.logger.error(f"Transaction failed for item {item_id}: {transaction_error}")
+                return False, f"Purchase failed during transaction: {str(transaction_error)}"
+                        
+        except Exception as e:
+            self.logger.error(f"Failed to buy item {item_id}: {e}")
+            return False, f"Purchase failed: {str(e)}"
+
+
+    async def buy_item_simple(self, user_id: int, item_id: str, guild_id: int = None) -> tuple[bool, str]:
+        """Buy an item from any shop (without transactions)"""
+        if not await self.ensure_connected():
+            return False, "Database connection failed"
+            
+        try:
+            # Check all shop collections for the item
+            item = None
+            item_type = None
+            
+            # Check shop_items
+            item = await self.db.shop_items.find_one({"id": item_id})
+            if item:
+                item_type = "item"
+            
+            # Check shop_fishing
+            if not item:
+                item = await self.db.shop_fishing.find_one({"id": item_id})
+                if item:
+                    item_type = "fishing"
+            
+            # Check shop_potions
+            if not item:
+                item = await self.db.shop_potions.find_one({"id": item_id})
+                if item:
+                    item_type = "potion"
+                    
+            # Check shop_upgrades
+            if not item:
+                item = await self.db.shop_upgrades.find_one({"id": item_id})
+                if item:
+                    item_type = "upgrade"
+            
+            if not item:
+                return False, "Item not found in any shop"
+                
+            # Check if user has enough money
+            wallet_balance = await self.get_wallet_balance(user_id, guild_id)
+            if wallet_balance < item["price"]:
+                return False, f"Insufficient funds. Need {item['price']}, have {wallet_balance}"
+                
+            # Deduct money first
+            if not await self.update_wallet(user_id, -item["price"], guild_id):
+                return False, "Failed to deduct payment"
+            
+            # Handle different item types
+            success = False
+            error_msg = ""
+            
+            if item_type == "fishing":
+                if item["type"] == "rod":
+                    success = await self.add_fishing_item(user_id, item, "rod")
+                    error_msg = "Failed to add fishing rod"
+                elif item["type"] == "bait":
+                    success = await self.add_fishing_item(user_id, item, "bait")
+                    error_msg = "Failed to add fishing bait"
+                    
+            elif item_type == "potion":
+                success = await self.add_potion(user_id, item)
+                error_msg = "Failed to activate potion"
+                
+            elif item_type == "upgrade":
+                if item["type"] == "bank":
+                    success = await self.increase_bank_limit(user_id, item["amount"], guild_id)
+                    error_msg = "Failed to upgrade bank"
+                elif item["type"] == "fishing":
+                    # Handle rod upgrade logic here
+                    success = True  # Placeholder
+                    
+            elif item_type == "item":
+                # Add to inventory
+                result = await self.db.users.update_one(
+                    {"_id": str(user_id)},
+                    {"$push": {"inventory": item}},
+                    upsert=True
+                )
+                success = result.modified_count > 0 or result.upserted_id is not None
+                error_msg = "Failed to add item to inventory"
+            
+            # If something went wrong, refund the money
+            if not success:
+                await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                return False, error_msg
+            
+            return True, f"Successfully purchased {item['name']}!"
+                        
+        except Exception as e:
+            self.logger.error(f"Failed to buy item {item_id}: {e}")
+            # Try to refund if we got this far
+            try:
+                await self.update_wallet(user_id, item["price"], guild_id)
+            except:
+                pass
+            return False, f"Purchase failed: {str(e)}"
 
     async def remove_from_inventory(self, user_id: int, guild_id: int, item_id: str) -> bool:
         """Remove item from user's inventory"""
@@ -342,6 +537,8 @@ class AsyncDatabase:
             "shop_potions",
             "shop_upgrades",
             "shop_fishing",
+            "shop_bait",
+            "shop_rod",
             "active_potions",
             "active_buffs"
         ]
@@ -357,24 +554,21 @@ class AsyncDatabase:
         await self.db.active_buffs.create_index("expires_at", expireAfterSeconds=0)  # TTL index
         
         # Initialize default shops if empty
-        if await self.db.shop_fishing.count_documents({}) == 0:
-            await self.db.shop_fishing.insert_many([
+        if await self.db.shop_items.count_documents({}) == 0:
+            await self.db.shop_items.insert_many([
                 {
-                    "id": "beginner_rod",
-                    "type": "rod",
-                    "name": "Beginner Rod",
-                    "price": 0,
-                    "description": "Basic fishing rod",
-                    "multiplier": 1.0
+                    "id": "vip",
+                    "name": "VIP Role",
+                    "price": 10000,
+                    "description": "Grants VIP status and perks",
+                    "type": "role"
                 },
                 {
-                    "id": "beginner_bait",
-                    "type": "bait",
-                    "name": "Beginner Bait",
-                    "price": 0,
-                    "amount": 10,
-                    "description": "Basic bait for catching fish",
-                    "catch_rates": {"normal": 1.0, "rare": 0.1}
+                    "id": "color_role",
+                    "name": "Custom Color",
+                    "price": 5000,
+                    "description": "Create a custom colored role",
+                    "type": "role"
                 }
             ])
             
@@ -419,26 +613,75 @@ class AsyncDatabase:
                     "description": "Upgrade your current rod's multiplier by 0.2x"
                 }
             ])
-
+            
+        if await self.db.shop_fishing.count_documents({}) == 0:
+            await self.db.shop_fishing.insert_many([
+                {
+                    "id": "beginner_rod",
+                    "type": "rod",
+                    "name": "Beginner Rod",
+                    "price": 0,
+                    "description": "Basic fishing rod",
+                    "multiplier": 1.0
+                },
+                {
+                    "id": "beginner_bait",
+                    "type": "bait",
+                    "name": "Beginner Bait",
+                    "price": 0,
+                    "amount": 10,
+                    "description": "Basic bait for catching fish",
+                    "catch_rates": {"normal": 1.0, "rare": 0.1}
+                }
+            ])
+        if await self.db.shop_bait.count_documents({}) == 0:
+            await self.db.shop_bait.insert_many([
+                {
+                    "id": "basic_bait",
+                    "name": "Basic Bait",
+                    "price": 100,
+                    "amount": 5,
+                    "description": "Basic bait for catching fish",
+                    "catch_rates": {"normal": 1.0, "rare": 0.1}
+                }
+            ])
+        if await self.db.shop_rod.count_documents({}) == 0:
+            await self.db.shop_rod.insert_many([
+                {
+                    "id": "basic_rod",
+                    "name": "Basic Rod",
+                    "price": 500,
+                    "description": "Basic fishing rod",
+                    "multiplier": 1.0
+                }
+            ])
+        return True
     async def get_shop_items(self, shop_type: str, guild_id: int = None) -> list:
         """Get items from a specific shop type"""
         if not await self.ensure_connected():
             return []
-            
+        
         collection = getattr(self.db, f"shop_{shop_type}", None)
         if not collection:
             return []
-            
-        # Get global items
-        pipeline = []
+        
         if guild_id:
-            # Add guild-specific items if any
-            pipeline.extend([
-                {"$match": {"guild_id": str(guild_id)}},
-                {"$unionWith": {"coll": f"shop_{shop_type}", "pipeline": [{"$match": {"guild_id": None}}]}}
-            ])
-            
-        items = await collection.aggregate(pipeline).to_list(None)
+            # Get both guild-specific and global items
+            pipeline = [
+                {
+                    "$match": {
+                        "$or": [
+                            {"guild_id": str(guild_id)},
+                            {"guild_id": None}
+                        ]
+                    }
+                }
+            ]
+            items = await collection.aggregate(pipeline).to_list(None)
+        else:
+            # Get only global items
+            items = await collection.find({"guild_id": None}).to_list(None)
+        
         return items
         
     async def add_shop_item(self, item: dict, shop_type: str, guild_id: int = None) -> bool:
@@ -637,7 +880,6 @@ class SyncDatabase:
         except Exception as e:
             self.logger.error(f"Error getting stats: {e}")
             return {}
-
 
 # Create global database instances
 async_db = AsyncDatabase.get_instance()  # For Discord bot
