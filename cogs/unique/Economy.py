@@ -33,7 +33,6 @@ class EconomyShopView(discord.ui.View):
         super().__init__(timeout=timeout)
         self.pages = pages
         self.author = author
-        self.active_jackpots: Dict[int, Dict[int, int]] = {}  # {channel_id: {bet_amount: message_id}}
         self.current_page = 0
         self.message = None
         self.DEFAULT_FISHING_ITEMS = {
@@ -212,6 +211,7 @@ class Economy(commands.Cog):
         self.currency = "<:bronkbuk:1377389238290747582>"
         self.active_games = set()
         self.db = db  
+        self.active_jackpots: Dict[int, Dict[int, int]] = {}  # {channel_id: {bet_amount: message_id}}
 
         # Slot machine configuration
         self.SLOT_EMOJIS = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
