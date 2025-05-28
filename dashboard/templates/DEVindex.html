@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BronxBot Dashboard</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/southbronx.png') }}">
+    
+    <!-- Primary Meta Tags -->
+    <meta name="title" content="BronxBot - Discord Bot Dashboard">
+    <meta name="description" content="BronxBot is a versatile Discord bot featuring moderation, fun commands, giveaways, and server management tools. Manage your Discord server with ease!">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:title" content="BronxBot - Discord Bot Dashboard">
+    <meta property="og:description" content="BronxBot is a versatile Discord bot featuring moderation, fun commands, giveaways, and server management tools. Manage your Discord server with ease!">
+    <meta property="og:image" content="{{ url_for('static', filename='images/southbronx.png', _external=True) }}">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="{{ request.url }}">
+    <meta property="twitter:title" content="BronxBot - Discord Bot Dashboard">
+    <meta property="twitter:description" content="BronxBot is a versatile Discord bot featuring moderation, fun commands, giveaways, and server management tools. Manage your Discord server with ease!">
+    <meta property="twitter:image" content="{{ url_for('static', filename='images/southbronx.png', _external=True) }}">
+    <meta name="theme-color" content="#5865F2">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-content">
+            <button id="nav-toggle" class="nav-toggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <a href="/" class="nav-brand">BronxBot</a>
+            <div class="nav-links collapsible">
+                <a href="/" class="nav-link active">Dashboard</a>
+                <a href="/settings" class="nav-link">Settings</a>
+                <a href="/servers" class="nav-link">Servers</a>
+                <a href="/logout" class="nav-link">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <aside class="sidebar">
+            <div class="sidebar-menu">
+                <a href="/" class="sidebar-item active">
+                    <i class="fas fa-home"></i>
+                    <span>Overview</span>
+                </a>
+                <a href="/settings" class="sidebar-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+                <a href="/servers" class="sidebar-item">
+                    <i class="fas fa-server"></i>
+                    <span>Servers</span>
+                </a>
+                <a href="/stats" class="sidebar-item">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Statistics</span>
+                </a>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <section class="hero">
+                <h1>Welcome back, {{ username }}! 👋</h1>
+                <p>Here's your bot's current status and statistics</p>
+            </section>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Servers</h3>
+                    <p>{{ stats.server_count }}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Users</h3>
+                    <p>{{ stats.user_count }}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Uptime</h3>
+                    <p id="uptime" data-uptime="{{ stats.uptime }}">Calculating...</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Latency</h3>
+                    <p>{{ stats.latency }}ms</p>
+                </div>
+            </div>
+
+                <!-- Add new shard status section -->
+                <div class="shard-status">
+                    <h2>🔋 Shard Status</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Total Servers</h3>
+                            <p>{{ stats.server_count|default(0)|thousands }}</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Total Users</h3>
+                            <p>{{ stats.user_count|default(0)|thousands }}</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Latency</h3>
+                            <p>{{ "%.1f"|format(stats.latency|default(0)) }}ms</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Shards</h3>
+                            <p>{{ stats.shards|default(2) }}</p>
+                        </div>
+                    </div>
+
+                    {% if stats.shard_stats %}
+                    <div class="shard-grid">
+                        {% for shard_id, shard in stats.shard_stats.items() %}
+                        <div class="shard-card {{ 'online' if shard.status == 'online' else 'offline' }}">
+                            <h4>
+                                {% if shard.status == 'online' %}🟢{% else %}🔴{% endif %}
+                                Shard {{ shard_id }}
+                            </h4>
+                            <p>Servers: {{ shard.guild_count }}</p>
+                            <p>Users: {{ shard.user_count }}</p>
+                            <p>Latency: {{ "%.1f"|format(shard.latency) }}ms</p>
+                            <p class="uptime">
+                                Online for: {{ shard.uptime }}
+                            </p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        // Live stats updates using Server-Sent Events
+        const evtSource = new EventSource("/api/stats/live");
+        
+        function updateStats(stats) {
+            // Update server and user counts
+            document.querySelector('.stat-card:nth-child(1) p').textContent = stats.server_count || 0;
+            document.querySelector('.stat-card:nth-child(2) p').textContent = stats.user_count || 0;
+            
+            // Update latency
+            document.querySelector('.stat-card:nth-child(4) p').textContent = `${stats.latency || 0}ms`;
+            
+            // Update uptime (let the existing uptime function handle this)
+            const uptimeElement = document.getElementById('uptime');
+            if (uptimeElement) {
+                uptimeElement.setAttribute('data-uptime', stats.uptime || 0);
+            }
+            
+            // Update shard status if it exists
+            if (stats.shard_stats) {
+                const shardGrid = document.querySelector('.shard-grid');
+                if (shardGrid) {
+                    shardGrid.innerHTML = '';
+                    for (const [shard_id, shard] of Object.entries(stats.shard_stats)) {
+                        const shardCard = document.createElement('div');
+                        shardCard.className = `shard-card ${shard.status === 'online' ? 'online' : 'offline'}`;
+                        shardCard.innerHTML = `
+                            <h4>${shard.status === 'online' ? '🟢' : '🔴'} Shard ${shard_id}</h4>
+                            <p>Servers: ${shard.guild_count}</p>
+                            <p>Users: ${shard.user_count || 0}</p>
+                            <p>Latency: ${shard.latency.toFixed(1)}ms</p>
+                            <p class="uptime">Online for: ${shard.uptime}</p>
+                        `;
+                        shardGrid.appendChild(shardCard);
+                    }
+                }
+            }
+        }
+
+        evtSource.onmessage = (event) => {
+            const stats = JSON.parse(event.data);
+            updateStats(stats);
+        };
+
+        evtSource.onerror = (err) => {
+            console.error("SSE Error:", err);
+            evtSource.close();
+            // Try to reconnect after 5 seconds
+            setTimeout(() => {
+                window.location.reload();
+            }, 5000);
+        };
+    </script>
+</body>
+</html>
