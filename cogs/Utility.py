@@ -75,8 +75,8 @@ class Utility(commands.Cog, ErrorHandler):
             color=0x2b2d31,
             timestamp=discord.utils.utcnow()
         )
-        embed.set_thumbnail(url=guild.icon.url if guild.icon else discord.Embed.Empty)
-        embed.set_image(url=guild.banner.url if guild.banner else discord.Embed.Empty)
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else self.bot.user.avatar.url)
+        embed.set_image(url=guild.banner.url if guild.banner else "")
         embed.set_footer(text=f"ID: {guild.id}")
         if guild.description:
             embed.description += f"\n\n**Description:** {guild.description}"
