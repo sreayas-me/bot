@@ -6,12 +6,10 @@ from discord.ext import commands, tasks
 import datetime
 import asyncio
 from cogs.logging.logger import CogLogger
-from utils.error_handler import ErrorHandler
 from utils.db import async_db
 
-class Giveaway(commands.Cog, ErrorHandler):
+class Giveaway(commands.Cog):
     def __init__(self, bot):
-        ErrorHandler.__init__(self)
         self.bot = bot
         self.logger = CogLogger(self.__class__.__name__)
         self.bot.launch_time = discord.utils.utcnow()
@@ -271,8 +269,15 @@ class Giveaway(commands.Cog, ErrorHandler):
 
     @giveaway_group.command(name='end')
     @commands.has_permissions(manage_guild=True)
-    async def end_giveaway_command(self, ctx, giveaway_id: str):
+    async def end_giveaway_command(self, ctx, giveaway_id: str=None):
         """End a giveaway early"""
+        if giveaway_id is None:
+            embed = discord.Embed(
+                title="End Giveaway",
+                description="❌ Please provide the giveaway ID to end.",
+                color=discord.Color.red()
+            )
+            return await ctx.send(embed=embed)
         if giveaway_id not in self.active_giveaways:
             await ctx.reply("❌ Giveaway not found!")
             return
