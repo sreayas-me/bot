@@ -196,7 +196,7 @@ class Fun(commands.Cog, ErrorHandler):
         response = random.choice(responses)
         await ctx.reply(f"🎱 ```{response}```")
 
-    @commands.command(aliases=['dice', 'd'])
+    @commands.command(aliases=['dice', 'di'])
     async def roll(self, ctx, dice: str = "1d6"):
         """roll dice (format: 2d20, 1d6, etc.)"""
         try:
