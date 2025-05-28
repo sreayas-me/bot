@@ -17,13 +17,14 @@ jobs:
           '{
             embeds: [
               {
-                description: "__**New Update**__\n[View Commit](\($url))",
-                color: 3447003,
-                fields: [
-                  { name: "Author", value: $author },
-                  { name: "Message", value: $message }
-                ],
-                timestamp: $timestamp
+                "id": 120388608,
+                "description": "__**New Update**__\nA new update has been released!\n**V"+ $secrets.version + **\n$message\n*[View Full Changelog](\($url))*",
+                "fields": [],
+                "color": 3101622,
+                "footer": {
+                  "icon_url": author.avatar,
+                  "text": $author
+                }
               }
             ]
           }')
