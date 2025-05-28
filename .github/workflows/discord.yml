@@ -8,33 +8,27 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Discord webhook manually
+      - name: Send Discord Embed via Curl
         run: |
-          curl -H "Content-Type: application/json" \
-            -X POST \
-            -d "{
-              \"embeds\": [
-                {
-                  \"title\": \"🔔 New Commit to Main\",
-                  \"description\": \"[View Commit](${GITHUB_EVENT_HEAD_COMMIT_URL})\",
-                  \"color\": 3447003,
-                  \"fields\": [
-                    {
-                      \"name\": \"Author\",
-                      \"value\": \"${GITHUB_ACTOR}\"
-                    },
-                    {
-                      \"name\": \"Message\",
-                      \"value\": \"${GITHUB_EVENT_HEAD_COMMIT_MESSAGE}\"
-                    }
-                  ],
-                  \"timestamp\": \"${GITHUB_EVENT_HEAD_COMMIT_TIMESTAMP}\"
-                }
-              ]
-            }" \
+          PAYLOAD=$(jq -n --arg author "${{ github.actor }}" \
+                         --arg message "${{ github.event.head_commit.message }}" \
+                         --arg url "${{ github.event.head_commit.url }}" \
+                         --arg timestamp "${{ github.event.head_commit.timestamp }}" \
+          '{
+            embeds: [
+              {
+                title: "🔔 New Commit to Main",
+                description: "[View Commit](\($url))",
+                color: 3447003,
+                fields: [
+                  { name: "Author", value: $author },
+                  { name: "Message", value: $message }
+                ],
+                timestamp: $timestamp
+              }
+            ]
+          }')
+
+          curl -X POST -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
             ${{ secrets.DISCORD_WEBHOOK }}
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_EVENT_HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          GITHUB_EVENT_HEAD_COMMIT_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
-          GITHUB_EVENT_HEAD_COMMIT_URL: ${{ github.event.head_commit.url }}
