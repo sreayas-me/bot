@@ -35,24 +35,6 @@ class EconomyShopView(discord.ui.View):
         self.author = author
         self.current_page = 0
         self.message = None
-        self.DEFAULT_FISHING_ITEMS = {
-            "bait_shop": {
-                "beginner_bait": {
-                    "name": "Beginner Bait",
-                    "price": 0,  # Free for first 10
-                    "amount": 10,
-                    "description": "Basic bait for catching fish",
-                    "catch_rates": {"normal": 1.0, "rare": 0.1}
-                },
-                "pro_bait": {
-                    "name": "Pro Bait",
-                    "price": 50,
-                    "amount": 10,
-                    "description": "Better chances for rare fish",
-                    "catch_rates": {"normal": 1.2, "rare": 0.3, "event": 0.1}
-                }
-            }
-        }
         
         # Only show navigation if we have multiple pages
         if len(self.pages) <= 1:
@@ -212,6 +194,24 @@ class Economy(commands.Cog):
         self.active_games = set()
         self.db = db  
         self.active_jackpots: Dict[int, Dict[int, int]] = {}  # {channel_id: {bet_amount: message_id}}
+        self.DEFAULT_FISHING_ITEMS = {
+            "bait_shop": {
+                "beginner_bait": {
+                    "name": "Beginner Bait",
+                    "price": 0,  # Free for first 10
+                    "amount": 10,
+                    "description": "Basic bait for catching fish",
+                    "catch_rates": {"normal": 1.0, "rare": 0.1}
+                },
+                "pro_bait": {
+                    "name": "Pro Bait",
+                    "price": 50,
+                    "amount": 10,
+                    "description": "Better chances for rare fish",
+                    "catch_rates": {"normal": 1.2, "rare": 0.3, "event": 0.1}
+                }
+            }
+        }
 
         # Slot machine configuration
         self.SLOT_EMOJIS = ["🍒", "🍋", "🍊", "🍇", "7️⃣", "💎"]
@@ -1232,7 +1232,7 @@ class Economy(commands.Cog):
         items = await db.get_shop_items("items", ctx.guild.id if ctx.guild else None)
         if not items:
             return await ctx.reply("❌ No items available in the shop!")
-        
+
         # Ensure items is a list of dictionaries with required fields
         if not isinstance(items, list):
             items = list(items.values()) if isinstance(items, dict) else []
@@ -1263,7 +1263,7 @@ class Economy(commands.Cog):
         except Exception:
             balance_str = "0"
         
-        # Create pages
+        # Create pages with simplified format for button generation
         pages = []
         chunks = [valid_items[i:i+5] for i in range(0, len(valid_items), 5)]
         
@@ -1276,19 +1276,15 @@ class Economy(commands.Cog):
             
             for item in chunk:
                 # Truncate description if too long
-                desc = str(item['description'])[:900]
-                if len(str(item['description'])) > 900:
+                desc = str(item['description'])[:100]
+                if len(str(item['description'])) > 100:
                     desc += "..."
                 
-                # Create field name
-                field_name = f"{str(item['name'])[:200]} - {item['price']} {self.currency}"
+                # Create field name with price
+                field_name = f"{str(item['name'])[:30]} - {item['price']} {self.currency}"
                 
-                # Create field value
-                field_value = f"{desc}\n💳 `{ctx.prefix}buy {item['id']}` to purchase"
-                
-                # Safety check on field value length
-                if len(field_value) > 1024:
-                    field_value = field_value[:1020] + "..."
+                # Create field value with buy command
+                field_value = f"{desc}\n`buy {item['id']}`"
                 
                 embed.add_field(
                     name=field_name,
@@ -1308,7 +1304,7 @@ class Economy(commands.Cog):
         view = EconomyShopView(pages, ctx.author)
         message = await ctx.reply(embed=pages[0], view=view)
         view.message = message
-        
+
     @shop.command(name="rods", aliases=["rod"])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop_rods(self, ctx):
@@ -1347,7 +1343,7 @@ class Economy(commands.Cog):
             except Exception:
                 balance_str = "0"
                 
-            # Create pages
+            # Create pages with simplified format for button generation
             pages = []
             chunks = [valid_rods[i:i+5] for i in range(0, len(valid_rods), 5)]
             
@@ -1359,22 +1355,11 @@ class Economy(commands.Cog):
                 )
                 
                 for rod in chunk:
-                    # Truncate description if too long
-                    desc = str(rod['description'])[:900]
-                    if len(str(rod['description'])) > 900:
-                        desc += "..."
+                    # Create field name with price
+                    field_name = f"{str(rod['name'])[:30]} - {rod['price']} {self.currency}"
                     
-                    # Create field name
-                    field_name = f"{str(rod['name'])[:200]} - {rod['price']} {self.currency}"
-                    
-                    # Create field value
-                    field_value = f"{desc}\n" \
-                                f"🎯 Multiplier: {rod.get('multiplier', 1)}x\n" \
-                                f"🎣 `{ctx.prefix}buy {rod['id']}` to purchase"
-                    
-                    # Safety check on field value length
-                    if len(field_value) > 1024:
-                        field_value = field_value[:1020] + "..."
+                    # Create field value with buy command
+                    field_value = f"Multiplier: {rod.get('multiplier', 1)}x\n`buy {rod['id']}`"
                     
                     embed.add_field(
                         name=field_name,
@@ -1398,40 +1383,35 @@ class Economy(commands.Cog):
         except Exception as e:
             self.logger.error(f"Error in rod shop: {e}")
             await ctx.reply("An error occurred while loading the rod shop.")
-            
+
     @shop.command(name="bait", aliases=["baits"])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop_bait(self, ctx):
         """View available fishing bait"""
         try:
             # Get bait items from database
-            bait_items = await db.get_shop_items("bait", ctx.guild.id if ctx.guild else None)
+            shop_data = await db.get_shop_items("bait_shop", ctx.guild.id if ctx.guild else None)
             
-            if not bait_items:
+            if not shop_data or "bait_shop" not in shop_data:
                 # Fallback to default bait items if none found
                 bait_items = self.DEFAULT_FISHING_ITEMS.get("bait_shop", {})
+            else:
+                bait_items = shop_data["bait_shop"]
                 
             if not bait_items:
                 return await ctx.reply("❌ No bait available in the shop!")
                 
-            # Ensure bait_items is a list of dictionaries with required fields
-            if not isinstance(bait_items, list):
-                bait_items = list(bait_items.values()) if isinstance(bait_items, dict) else []
-                
-            if not bait_items:
-                return await ctx.reply("❌ No bait available in the shop!")
-                
-            # Validate bait items
+            # Convert to list of items with their IDs
             valid_baits = []
-            for bait in bait_items:
-                if not isinstance(bait, dict):
+            for item_id, item in bait_items.items():
+                if not isinstance(item, dict):
                     continue
-                if not all(key in bait for key in ['name', 'price', 'description', 'id']):
+                if not all(key in item for key in ['name', 'price', 'description']):
                     continue
-                # Ensure values aren't None or empty
-                if not all(str(bait[key]).strip() for key in ['name', 'description']):
-                    continue
-                valid_baits.append(bait)
+                    
+                # Add the item ID to the item data
+                item['id'] = item_id
+                valid_baits.append(item)
                 
             if not valid_baits:
                 return await ctx.reply("❌ No valid bait available in the shop!")
@@ -1442,7 +1422,7 @@ class Economy(commands.Cog):
             except Exception:
                 balance_str = "0"
                 
-            # Create pages
+            # Create pages with simplified format for button generation
             pages = []
             chunks = [valid_baits[i:i+5] for i in range(0, len(valid_baits), 5)]
             
@@ -1454,29 +1434,11 @@ class Economy(commands.Cog):
                 )
                 
                 for bait in chunk:
-                    # Calculate catch rates text
-                    rates = []
-                    for fish_type, rate in bait.get("catch_rates", {}).items():
-                        if rate > 0:
-                            rates.append(f"{fish_type.title()}: {int(rate * 100)}%")
+                    # Create field name with price
+                    field_name = f"{str(bait['name'])[:30]} - {bait['price']} {self.currency}"
                     
-                    # Truncate description if too long
-                    desc = str(bait['description'])[:900]
-                    if len(str(bait['description'])) > 900:
-                        desc += "..."
-                    
-                    # Create field name
-                    field_name = f"{str(bait['name'])[:200]} - {bait['price']} {self.currency}"
-                    
-                    # Create field value
-                    field_value = f"{desc}\n" \
-                                f"Amount: {bait.get('amount', 1)} per purchase\n" \
-                                f"Catch Rates: {', '.join(rates) if rates else 'Standard'}\n" \
-                                f"🎣 `{ctx.prefix}buy {bait['id']}` to purchase"
-                    
-                    # Safety check on field value length
-                    if len(field_value) > 1024:
-                        field_value = field_value[:1020] + "..."
+                    # Create field value with buy command
+                    field_value = f"Amount: {bait.get('amount', 1)}\n`buy {bait['id']}`"
                     
                     embed.add_field(
                         name=field_name,
@@ -1540,7 +1502,7 @@ class Economy(commands.Cog):
             except Exception:
                 balance_str = "0"
                 
-            # Create pages
+            # Create pages with simplified format for button generation
             pages = []
             chunks = [valid_potions[i:i+5] for i in range(0, len(valid_potions), 5)]
             
@@ -1563,24 +1525,11 @@ class Economy(commands.Cog):
                         else:
                             duration_text = f"{hours}h {minutes}m"
                     
-                    # Truncate description if too long
-                    desc = str(potion['description'])[:900]
-                    if len(str(potion['description'])) > 900:
-                        desc += "..."
+                    # Create field name with price
+                    field_name = f"{str(potion['name'])[:30]} - {potion['price']} {self.currency}"
                     
-                    # Create field name
-                    field_name = f"{str(potion['name'])[:200]} - {potion['price']} {self.currency}"
-                    
-                    # Create field value
-                    field_value = f"{desc}\n" \
-                                f"🧬 Type: {potion.get('type', 'general').title()}\n" \
-                                f"🎯 Multiplier: {potion.get('multiplier', 1)}x\n" \
-                                f"⏰ Duration: {duration_text}\n" \
-                                f"🧪 `{ctx.prefix}buy {potion['id']}` to purchase"
-                    
-                    # Safety check on field value length
-                    if len(field_value) > 1024:
-                        field_value = field_value[:1020] + "..."
+                    # Create field value with buy command
+                    field_value = f"Duration: {duration_text}\n`buy {potion['id']}`"
                     
                     embed.add_field(
                         name=field_name,
@@ -1611,85 +1560,111 @@ class Economy(commands.Cog):
             return False, "Database connection failed"
             
         try:
-            # Check all shop collections for the item
+            # Check all possible shop collections for the item
             item = None
             item_type = None
             
-            # Check shop_items
-            item = await self.db.shop_items.find_one({"id": item_id})
-            if item:
-                item_type = "item"
+            # First check the bait shop (special structure)
+            bait_shop = await self.db.shops.find_one({"_id": f"bait_shop_{guild_id}" if guild_id else "bait_shop_global"})
+            if bait_shop and item_id in bait_shop.get("items", {}):
+                item = bait_shop["items"][item_id]
+                item_type = "bait"
             
-            # Check shop_fishing
+            # If not bait, check other shop types
             if not item:
-                item = await self.db.shop_fishing.find_one({"id": item_id})
-                if item:
-                    item_type = "fishing"
-            
-            # Check shop_potions
-            if not item:
-                item = await self.db.shop_potions.find_one({"id": item_id})
-                if item:
-                    item_type = "potion"
-                    
-            # Check shop_upgrades
-            if not item:
-                item = await self.db.shop_upgrades.find_one({"id": item_id})
-                if item:
-                    item_type = "upgrade"
+                shop_types = [
+                    ("items", "item"),
+                    ("potions", "potion"),
+                    ("fishing_rods", "fishing_rod"),
+                    ("upgrades", "upgrade")
+                ]
+                
+                for collection, i_type in shop_types:
+                    doc = await self.db.shops.find_one({
+                        "_id": f"{collection}_{guild_id}" if guild_id else f"{collection}_global",
+                        f"items.{item_id}": {"$exists": True}
+                    })
+                    if doc:
+                        item = doc["items"][item_id]
+                        item_type = i_type
+                        break
             
             if not item:
                 return False, "Item not found in any shop"
                 
+            # Add the item ID to the item data
+            item['id'] = item_id
+            
             # Check if user has enough money
             wallet_balance = await self.get_wallet_balance(user_id, guild_id)
             if wallet_balance < item["price"]:
                 return False, f"Insufficient funds. Need {item['price']}, have {wallet_balance}"
                 
-            # Process the purchase based on item type
+            # Process the purchase
             async with await self.client.start_session() as session:
                 async with session.start_transaction():
-                    # Deduct money
+                    # Deduct money first
                     if not await self.update_wallet(user_id, -item["price"], guild_id):
                         return False, "Failed to deduct payment"
                     
                     # Handle different item types
-                    if item_type == "fishing":
-                        if item["type"] == "rod":
-                            if not await self.add_fishing_item(user_id, item, "rod"):
-                                await self.update_wallet(user_id, item["price"], guild_id)  # Refund
-                                return False, "Failed to add fishing rod"
-                        elif item["type"] == "bait":
-                            if not await self.add_fishing_item(user_id, item, "bait"):
-                                await self.update_wallet(user_id, item["price"], guild_id)  # Refund
-                                return False, "Failed to add fishing bait"
-                                
+                    if item_type == "bait":
+                        # Add bait to fishing items
+                        result = await self.db.users.update_one(
+                            {"_id": str(user_id)},
+                            {"$push": {"fishing_items.bait": item}},
+                            session=session
+                        )
+                        if not result.modified_count:
+                            await session.abort_transaction()
+                            return False, "Failed to add bait to inventory"
+                    
+                    elif item_type == "fishing_rod":
+                        # Add or replace fishing rod
+                        result = await self.db.users.update_one(
+                            {"_id": str(user_id)},
+                            {"$set": {"fishing_items.rod": item}},
+                            session=session
+                        )
+                        if not result.modified_count:
+                            await session.abort_transaction()
+                            return False, "Failed to equip fishing rod"
+                    
                     elif item_type == "potion":
-                        if not await self.add_potion(user_id, item):
-                            await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                        # Activate potion effect
+                        result = await self.db.users.update_one(
+                            {"_id": str(user_id)},
+                            {"$push": {"active_effects": item}},
+                            session=session
+                        )
+                        if not result.modified_count:
+                            await session.abort_transaction()
                             return False, "Failed to activate potion"
-                            
+                    
                     elif item_type == "upgrade":
-                        if item["type"] == "bank":
-                            if not await self.increase_bank_limit(user_id, item["amount"], guild_id):
-                                await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                        # Handle bank upgrades
+                        if item.get("upgrade_type") == "bank":
+                            result = await self.db.users.update_one(
+                                {"_id": str(user_id)},
+                                {"$inc": {"bank_limit": item["amount"]}},
+                                session=session
+                            )
+                            if not result.modified_count:
+                                await session.abort_transaction()
                                 return False, "Failed to upgrade bank"
-                        elif item["type"] == "fishing":
-                            # Handle rod upgrade logic here
-                            pass
-                            
+                    
                     elif item_type == "item":
-                        # Add to inventory
+                        # Add to general inventory
                         result = await self.db.users.update_one(
                             {"_id": str(user_id)},
                             {"$push": {"inventory": item}},
-                            upsert=True
+                            session=session
                         )
-                        if result.modified_count == 0 and not result.upserted_id:
-                            await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                        if not result.modified_count and not result.upserted_id:
+                            await session.abort_transaction()
                             return False, "Failed to add item to inventory"
                     
-                    return True, f"Successfully purchased {item['name']}!"
+                    return True, f"✅ Successfully purchased {item['name']} for {item['price']} {self.currency}!"
                     
         except Exception as e:
             self.logger.error(f"Failed to buy item {item_id}: {e}")
