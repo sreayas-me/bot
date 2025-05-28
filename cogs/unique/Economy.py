@@ -34,6 +34,24 @@ class EconomyShopView(discord.ui.View):
         self.author = author
         self.current_page = 0
         self.message = None
+        self.DEFAULT_FISHING_ITEMS = {
+            "bait_shop": {
+                "beginner_bait": {
+                    "name": "Beginner Bait",
+                    "price": 0,  # Free for first 10
+                    "amount": 10,
+                    "description": "Basic bait for catching fish",
+                    "catch_rates": {"normal": 1.0, "rare": 0.1}
+                },
+                "pro_bait": {
+                    "name": "Pro Bait",
+                    "price": 50,
+                    "amount": 10,
+                    "description": "Better chances for rare fish",
+                    "catch_rates": {"normal": 1.2, "rare": 0.3, "event": 0.1}
+                }
+            }
+        }
         
         # Only show navigation if we have multiple pages
         if len(self.pages) <= 1:
@@ -1132,125 +1150,298 @@ class Economy(commands.Cog):
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop_rods(self, ctx):
         """View available fishing rods"""
-        rods = await db.get_shop_items("fishing", ctx.guild.id if ctx.guild else None)
-        
-        if not rods:
-            return await ctx.reply("Rod shop is currently unavailable!")
+        try:
+            # Get rod items from database
+            rods = await db.get_shop_items("fishing", ctx.guild.id if ctx.guild else None)
             
-        # Filter for rods only
-        rod_items = [item for item in rods if item.get('type') == 'rod']
-        
-        if not rod_items:
-            return await ctx.reply("No rods available!")
+            if not rods:
+                return await ctx.reply("❌ No rods available in the shop!")
+                
+            # Ensure rods is a list of dictionaries
+            if not isinstance(rods, list):
+                rods = list(rods.values()) if isinstance(rods, dict) else []
+                
+            # Filter for rods only and validate
+            valid_rods = []
+            for item in rods:
+                if not isinstance(item, dict):
+                    continue
+                if item.get('type') != 'rod':
+                    continue
+                if not all(key in item for key in ['name', 'price', 'description', 'id']):
+                    continue
+                # Ensure values aren't None or empty
+                if not all(str(item[key]).strip() for key in ['name', 'description']):
+                    continue
+                valid_rods.append(item)
+                
+            if not valid_rods:
+                return await ctx.reply("❌ No valid rods available in the shop!")
+                
+            try:
+                balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+                balance_str = str(balance) if balance is not None else "0"
+            except Exception:
+                balance_str = "0"
+                
+            # Create pages
+            pages = []
+            chunks = [valid_rods[i:i+5] for i in range(0, len(valid_rods), 5)]
             
-        pages = []
-        
-        for rod in rod_items:
-            embed = discord.Embed(
-                title="🎣 Fishing Rod Shop",
-                description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}",
-                color=discord.Color.blue()
-            )
+            for page_num, chunk in enumerate(chunks, 1):
+                embed = discord.Embed(
+                    title="🎣 Fishing Rod Shop",
+                    description=f"💰 Your Balance: **{balance_str}** {self.currency}",
+                    color=discord.Color.blue()
+                )
+                
+                for rod in chunk:
+                    # Truncate description if too long
+                    desc = str(rod['description'])[:900]
+                    if len(str(rod['description'])) > 900:
+                        desc += "..."
+                    
+                    # Create field name
+                    field_name = f"{str(rod['name'])[:200]} - {rod['price']} {self.currency}"
+                    
+                    # Create field value
+                    field_value = f"{desc}\n" \
+                                f"🎯 Multiplier: {rod.get('multiplier', 1)}x\n" \
+                                f"🎣 `{ctx.prefix}buy {rod['id']}` to purchase"
+                    
+                    # Safety check on field value length
+                    if len(field_value) > 1024:
+                        field_value = field_value[:1020] + "..."
+                    
+                    embed.add_field(
+                        name=field_name,
+                        value=field_value,
+                        inline=False
+                    )
+                
+                # Add page footer
+                if len(chunks) > 1:
+                    embed.set_footer(text=f"Page {page_num}/{len(chunks)} • {len(valid_rods)} total rods")
+                else:
+                    embed.set_footer(text=f"{len(valid_rods)} rods available")
+                    
+                pages.append(embed)
             
-            rod_id = rod.get('id', rod.get('_id', 'unknown'))
-            embed.add_field(
-                name=f"{rod['name']} - {rod['price']} {self.currency}",
-                value=f"{rod['description']}\nMultiplier: {rod.get('multiplier', 1)}x\n`buy {rod_id}` to purchase",
-                inline=False
-            )
-            pages.append(embed)
-            
-        if pages:
-            view = HelpPaginator(pages, ctx.author)
-            view.update_buttons()
+            # Create and send with custom view
+            view = EconomyShopView(pages, ctx.author)
             message = await ctx.reply(embed=pages[0], view=view)
             view.message = message
+            
+        except Exception as e:
+            self.logger.error(f"Error in rod shop: {e}")
+            await ctx.reply("An error occurred while loading the rod shop.")
             
     @shop.command(name="bait", aliases=["baits"])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop_bait(self, ctx):
         """View available fishing bait"""
-        fishing_items = await db.get_shop_items("fishing", ctx.guild.id if ctx.guild else None)
-        
-        if not fishing_items:
-            return await ctx.reply("Bait shop is currently unavailable!")
+        try:
+            # Get bait items from database
+            bait_items = await db.get_shop_items("bait", ctx.guild.id if ctx.guild else None)
             
-        # Filter for bait only
-        baits = [item for item in fishing_items if item.get('type') == 'bait']
-        
-        if not baits:
-            return await ctx.reply("No bait available!")
+            if not bait_items:
+                # Fallback to default bait items if none found
+                bait_items = self.DEFAULT_FISHING_ITEMS.get("bait_shop", {})
+                
+            if not bait_items:
+                return await ctx.reply("❌ No bait available in the shop!")
+                
+            # Ensure bait_items is a list of dictionaries with required fields
+            if not isinstance(bait_items, list):
+                bait_items = list(bait_items.values()) if isinstance(bait_items, dict) else []
+                
+            if not bait_items:
+                return await ctx.reply("❌ No bait available in the shop!")
+                
+            # Validate bait items
+            valid_baits = []
+            for bait in bait_items:
+                if not isinstance(bait, dict):
+                    continue
+                if not all(key in bait for key in ['name', 'price', 'description', 'id']):
+                    continue
+                # Ensure values aren't None or empty
+                if not all(str(bait[key]).strip() for key in ['name', 'description']):
+                    continue
+                valid_baits.append(bait)
+                
+            if not valid_baits:
+                return await ctx.reply("❌ No valid bait available in the shop!")
+                
+            try:
+                balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+                balance_str = str(balance) if balance is not None else "0"
+            except Exception:
+                balance_str = "0"
+                
+            # Create pages
+            pages = []
+            chunks = [valid_baits[i:i+5] for i in range(0, len(valid_baits), 5)]
             
-        pages = []
-        
-        for bait in baits:
-            embed = discord.Embed(
-                title="🪱 Fishing Bait Shop",
-                description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}",
-                color=discord.Color.blue()
-            )
+            for page_num, chunk in enumerate(chunks, 1):
+                embed = discord.Embed(
+                    title="🪱 Fishing Bait Shop",
+                    description=f"💰 Your Balance: **{balance_str}** {self.currency}",
+                    color=discord.Color.blue()
+                )
+                
+                for bait in chunk:
+                    # Calculate catch rates text
+                    rates = []
+                    for fish_type, rate in bait.get("catch_rates", {}).items():
+                        if rate > 0:
+                            rates.append(f"{fish_type.title()}: {int(rate * 100)}%")
+                    
+                    # Truncate description if too long
+                    desc = str(bait['description'])[:900]
+                    if len(str(bait['description'])) > 900:
+                        desc += "..."
+                    
+                    # Create field name
+                    field_name = f"{str(bait['name'])[:200]} - {bait['price']} {self.currency}"
+                    
+                    # Create field value
+                    field_value = f"{desc}\n" \
+                                f"Amount: {bait.get('amount', 1)} per purchase\n" \
+                                f"Catch Rates: {', '.join(rates) if rates else 'Standard'}\n" \
+                                f"🎣 `{ctx.prefix}buy {bait['id']}` to purchase"
+                    
+                    # Safety check on field value length
+                    if len(field_value) > 1024:
+                        field_value = field_value[:1020] + "..."
+                    
+                    embed.add_field(
+                        name=field_name,
+                        value=field_value,
+                        inline=False
+                    )
+                
+                # Add page footer
+                if len(chunks) > 1:
+                    embed.set_footer(text=f"Page {page_num}/{len(chunks)} • {len(valid_baits)} total baits")
+                else:
+                    embed.set_footer(text=f"{len(valid_baits)} baits available")
+                    
+                pages.append(embed)
             
-            # Calculate catch rates text
-            rates = []
-            for fish_type, rate in bait.get("catch_rates", {}).items():
-                if rate > 0:
-                    rates.append(f"{fish_type.title()}: {int(rate * 100)}%")
-            
-            bait_id = bait.get('id', bait.get('_id', 'unknown'))        
-            embed.add_field(
-                name=f"{bait['name']} - {bait['price']} {self.currency}",
-                value=f"{bait['description']}\n" \
-                    f"Amount: {bait.get('amount', 1)} per purchase\n" \
-                    f"Catch Rates: {', '.join(rates) if rates else 'Standard'}\n" \
-                    f"`buy {bait_id}` to purchase",
-                inline=False
-            )
-            pages.append(embed)
-            
-        if pages:
-            view = HelpPaginator(pages, ctx.author)
-            view.update_buttons()
+            # Create and send with custom view
+            view = EconomyShopView(pages, ctx.author)
             message = await ctx.reply(embed=pages[0], view=view)
             view.message = message
+            
+        except Exception as e:
+            self.logger.error(f"Error in bait shop: {e}")
+            await ctx.reply("An error occurred while loading the bait shop.")
 
     @shop.command(name="potions")
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop_potions(self, ctx):
         """View available potions"""
-        potions = await db.get_shop_items("potions", ctx.guild.id if ctx.guild else None)
-        
-        if not potions:
-            return await ctx.reply("No potions available in the shop!")
+        try:
+            # Get potion items from database
+            potions = await db.get_shop_items("potions", ctx.guild.id if ctx.guild else None)
             
-        embed = discord.Embed(
-            title="🧪 Potion Shop",
-            description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}",
-            color=discord.Color.purple()
-        )
-        
-        for potion in potions:
-            duration = potion.get('duration', 60)
-            duration_text = f"{duration} minutes"
-            if duration >= 60:
-                hours = duration // 60
-                minutes = duration % 60
-                if minutes == 0:
-                    duration_text = f"{hours} hour{'s' if hours > 1 else ''}"
+            if not potions:
+                return await ctx.reply("❌ No potions available in the shop!")
+                
+            # Ensure potions is a list of dictionaries with required fields
+            if not isinstance(potions, list):
+                potions = list(potions.values()) if isinstance(potions, dict) else []
+                
+            if not potions:
+                return await ctx.reply("❌ No potions available in the shop!")
+                
+            # Validate potion items
+            valid_potions = []
+            for potion in potions:
+                if not isinstance(potion, dict):
+                    continue
+                if not all(key in potion for key in ['name', 'price', 'description', 'id']):
+                    continue
+                # Ensure values aren't None or empty
+                if not all(str(potion[key]).strip() for key in ['name', 'description']):
+                    continue
+                valid_potions.append(potion)
+                
+            if not valid_potions:
+                return await ctx.reply("❌ No valid potions available in the shop!")
+                
+            try:
+                balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+                balance_str = str(balance) if balance is not None else "0"
+            except Exception:
+                balance_str = "0"
+                
+            # Create pages
+            pages = []
+            chunks = [valid_potions[i:i+5] for i in range(0, len(valid_potions), 5)]
+            
+            for page_num, chunk in enumerate(chunks, 1):
+                embed = discord.Embed(
+                    title="🧪 Potion Shop",
+                    description=f"💰 Your Balance: **{balance_str}** {self.currency}",
+                    color=discord.Color.purple()
+                )
+                
+                for potion in chunk:
+                    # Format duration
+                    duration = potion.get('duration', 60)
+                    duration_text = f"{duration} minutes"
+                    if duration >= 60:
+                        hours = duration // 60
+                        minutes = duration % 60
+                        if minutes == 0:
+                            duration_text = f"{hours} hour{'s' if hours > 1 else ''}"
+                        else:
+                            duration_text = f"{hours}h {minutes}m"
+                    
+                    # Truncate description if too long
+                    desc = str(potion['description'])[:900]
+                    if len(str(potion['description'])) > 900:
+                        desc += "..."
+                    
+                    # Create field name
+                    field_name = f"{str(potion['name'])[:200]} - {potion['price']} {self.currency}"
+                    
+                    # Create field value
+                    field_value = f"{desc}\n" \
+                                f"🧬 Type: {potion.get('type', 'general').title()}\n" \
+                                f"🎯 Multiplier: {potion.get('multiplier', 1)}x\n" \
+                                f"⏰ Duration: {duration_text}\n" \
+                                f"🧪 `{ctx.prefix}buy {potion['id']}` to purchase"
+                    
+                    # Safety check on field value length
+                    if len(field_value) > 1024:
+                        field_value = field_value[:1020] + "..."
+                    
+                    embed.add_field(
+                        name=field_name,
+                        value=field_value,
+                        inline=False
+                    )
+                
+                # Add page footer
+                if len(chunks) > 1:
+                    embed.set_footer(text=f"Page {page_num}/{len(chunks)} • {len(valid_potions)} total potions")
                 else:
-                    duration_text = f"{hours}h {minutes}m"
+                    embed.set_footer(text=f"{len(valid_potions)} potions available")
+                    
+                pages.append(embed)
             
-            potion_id = potion.get('id', potion.get('_id', 'unknown'))
-            embed.add_field(
-                name=f"{potion['name']} - {potion['price']} {self.currency}",
-                value=f"{potion['description']}\n" \
-                    f"Type: {potion.get('type', 'general').title()}\n" \
-                    f"Multiplier: {potion.get('multiplier', 1)}x\n" \
-                    f"Duration: {duration_text}\n" \
-                    f"`buy {potion_id}` to purchase",
-                inline=False
-            )
+            # Create and send with custom view
+            view = EconomyShopView(pages, ctx.author)
+            message = await ctx.reply(embed=pages[0], view=view)
+            view.message = message
             
-        await ctx.reply(embed=embed)
+        except Exception as e:
+            self.logger.error(f"Error in potion shop: {e}")
+            await ctx.reply("An error occurred while loading the potion shop.")
+
     async def buy_item(self, user_id: int, item_id: str, guild_id: int = None) -> tuple[bool, str]:
         """Buy an item from any shop"""
         if not await self.ensure_connected():
