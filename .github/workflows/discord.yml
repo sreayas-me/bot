@@ -11,24 +11,27 @@ jobs:
       - name: Send Discord Embed via Curl
         run: |
           PAYLOAD=$(jq -n --arg author "${{ github.actor }}" \
-                         --arg message "${{ github.event.head_commit.message }}" \
-                         --arg url "${{ github.event.head_commit.url }}" \
-                         --arg timestamp "${{ github.event.head_commit.timestamp }}" \
+                          --arg author_avatar "${{ github.actor.avatar.url }}" \
+                          --arg message "${{ github.event.head_commit.message }}" \
+                          --arg url "${{ github.event.head_commit.url }}" \
+                          --arg timestamp "${{ github.event.head_commit.timestamp }}" \
+                          --arg version "${{ secrets.VERSION }}" \
           '{
-            embeds: [
+            "embeds": [
               {
                 "id": 120388608,
-                "description": "__**New Update**__\nA new update has been released!\n**V"+ $secrets.version + **\n$message\n*[View Full Changelog](\($url))*",
+                "description": ("__**New Update**__\nA new update has been released!\n**V" + $version + "**\n" + $message + "\n*[View Full Changelog](" + $url + ")*"),
                 "fields": [],
                 "color": 3101622,
                 "footer": {
-                  "icon_url": author.avatar,
+                  "icon_url": $author_avatar,
                   "text": $author
-                }
+                },
+                "timestamp": $timestamp
               }
             ]
           }')
 
           curl -X POST -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
-            ${{ secrets.DISCORD_WEBHOOK }}
+            "${{ secrets.DISCORD_WEBHOOK }}"
