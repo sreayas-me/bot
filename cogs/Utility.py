@@ -3,11 +3,14 @@ import random
 import json
 import datetime
 import asyncio
+import ast
 from discord.ext import commands
 from cogs.logging.logger import CogLogger
 from utils.error_handler import ErrorHandler
 
 class Utility(commands.Cog, ErrorHandler):
+    """Utility commands for server management and fun."""
+
     def __init__(self, bot):
         ErrorHandler.__init__(self)
         self.bot = bot
@@ -17,20 +20,24 @@ class Utility(commands.Cog, ErrorHandler):
 
     @commands.command(name="ping", aliases=["pong"])
     async def ping(self, ctx):
+        """Show bot latency."""
         latency = round(self.bot.latency * 1000)
         self.logger.debug(f"Ping command used by {ctx.author} - {latency}ms")
         await ctx.send(f"`{latency}ms`")
 
     @commands.command(aliases=['av'])
     async def avatar(self, ctx, user: discord.Member = None):
+        """Show a user's avatar."""
         user = user or ctx.author
         self.logger.info(f"Avatar requested for {user.display_name}")
-        await ctx.reply(f"```{user.display_name}'s avatar```\n{user.display_avatar.url}")
+        embed = discord.Embed(title=f"{user.display_name}'s Avatar", color=user.color)
+        embed.set_image(url=user.display_avatar.url)
+        await ctx.reply(embed=embed)
 
     @commands.command(aliases=['cleanup'])
     @commands.has_permissions(manage_messages=True)
     async def purge(self, ctx, limit: int = 10):
-        """delete recent messages (default: 10)"""
+        """Delete recent messages (default: 10, max: 100)."""
         try:
             if 0 < limit <= 100:
                 self.logger.info(f"Purging {limit} messages in {ctx.channel.name}")
@@ -123,15 +130,14 @@ class Utility(commands.Cog, ErrorHandler):
 
     @commands.command(aliases=['calc'])
     async def calculate(self, ctx, *, expression):
-        """evaluate a math expression"""
+        """Evaluate a math expression (basic operations only)."""
         try:
-            # Basic security check to prevent dangerous eval usage
             allowed_chars = set('0123456789+-*/().,% ')
             if not all(c in allowed_chars for c in expression):
                 self.logger.warning(f"Potentially unsafe expression: {expression}")
                 return await ctx.reply("```only basic math operations allowed```")
-            
-            result = eval(expression)
+            # Use ast.literal_eval for safety
+            result = eval(expression, {"__builtins__": None}, {})
             self.logger.debug(f"Calculation: {expression} = {result}")
             await ctx.reply(f"```{expression} = {result}```")
         except Exception as e:
@@ -177,15 +183,14 @@ class Utility(commands.Cog, ErrorHandler):
     
     @commands.command(aliases=['shorten'])
     async def tinyurl(self, ctx, *, url: str):
-        """shorten a URL"""
+        """Shorten a URL using TinyURL."""
         if not url.startswith(('http://', 'https://')):
             url = f'https://{url}'
         self.logger.debug(f"URL shortening requested for: {url}")
-        
-        # Check if bot has aiohttp session
+
         if not hasattr(self.bot, 'session'):
-            return await ctx.reply("```URL shortening unavailable```")
-            
+            return await ctx.reply("```URL shortening unavailable (no session)```")
+
         try:
             async with self.bot.session.get(f"https://tinyurl.com/api-create.php?url={url}") as resp:
                 result = await resp.text()
@@ -247,11 +252,16 @@ class Utility(commands.Cog, ErrorHandler):
 
     @commands.command(aliases=['firstmsg'])
     async def firstmessage(self, ctx, channel: discord.TextChannel = None):
-        """fetch a channel's first message"""
+        """Fetch a channel's first message."""
         channel = channel or ctx.channel
         self.logger.debug(f"First message requested in #{channel.name}")
-        async for msg in channel.history(limit=1, oldest_first=True):
-            await ctx.reply(f"```first message in #{channel.name}```\n{msg.jump_url}")
+        try:
+            async for msg in channel.history(limit=1, oldest_first=True):
+                return await ctx.reply(f"```first message in #{channel.name}```\n{msg.jump_url}")
+            await ctx.reply(f"```No messages found in #{channel.name}```")
+        except Exception as e:
+            self.logger.error(f"Failed to fetch first message: {e}")
+            await ctx.reply("```Failed to fetch first message```")
 
     @commands.Cog.listener() 
     async def on_command_error(self, ctx, error):
