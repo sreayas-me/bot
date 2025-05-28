@@ -1,8 +1,9 @@
-name: Discord Notification
+name: Discord notification
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   notify:
@@ -19,7 +20,7 @@ jobs:
                 {
                   "title": "🚀 New Push to Main!",
                   "description": "User **${{ github.actor }}** pushed to **${{ github.repository }}**.",
-                  "color": 5814783,
+                  "color": #5814783,
                   "fields": [
                     {
                       "name": "Commit Message",
