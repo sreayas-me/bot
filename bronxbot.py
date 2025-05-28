@@ -152,6 +152,7 @@ COG_DATA = {
         "cogs.unique.Economy": "disabled", 
         "cogs.unique.Multiplayer": "fun", 
         "cogs.Fun": "fun",
+        "cogs.Giveaway": "fun",
         "cogs.unique.SyncRoles": "success", 
         "cogs.Help": "success", 
         "cogs.ModMail": "success", 

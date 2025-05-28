@@ -145,7 +145,7 @@ class Help(commands.Cog, ErrorHandler):
         page_index = 1  # Start at 1 because overview is at 0
         
         for cog_name, cog in sorted(self.bot.cogs.items(), key=lambda x: x[0].lower()):
-            if cog_name.lower() in ['help', 'jishaku', 'dev', 'moderation', 'giveaway', 'admin', 'votebans', 'stats', 'welcoming']:
+            if cog_name.lower() in ['help', 'jishaku', 'dev', 'moderation', 'admin', 'votebans', 'stats', 'welcoming']:
                 continue
             
             commands_list = [cmd for cmd in cog.get_commands() if not cmd.hidden]

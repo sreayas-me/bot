@@ -611,7 +611,7 @@ async def setup(bot):
         if not hasattr(bot, 'session'):
             bot.session = aiohttp.ClientSession()
     
-        db.ensure_connected()
+        await db.ensure_connected()
         await bot.add_cog(Admin(bot))
         return True
         
