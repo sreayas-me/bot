@@ -9,12 +9,12 @@ A multi-purpose Discord bot that probably won't break your server. Probably.
 - **Vote-bans**: Democracy in action (timeout edition)
 - **ModMail**: Like email, but worse
 - **Role Sync**: Because copy-paste is too hard
-- **Economy**: Capitalism simulator
-- **Games**: Pretend you're having fun
-- **Utility**: Actually useful stuff (rare)
-- [**Dashboard**:](https://bronxbot.onrender.com/) Setup the bot using the web!
+- **Economy**: Capitalism simulator with games, shops, and leaderboards
+- **Games**: Pretend you're having fun (slots, blackjack, coinflip, and more)
+- **Utility**: Actually useful stuff (rare, but it happens)
+- [**Dashboard**](https://bronxbot.onrender.com/): Setup and manage the bot using the web!
 
-See [FEATURES.md](FEATURES.md) for the full feature list (it's longer than your todo list)
+See [FEATURES.md](FEATURES.md) for the full feature list (it's longer than your todo list).
 
 ## 🚀 Getting Started
 
@@ -32,6 +32,7 @@ See [FEATURES.md](FEATURES.md) for the full feature list (it's longer than your 
 2. Fill in your tokens and IDs
 3. Hope you didn't commit them to git
 4. (You probably did)
+5. Set up your MongoDB URI in the config
 
 ## 🏗️ Built With
 
@@ -60,6 +61,7 @@ This project is licensed under the "Do Whatever You Want But Don't Blame Me" lic
 - ChatGPT
 - That one Indian guy on YouTube
 - Coffee
+- Everyone who reported bugs (and found new ones)
 
-> Made with 💖 and questionable code quality
+> Made with 💖 and questionable code quality  
 > [ADD THE BOT](https://discord.com/oauth2/authorize?client_id=828380019406929962&permissions=8&integration_type=0&scope=bot)
