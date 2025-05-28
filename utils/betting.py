@@ -15,7 +15,9 @@ def parse_bet(amount_str: str, balance: int) -> Tuple[Union[int, None], str]:
         amount_str = amount_str.lower().strip()
         
         # Handle 'all' or 'max'
-        if amount_str in ['all', 'max']:
+        if amount_str in ['all', 'max', 'half']:
+            if amount_str == 'half':
+                return round(balance / 2), None
             return balance, None
             
         # Handle percentage

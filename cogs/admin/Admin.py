@@ -563,16 +563,29 @@ class Admin(commands.Cog):
             return await ctx.reply(embed=embed)
             
         try:
-            # Delete all data from the economy table
-            await self.db.cursor.execute("DELETE FROM economy")
+            # Delete all user data (balances, inventory, fish collections)
+            await self.db.db.users.delete_many({})
             
-            # Delete all data from active potions
-            await self.db.cursor.execute("DELETE FROM active_potions")
+            # Delete all active potions
+            await self.db.db.active_potions.delete_many({})
             
-            # Commit the changes
-            await self.db.conn.commit()
+            # Reset shop data to defaults by dropping and recreating collections
+            shop_collections = [
+                "shop_items",
+                "shop_potions",
+                "shop_upgrades",
+                "shop_fishing",
+                "shop_bait",
+                "shop_rod"
+            ]
             
-            # Reset shop data to defaults
+            for collection in shop_collections:
+                await self.db.db[collection].delete_many({})
+            
+            # Reinitialize default shop items
+            await self.db.init_collections()
+            
+            # Reset local shop data
             self.shop_data = {
                 "items": {},
                 "potions": {},

@@ -2,6 +2,7 @@ from discord.ext import commands
 from cogs.logging.logger import CogLogger
 from utils.db import async_db as db
 from cogs.Help import HelpPaginator
+from typing import Dict, List
 from utils.betting import parse_bet
 import discord
 import random
@@ -32,6 +33,7 @@ class EconomyShopView(discord.ui.View):
         super().__init__(timeout=timeout)
         self.pages = pages
         self.author = author
+        self.active_jackpots: Dict[int, Dict[int, int]] = {}  # {channel_id: {bet_amount: message_id}}
         self.current_page = 0
         self.message = None
         self.DEFAULT_FISHING_ITEMS = {
@@ -556,33 +558,42 @@ class Economy(commands.Cog):
             return await self._show_server_leaderboard(ctx)
 
     async def _show_server_leaderboard(self, ctx):
-        """Show server-specific leaderboard"""
+        """Show server-specific leaderboard (optimized version)"""
         try:
-            # Use the db instance (which is async_db)
-            if not await db.ensure_connected():
+            if not await self.db.ensure_connected():
                 return await ctx.reply(embed=discord.Embed(
                     description="❌ Database connection failed", 
                     color=0xff0000
                 ))
+
+            # Get all non-bot member IDs in the server
+            member_ids = [str(member.id) for member in ctx.guild.members if not member.bot]
             
+            if not member_ids:
+                return await ctx.reply(embed=discord.Embed(
+                    description="No users found in this server",
+                    color=0x2b2d31
+                ))
+
+            # Single database query to get all relevant users
+            cursor = self.db.db.users.find({
+                "_id": {"$in": member_ids},
+                "$or": [
+                    {"wallet": {"$gt": 0}},
+                    {"bank": {"$gt": 0}}
+                ]
+            })
+
             users = []
-            
-            # Get all users in the server and check their balances
-            for member in ctx.guild.members:
-                if not member.bot:
-                    try:
-                        wallet = await db.get_wallet_balance(member.id, ctx.guild.id)
-                        bank = await db.get_bank_balance(member.id, ctx.guild.id)
-                        total = wallet + bank
-                        if total > 0:  # Only include users with money
-                            users.append({
-                                "member": member,
-                                "total": total
-                            })
-                    except Exception as e:
-                        print(f"DEBUG: Error getting balance for {member.id}: {e}")
-                        continue
-            
+            async for user_doc in cursor:
+                member = ctx.guild.get_member(int(user_doc["_id"]))
+                if member:  # Only include members still in the server
+                    total = user_doc.get("wallet", 0) + user_doc.get("bank", 0)
+                    users.append({
+                        "member": member,
+                        "total": round(total)
+                    })
+
             if not users:
                 embed = discord.Embed(
                     description="No economy data for this server.\n💡 Users need to earn money first (work, daily, etc.)", 
@@ -590,7 +601,7 @@ class Economy(commands.Cog):
                 )
                 return await ctx.reply(embed=embed)
             
-            # Sort by total wealth and take top 10
+            # Sort and get top 10
             users.sort(key=lambda x: x["total"], reverse=True)
             users = users[:10]
             
@@ -618,7 +629,7 @@ class Economy(commands.Cog):
             await ctx.reply(embed=embed)
             
         except Exception as e:
-            print(f"DEBUG: Server leaderboard error: {e}")
+            print(f"Leaderboard error: {e}")
             return await ctx.reply(embed=discord.Embed(
                 description="❌ An error occurred while fetching the leaderboard", 
                 color=0xff0000
@@ -689,7 +700,7 @@ class Economy(commands.Cog):
             
             formatted_total = "{:,}".format(total_wealth)
             average_wealth = "{:,}".format(total_wealth // len(content)) if content else "0"
-            embed.set_footer(text=f"Total Wealth: {formatted_total} {self.currency} • Average: {average_wealth} {self.currency}")
+            embed.set_footer(text=f"Total Wealth: ${formatted_total} • Average: ${average_wealth}")
             
             await ctx.reply(embed=embed)
             
@@ -784,6 +795,155 @@ class Economy(commands.Cog):
             await ctx.reply(f"✅ {message}")
         else:
             await ctx.reply(f"❌ {message}")
+
+    @commands.command(aliases=['jp'])
+    async def jackpot(self, ctx, bet_amount: str = "25"):
+        """Start a jackpot with custom entry fee. Default: 25
+        Usage: !jackpot [bet] (supports all/max/half/percentages)"""
+        
+        # Get user's balance
+        user_id = ctx.author.id
+        wallet = await self.db.get_wallet_balance(user_id)
+        bank = await self.db.get_bank_balance(user_id)
+        total_balance = wallet + bank
+        
+        # Parse the bet amount
+        parsed_amount, error = parse_bet(bet_amount, total_balance)
+        if error:
+            return await ctx.reply(f"❌ {error}")
+                
+        # Check if user can afford the bet
+        if wallet < parsed_amount:
+            needed = parsed_amount - wallet
+            return await ctx.reply(
+                f"❌ You need {needed}{self.currency} more in your wallet to join this jackpot!\n"
+                f"💡 Use `.withdraw {needed}` to move money from your bank."
+            )
+        
+        # Handle "all" or "max" with empty bank
+        if bet_amount.lower() in ["all", "max"] and bank == 0:
+            parsed_amount *= 2  # Double the bet for free
+            await ctx.send(f"🎁 Bonus! Since your bank is empty, your bet has been doubled to **{parsed_amount}{self.currency}** for free!")
+        
+        # Minimum bet check
+        if parsed_amount < 10:
+            return await ctx.reply(f"Minimum jackpot entry is 10{self.currency}!")
+        
+        # Check for existing jackpot with this bet amount
+        channel_jackpots = self.active_jackpots.get(ctx.channel.id, {})
+        if parsed_amount in channel_jackpots:
+            try:
+                message = await ctx.channel.fetch_message(channel_jackpots[parsed_amount])
+                return await ctx.reply(
+                    f"A jackpot with {parsed_amount}{self.currency} entry fee already exists!\n"
+                    f"{message.jump_url}"
+                )
+            except discord.NotFound:
+                # Clean up expired jackpot
+                del channel_jackpots[parsed_amount]
+        
+        try:
+            # Deduct the bet immediately
+            if not await self.db.update_wallet(user_id, -parsed_amount):
+                return await ctx.reply("❌ Failed to deduct your bet amount. Please try again.")
+            
+            embed = discord.Embed(
+                description=(
+                    f"🎰 **JACKPOT STARTED!** 🎰\n"
+                    f"Hosted by: {ctx.author.mention}\n"
+                    f"Entry: **{parsed_amount}{self.currency}**\n"
+                    f"React with 🎉 within **15 seconds** to join!\n\n"
+                    f"Current pot: **{parsed_amount}{self.currency}** (1 player)"
+                ),
+                color=discord.Color.gold()
+            )
+            jackpot_msg = await ctx.send(embed=embed)
+            await jackpot_msg.add_reaction("🎉")
+            
+            # Store jackpot info
+            if ctx.channel.id not in self.active_jackpots:
+                self.active_jackpots[ctx.channel.id] = {}
+            self.active_jackpots[ctx.channel.id][parsed_amount] = jackpot_msg.id
+            
+            participants = {ctx.author.id: ctx.author}  # Store as dict to avoid duplicates
+            await asyncio.sleep(15)
+            
+            # Clean up jackpot tracking
+            if ctx.channel.id in self.active_jackpots and parsed_amount in self.active_jackpots[ctx.channel.id]:
+                del self.active_jackpots[ctx.channel.id][parsed_amount]
+                if not self.active_jackpots[ctx.channel.id]:
+                    del self.active_jackpots[ctx.channel.id]
+            
+            try:
+                jackpot_msg = await ctx.channel.fetch_message(jackpot_msg.id)
+                reaction = next((r for r in jackpot_msg.reactions if str(r.emoji) == "🎉"), None)
+                
+                if reaction:
+                    async for user in reaction.users():
+                        if not user.bot and user.id != ctx.author.id:
+                            # Check each participant's balance
+                            user_wallet = await self.db.get_wallet_balance(user.id)
+                            if user_wallet >= parsed_amount:
+                                if await self.db.update_wallet(user.id, -parsed_amount):
+                                    participants[user.id] = user
+                                else:
+                                    await ctx.send(f"{user.mention} couldn't join - transaction failed!")
+                            else:
+                                await ctx.send(f"{user.mention} couldn't join - insufficient funds!")
+                
+                if len(participants) == 1:
+                    # Refund the host if no one joined
+                    await self.db.update_wallet(ctx.author.id, parsed_amount)
+                    return await ctx.send(embed=discord.Embed(
+                        description=f"❌ Only {ctx.author.mention} joined. Refunded {parsed_amount}{self.currency}",
+                        color=discord.Color.red()
+                    ))
+                
+                pot = len(participants) * parsed_amount
+                winner_id, winner = random.choice(list(participants.items()))
+                
+                # Calculate each participant's chance of winning
+                win_chance = 100 / len(participants)
+                
+                # Award the pot to the winner
+                if not await self.db.update_wallet(winner_id, pot):
+                    await ctx.send("❌ Failed to award the jackpot prize! Please contact an admin.")
+                    # Refund all participants
+                    for uid in participants:
+                        await self.db.update_wallet(uid, parsed_amount)
+                    return
+                
+                await ctx.send(embed=discord.Embed(
+                    description=(
+                        f"🎉 **JACKPOT RESULTS** 🎉\n"
+                        f"Entry Fee: **{parsed_amount}{self.currency}**\n"
+                        f"Total entries: **{len(participants)}**\n"
+                        f"Total pot: **{pot}{self.currency}**\n"
+                        f"Winner: {winner.mention} (had a **{win_chance:.1f}%** chance)\n\n"
+                        f"🏆 **{winner.display_name} takes {pot}{self.currency}!** 🏆"
+                    ),
+                    color=discord.Color.green()
+                ))
+                
+            except discord.NotFound:
+                await ctx.send(embed=discord.Embed(
+                    description="❌ Jackpot message was deleted. Refunding all participants...",
+                    color=discord.Color.red()
+                ))
+                # Refund all participants
+                for uid in participants:
+                    await self.db.update_wallet(uid, parsed_amount)
+                    
+        except Exception as e:
+            self.bot.logger.error(f"Jackpot error: {e}")
+            # Clean up and attempt to refund if something went wrong
+            if ctx.channel.id in self.active_jackpots and parsed_amount in self.active_jackpots[ctx.channel.id]:
+                del self.active_jackpots[ctx.channel.id][parsed_amount]
+                if not self.active_jackpots[ctx.channel.id]:
+                    del self.active_jackpots[ctx.channel.id]
+            
+            await ctx.send("❌ An error occurred during the jackpot. Refunding participants...")
+            await self.db.update_wallet(ctx.author.id, parsed_amount)
 
     @commands.command(aliases=['cf'])
     @commands.cooldown(1, 3, commands.BucketType.user)
