@@ -88,7 +88,7 @@ class Help(commands.Cog, ErrorHandler):
         ErrorHandler.__init__(self)
         self.bot = bot
     
-    @commands.command(name="invite", aliases=["inv"])
+    @commands.command(name="invite", aliases=["add"])
     async def invite(self, ctx):
         await ctx.reply(embed=discord.Embed(
             description=f"[Invite me](https://bronxbot.onrender.com/invite) to your server\nIf that link doesnt work [click here](https://discord.com/oauth2/authorize?client_id=828380019406929962&permissions=8&response_type=code&redirect_uri=https%3A%2F%2Fbronxbot.onrender.com%2Fcallback&integration_type=0&scope=identify+guilds+bot)",

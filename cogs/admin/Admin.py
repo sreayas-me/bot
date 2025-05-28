@@ -191,7 +191,10 @@ class Admin(commands.Cog):
                 "items": ["id", "name", "price", "description"],
                 "potions": ["id", "name", "price", "type", "multiplier", "duration"],
                 "upgrades": ["id", "name", "price", "type"],
-                "fishing": ["id", "name", "price", "type"]
+                "fishing": ["id", "name", "price", "type"],
+                "bait": ["id", "name", "price", "amount", "description", "catch_rates"],
+                "rod": ["id", "name", "price", "description", "multiplier"],
+                "fish": ["id", "name", "price", "description"]
             }
             
             if not all(field in item for field in required_fields[shop_type]):
