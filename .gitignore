@@ -15,4 +15,3 @@ vercel.json
 vercel_requirements.txt
 dashboard/bronxbot-web.service
 **/__pycache__/
-config.json
