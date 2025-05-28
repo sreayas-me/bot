@@ -486,6 +486,8 @@ class Economy(commands.Cog):
             multiplier = self.SLOT_VALUES[most_common] // 2
             winnings = bet * multiplier
             result = f"WINNER! {multiplier}x multiplier!"
+            if multiplier > 1: # the multiplier was bad unfortunately i.e 2 cherries
+                result = "Better Luck Next Time!"
         else:  # No matches
             winnings = 0
             result = "Better luck next time!"
@@ -822,8 +824,9 @@ class Economy(commands.Cog):
         
         # Handle "all" or "max" with empty bank
         if bet_amount.lower() in ["all", "max"] and bank == 0:
+            amt = parsed_amount
             parsed_amount *= 2  # Double the bet for free
-            await ctx.send(f"🎁 Bonus! Since your bank is empty, your bet has been doubled to **{parsed_amount}{self.currency}** for free!")
+            await ctx.send(f"🎁 Bonus! Since your bank is empty, your bet has been doubled to **{parsed_amount}{self.currency}** for no extra cost!")
         
         # Minimum bet check
         if parsed_amount < 10:
@@ -844,7 +847,7 @@ class Economy(commands.Cog):
         
         try:
             # Deduct the bet immediately
-            if not await self.db.update_wallet(user_id, -parsed_amount):
+            if not await self.db.update_wallet(user_id, -amt or -parsed_amount):
                 return await ctx.reply("❌ Failed to deduct your bet amount. Please try again.")
             
             embed = discord.Embed(
