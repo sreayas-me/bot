@@ -37,7 +37,7 @@ except Exception as e:
 
 def get_guild_settings(guild_id: str):
     """Get guild settings synchronously with error handling"""
-    if not MONGODB_AVAILABLE or not db:
+    if not MONGODB_AVAILABLE or db is None:
         print("MongoDB not available, returning default settings")
         return {
             'prefixes': ['!'],
