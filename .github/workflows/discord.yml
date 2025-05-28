@@ -17,8 +17,7 @@ jobs:
           '{
             embeds: [
               {
-                title: "🔔 New Update",
-                description: "[View Commit](\($url))",
+                description: "__**New Update**__\n[View Commit](\($url))",
                 color: 3447003,
                 fields: [
                   { name: "Author", value: $author },
