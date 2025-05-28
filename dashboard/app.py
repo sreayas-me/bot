@@ -95,6 +95,15 @@ def get_guild_stats(guild_id: str):
         print(f"Error getting guild stats: {e}")
         return {'member_count': 0, 'message_count': 0, 'active_users': 0}
 
+def get_guild_settings(guild_id: str):
+    """Get guild settings synchronously"""
+    try:
+        settings = db.guild_settings.find_one({"_id": str(guild_id)})
+        return settings if settings else {}
+    except Exception as e:
+        print(f"Error getting guild settings: {e}")
+        return {}
+
 # Add thousands filter
 @app.template_filter('thousands')
 def thousands_filter(value):

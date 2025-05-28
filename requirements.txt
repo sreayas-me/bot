@@ -22,3 +22,5 @@ python-dotenv==1.0.0
 requests==2.32.2
 
 asgiref==3.7.2
+
+asgiref==3.7.2
