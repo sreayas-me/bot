@@ -21,6 +21,9 @@ class Admin(commands.Cog):
         self.logger = logger
         self.currency = "<:bronkbuk:1377106993495412789>"
         self.db = db
+        
+        # Set up data file path
+        self.data_file = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'shop.json')
 
         # Shop types configuration 
         self.SHOP_TYPES = {
