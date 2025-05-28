@@ -584,6 +584,10 @@ def live_stats():
 
     return Response(generate(), mimetype='text/event-stream')
 
+@app.route("/invite")
+def invite():
+    return redirect(DISCORD_REDIRECT_URI)
+
 if __name__ == "__main__":
     try:
         run()
