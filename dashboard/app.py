@@ -4,10 +4,7 @@ import json
 from functools import wraps
 import time
 import os
-from motor.motor_asyncio import AsyncIOMotorClient
-from werkzeug.serving import make_server
-import asyncio
-import functools
+from pymongo import MongoClient
 
 app = Flask(__name__)  # Initialize Flask app at module level
 
@@ -16,8 +13,17 @@ app.config['SERVER_NAME'] = None
 
 # Initialize MongoDB client
 MONGODB_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017')
-mongo_client = AsyncIOMotorClient(MONGODB_URI)
+mongo_client = MongoClient(MONGODB_URI)
 db = mongo_client.bronxbot  # Use 'bronxbot' database
+
+def get_guild_settings(guild_id: str):
+    """Get guild settings synchronously"""
+    try:
+        settings = db.guild_settings.find_one({"_id": str(guild_id)})
+        return settings if settings else {}
+    except Exception as e:
+        print(f"Error getting guild settings: {e}")
+        return {}
 
 # Add thousands filter
 @app.template_filter('thousands')
@@ -111,7 +117,7 @@ def api_stats():
 def home():
     user_id = request.cookies.get('user_id')
     # Only check bot owner ID if Discord config is loaded
-    if DISCORD_BOT_OWNER_ID and user_id and user_id == DISCORD_BOT_OWNER_ID:
+    if DISCORD_BOT_OWNER_ID and user_id and user_id == DISCORD_BOT_OWNER_ID and request.host == 'localhost:5000':
         username = request.cookies.get('username', 'User')
         return render_template('index.html', username=username, stats=bot_stats)
     return render_template('home.html', stats=bot_stats)
@@ -208,7 +214,6 @@ def servers():
 
 @app.route('/servers/<guild_id>/settings')
 @login_required
-
 def server_settings(guild_id):
     """Show settings for a specific server"""
     access_token = request.cookies.get('access_token')
@@ -221,7 +226,7 @@ def server_settings(guild_id):
         return "Unauthorized", 403
 
     # Get server settings from database
-    settings = db.get_guild_settings(guild_id)
+    settings = get_guild_settings(guild_id)
     
     # Get guild info from Discord API
     headers = {'Authorization': f'Bot {config["TOKEN"]}'}
