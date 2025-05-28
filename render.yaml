@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: bronxbot-web
+    env: python
+    buildCommand: pip install -r requirements.web.txt
+    startCommand: gunicorn --chdir /opt/render/project/src wsgi:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --log-level debug
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_APP
+        value: dashboard/app.py
+      - key: PYTHONPATH
+        value: /opt/render/project/src
+      - key: PYTHONUNBUFFERED
+        value: "true"
+      - key: MONGO_URI
+        sync: false
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GUNICORN_CMD_ARGS
+        value: "--log-level=debug --capture-output"
+    healthCheckPath: /healthz
+    autoDeploy: true

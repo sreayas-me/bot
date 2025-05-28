@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, request, make_response, url_for, jsonify
+from flask import Flask, render_template, redirect, request, make_response, url_for, jsonify, Response
 import requests
 import json
 from functools import wraps
@@ -191,6 +191,9 @@ def home():
     user_id = request.cookies.get('user_id')
     # Only check bot owner ID if Discord config is loaded
     if DISCORD_BOT_OWNER_ID and user_id and user_id == DISCORD_BOT_OWNER_ID and request.host == 'localhost:5000':
+        username = request.cookies.get('username', 'User')
+        return render_template('DEVindex.html', username=username, stats=bot_stats) 
+    elif user_id:
         username = request.cookies.get('username', 'User')
         return render_template('index.html', username=username, stats=bot_stats)
     return render_template('home.html', stats=bot_stats)
@@ -484,6 +487,23 @@ def debug():
                           if not os.environ.get(k) and not config.get(k.split('_', 1)[1])]
     })
 
+# Error handlers
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({
+        'error': 'Internal Server Error',
+        'message': str(e),
+        'type': '500'
+    }), 500
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({
+        'error': 'Not Found',
+        'message': str(e),
+        'type': '404'
+    }), 404
+
 @app.errorhandler(404)
 def not_found_error(error):
     """Handle 404 errors"""
@@ -546,6 +566,23 @@ def run(as_thread=False):
 def shutdown_server():
     """Shutdown the Flask server (placeholder for now)"""
     pass
+
+@app.route('/api/stats/live')
+def live_stats():
+    def generate():
+        while True:
+            # Read the latest stats from the file
+            try:
+                with open('data/stats.json', 'r') as f:
+                    stats = json.load(f)
+                    data = f"data: {json.dumps(stats)}\n\n"
+                    yield data
+            except Exception as e:
+                print(f"Error reading stats: {e}")
+                yield "data: {}\n\n"
+            time.sleep(1)  # Update every second
+
+    return Response(generate(), mimetype='text/event-stream')
 
 if __name__ == "__main__":
     try:
