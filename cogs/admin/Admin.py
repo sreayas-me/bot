@@ -19,49 +19,107 @@ class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.logger = logger
-        self.data_file = "data/shop.json"
-        
-        os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
-        
-        self.last_global_buff = None
-        self.global_buff_task = None 
-        self.buff_types = {
-            # Economy Buffs
-            "money": {
-                "name": "Money Boost",
-                "description": "Increases money earned from all sources",
-                "commands": ["work", "daily", "slots"]
-            },
-            "luck": {"name": "Lucky Charm", "description": "Increases winning chances in games", "commands": ["slots", "blackjack", "coinflip"]},
-            "multiplier": {"name": "Prize Multiplier", "description": "Multiplies all rewards", "commands": ["all"]},
-            "xp": {"name": "XP Boost", "description": "Increases XP gained from actions", "commands": ["chat", "work"]},
-            "slots": {"name": "Slots Luck", "description": "Increases slots winning chance", "commands": ["slots"]},
-            "daily": {"name": "Daily Bonus", "description": "Increases daily reward amount", "commands": ["daily"]},
-            
-            # Crime & Protection
-            "rob": {"name": "Thief's Luck", "description": "Increases rob success rate", "commands": ["rob"]},
-            "protection": {"name": "Bank Protection", "description": "Reduces money lost from robberies", "commands": ["passive"]},
-            "stealth": {"name": "Stealth Master", "description": "Reduces chance of getting caught", "commands": ["rob", "heist"]},
-            "escape": {"name": "Quick Escape", "description": "Higher chance to escape police", "commands": ["rob", "heist"]},
-            
-            # Gambling & Games
-            "blackjack": {"name": "Card Sharp", "description": "Better blackjack winning odds", "commands": ["blackjack"]},
-            "poker": {"name": "Poker Face", "description": "Improved poker winnings", "commands": ["poker"]},
-            "dice": {"name": "Lucky Dice", "description": "Better rolls in dice games", "commands": ["dice", "roll"]},
-            "jackpot": {"name": "Jackpot Hunter", "description": "Better chances in jackpot games", "commands": ["jackpot"]},
-            
-            # Trading & Economy
-            "trade": {"name": "Merchant's Blessing", "description": "Better shop prices", "commands": ["buy", "sell"]},
-            "interest": {"name": "Bank Interest", "description": "Increases bank interest rate", "commands": ["bank"]},
-            "market": {"name": "Market Insight", "description": "Better prices when trading items", "commands": ["trade", "market"]},
-            "finder": {"name": "Treasure Finder", "description": "Find better items while exploring", "commands": ["explore", "search"]},
-            
-            # Special Buffs
-            "combo": {"name": "Combo Master", "description": "Chain wins for increasing rewards", "commands": ["all games"]},
-            "recovery": {"name": "Loss Recovery", "description": "Partial refund on losses", "commands": ["all games"]},
-            "streak": {"name": "Streak Protection", "description": "Chance to keep streak on loss", "commands": ["daily", "work"]},
-            "vip": {"name": "VIP Status", "description": "Premium rewards and bonuses", "commands": ["all"]}
+        self.currency = "<:bronkbuk:1377106993495412789>"
+        self.db = db
+
+        # Shop types configuration 
+        self.SHOP_TYPES = {
+            "items": {"name": "Item Shop", "description": "General items", "icon": "🛍️"},
+            "potions": {"name": "Potion Shop", "description": "Buff and boost potions", "icon": "🧪"},
+            "upgrades": {"name": "Upgrades Shop", "description": "Permanent upgrades", "icon": "⚡"},
+            "fishing": {"name": "Fishing Shop", "description": "Fishing gear and items", "icon": "🎣"}
         }
+
+        # Fishing configuration
+        self.FISH_TYPES = {
+            "normal": {
+                "name": "Normal Fish",
+                "rarity": 0.7,
+                "value_range": (10, 100)
+            },
+            "rare": {
+                "name": "Rare Fish", 
+                "rarity": 0.2,
+                "value_range": (100, 500)
+            },
+            "event": {
+                "name": "Event Fish",
+                "rarity": 0.08,
+                "value_range": (500, 2000)
+            },
+            "mutated": {
+                "name": "Mutated Fish",
+                "rarity": 0.02,
+                "value_range": (2000, 10000)
+            }
+        }
+
+        # Add fishing shops
+        self.SHOP_TYPES = {
+            "bait": {
+                "name": "Bait Shop",
+                "description": "Buy fishing bait",
+                "icon": "🪱"
+            },
+            "rod": {
+                "name": "Rod Shop",
+                "description": "Buy fishing rods",
+                "icon": "🎣"
+            },
+            "fish": {
+                "name": "Fish Shop",
+                "description": "Buy and sell fish",
+                "icon": "🐟"
+            }
+        }
+
+        # Default items for fishing shops
+        self.DEFAULT_FISHING_ITEMS = {
+            "bait_shop": {
+                "beginner_bait": {
+                    "name": "Beginner Bait",
+                    "price": 0,  # Free for first 10
+                    "amount": 10,
+                    "description": "Basic bait for catching fish",
+                    "catch_rates": {"normal": 1.0, "rare": 0.1}
+                },
+                "pro_bait": {
+                    "name": "Pro Bait",
+                    "price": 50,
+                    "amount": 10,
+                    "description": "Better chances for rare fish",
+                    "catch_rates": {"normal": 1.2, "rare": 0.3, "event": 0.1}
+                },
+                "mutated_bait": {
+                    "name": "Mutated Bait",
+                    "price": 200,
+                    "amount": 5,
+                    "description": "Chance to catch mutated fish",
+                    "catch_rates": {"normal": 1.5, "rare": 0.5, "event": 0.2, "mutated": 0.1}
+                }
+            },
+            "rod_shop": {
+                "beginner_rod": {
+                    "name": "Beginner Rod",
+                    "price": 0,  # Free for first one
+                    "description": "Basic fishing rod",
+                    "multiplier": 1.0
+                },
+                "pro_rod": {
+                    "name": "Pro Rod",
+                    "price": 5000,
+                    "description": "50% better catch rates",
+                    "multiplier": 1.5
+                },
+                "master_rod": {
+                    "name": "Master Rod",
+                    "price": 25000,
+                    "description": "Double catch rates",
+                    "multiplier": 2.0
+                }
+            }
+        }
+
         self.load_shop_data()
 
     def load_shop_data(self) -> None:
@@ -69,10 +127,22 @@ class Admin(commands.Cog):
         try:
             with open(self.data_file, 'r') as f:
                 data = json.load(f)
-                self.shop_data = data.get("global", {"items": {}, "potions": {}, "buffs": {}})
+                self.shop_data = data.get("global", {
+                    "items": {},
+                    "potions": {},
+                    "buffs": {},
+                    "bait_shop": self.DEFAULT_FISHING_ITEMS["bait_shop"].copy(),
+                    "rod_shop": self.DEFAULT_FISHING_ITEMS["rod_shop"].copy()
+                })
                 self.server_shops = data.get("servers", {})
         except FileNotFoundError:
-            self.shop_data = {"items": {}, "potions": {}, "buffs": {}}
+            self.shop_data = {
+                "items": {},
+                "potions": {},
+                "buffs": {},
+                "bait_shop": self.DEFAULT_FISHING_ITEMS["bait_shop"].copy(),
+                "rod_shop": self.DEFAULT_FISHING_ITEMS["rod_shop"].copy()
+            }
             self.server_shops = {}
             self.save_shop_data()
 
@@ -88,551 +158,192 @@ class Admin(commands.Cog):
         """Get server-specific shop data"""
         return self.server_shops.get(str(guild_id), {"items": {}, "potions": {}})
 
-    @commands.group(name="shopm", aliases=["ashop", "adminshop"], invoke_without_command=True)
+    @commands.group(name="shop_admin", aliases=["sa"], invoke_without_command=True)
     @commands.has_permissions(administrator=True)
-    async def adminshop_group(self, ctx):
-        """Server shop management commands
-        shopManagement commands"""
-        if not ctx.invoked_subcommand:
-            embed = discord.Embed(
-                description=(
-                    "**Server Shop Management**\n"
-                    "`.adminshop add <name> <price> <description>` - Add server item\n"
-                    "`.adminshop potion <name> <price> <type> <mult> <duration>` - Add server potion\n"
-                    "`.adminshop remove <name>` - Remove from server shop\n"
-                    "`.adminshop list` - List server items\n\n"
-                    "**Global Shop (Bot Admin Only)**\n"
-                    "`.adminshop global ...` - Manage global shop"
-                ),
-                color=0x2b2d31
-            )
-            await ctx.send(embed=embed)
+    async def shop_admin(self, ctx):
+        """Shop management commands"""
+        embed = discord.Embed(
+            title="Shop Management",
+            description=(
+                "**Available Commands:**\n"
+                "`.shop_admin add <shop> <item_data>` - Add item to shop\n"
+                "`.shop_admin remove <shop> <item_id>` - Remove item\n"
+                "`.shop_admin list <shop>` - List items\n"
+                "`.shop_admin edit <shop> <item_id> <field> <value>` - Edit item\n\n"
+                "**Available Shops:**\n" +
+                "\n".join(f"{data['icon']} `{shop}` - {data['description']}" 
+                         for shop, data in self.SHOP_TYPES.items())
+            ),
+            color=0x2b2d31
+        )
+        await ctx.reply(embed=embed)
 
-    @adminshop_group.command(name="add")
+    @shop_admin.command(name="add")
     @commands.has_permissions(administrator=True)
-    async def adminshop_add(self, ctx, name: str = None, price: int = None, *, description: str = None):
-        """Add an item to the server shop"""
-        await self.server_add_item(ctx, name, price, description)
-
-    def parse_duration(self, duration_str: str) -> int:
-        """Parse duration string into minutes
-        Accepts formats: 10h, 10m, 1h, 5m 2s, 2s, 29s, 2.9s, 3.9m, 1e2s"""
-        try:
-            total_seconds = 0
-            parts = duration_str.lower().split()
+    async def shop_add(self, ctx, shop_type: str, *, item_data: str):
+        """Add an item to a shop. Format varies by shop type.
+        
+        Examples:
+        Items: .shop_admin add items {"id": "vip", "name": "VIP Role", "price": 10000, "description": "Get VIP status"}
+        Potions: .shop_admin add potions {"id": "luck_potion", "name": "Lucky Potion", "price": 1000, "type": "luck", "multiplier": 2.0, "duration": 60}
+        Upgrades: .shop_admin add upgrades {"id": "bank_boost", "name": "Bank Boost", "price": 5000, "type": "bank", "amount": 10000}
+        Fishing: .shop_admin add fishing {"id": "pro_rod", "name": "Pro Rod", "price": 5000, "type": "rod", "multiplier": 1.5}"""
+        
+        if shop_type not in self.SHOP_TYPES:
+            return await ctx.reply(f"Invalid shop type! Use one of: {', '.join(self.SHOP_TYPES.keys())}")
             
-            for part in parts:
-                if 'e' in part:  # Scientific notation
-                    num = float(part.rstrip('s'))
-                    total_seconds += num
-                    continue
-                    
-                number = ''
-                unit = ''
-                for char in part:
-                    if char.isdigit() or char == '.':
-                        number += char
-                    else:
-                        unit += char
+        try:
+            # Parse item data
+            item = json.loads(item_data)
+            
+            # Validate required fields
+            required_fields = {
+                "items": ["id", "name", "price", "description"],
+                "potions": ["id", "name", "price", "type", "multiplier", "duration"],
+                "upgrades": ["id", "name", "price", "type"],
+                "fishing": ["id", "name", "price", "type"]
+            }
+            
+            if not all(field in item for field in required_fields[shop_type]):
+                return await ctx.reply(f"Missing required fields: {required_fields[shop_type]}")
                 
-                value = float(number)
-                if unit == 'h':
-                    total_seconds += value * 3600
-                elif unit == 'm':
-                    total_seconds += value * 60
-                elif unit == 's':
-                    total_seconds += value
-                    
-            return max(1, round(total_seconds / 60))  # Convert to minutes, minimum 1
-            
-        except Exception:
-            return None
-
-    def parse_multiplier(self, multiplier_str: str) -> float:
-        """Parse multiplier string into float
-        Accepts formats: 2.3x, 2x, 150%, 30%, 15x"""
-        try:
-            multiplier_str = multiplier_str.lower().strip()
-            if multiplier_str.endswith('%'):
-                # Convert percentage to multiplier (30% -> 1.3)
-                return 1 + (float(multiplier_str[:-1]) / 100)
-            elif multiplier_str.endswith('x'):
-                return float(multiplier_str[:-1])
+            # Add the item to database
+            if await db.add_shop_item(item, shop_type, ctx.guild.id if ctx.guild else None):
+                embed = discord.Embed(
+                    description=f"✨ Added **{item['name']}** to {self.SHOP_TYPES[shop_type]['icon']} {shop_type} shop!",
+                    color=0x2b2d31
+                )
+                await ctx.reply(embed=embed)
             else:
-                return float(multiplier_str)
-        except Exception:
-            return None
-
-    @adminshop_group.command(name="potion")
+                await ctx.reply("❌ Failed to add item to shop")
+                
+        except json.JSONDecodeError:
+            await ctx.reply("❌ Invalid JSON format! Make sure to use proper JSON syntax.")
+        except Exception as e:
+            await ctx.reply(f"❌ Error: {str(e)}")
+            
+    @shop_admin.command(name="remove")
     @commands.has_permissions(administrator=True)
-    async def adminshop_potion(self, ctx, name: str = None, price: int = None, type: str = None,
-                        multiplier_str: str = None, duration_str: str = None, *, description: str = None):
-        """Add a potion to the server shop"""
-        if not any([name, price, type, multiplier_str, duration_str]):
+    async def shop_remove(self, ctx, shop_type: str, item_id: str):
+        """Remove an item from a shop"""
+        if shop_type not in self.SHOP_TYPES:
+            return await ctx.reply(f"Invalid shop type! Use one of: {', '.join(self.SHOP_TYPES.keys())}")
+            
+        collection = getattr(self.db.db, f"shop_{shop_type}", None)
+        if not collection:
+            return await ctx.reply("❌ Invalid shop collection!")
+            
+        result = await collection.delete_one({
+            "id": item_id,
+            "guild_id": str(ctx.guild.id) if ctx.guild else None
+        })
+        
+        if result.deleted_count > 0:
             embed = discord.Embed(
-                title="Potion Creation Guide",
-                description=(
-                    "**Usage:** `.adminshop potion <name> <price> <type> <multiplier> <duration> [description]`\n\n"
-                    "**Available Buff Types:**\n" + 
-                    "\n".join(f"• **{k}** - {v['name']}: {v['description']}" for k,v in self.buff_types.items()) +
-                    "\n\n**Multiplier Formats:**\n"
-                    "• Percentage: `30%`, `150%`\n"
-                    "• Multiplier: `1.3x`, `2x`, `15x`\n"
-                    "\n**Duration Formats:**\n"
-                    "• Hours: `2h`, `1.5h`\n"
-                    "• Minutes: `30m`, `5m`\n"
-                    "• Seconds: `90s`, `1e2s`\n"
-                    "• Combined: `1h 30m`, `5m 30s`"
-                ),
+                description=f"✨ Removed item `{item_id}` from {self.SHOP_TYPES[shop_type]['icon']} {shop_type} shop!",
                 color=0x2b2d31
             )
             await ctx.reply(embed=embed)
-            return
-
-        # Parse multiplier and duration
-        if multiplier_str:
-            multiplier = self.parse_multiplier(multiplier_str)
-            if multiplier is None:
-                return await ctx.reply("❌ Invalid multiplier format! Use `2x`, `150%`, etc.")
         else:
-            multiplier = None
-
-        if duration_str:
-            duration = self.parse_duration(duration_str)
-            if duration is None:
-                return await ctx.reply("❌ Invalid duration format! Use `1h`, `30m`, `90s`, etc.")
-        else:
-            duration = None
-
-        await self.server_add_potion(ctx, name, price, type, multiplier, duration, description)
-
-    @adminshop_group.command(name="remove")
+            await ctx.reply("❌ Item not found in shop")
+            
+    @shop_admin.command(name="list")
     @commands.has_permissions(administrator=True)
-    async def adminshop_remove(self, ctx, *, name: str):
-        """Remove item from server shop"""
-        await self.server_remove(ctx, name)
-
-    @adminshop_group.command(name="list") 
-    @commands.has_permissions(administrator=True)
-    async def adminshop_list(self, ctx):
-        """List server shop items"""
-        await self.server_list(ctx)
-
-    @adminshop_group.group(name="global", invoke_without_command=True)
-    @commands.is_owner()
-    async def adminshop_global(self, ctx):
-        """Global shop management
-        gshopManagement commands"""
-        if ctx.invoked_subcommand is None:
+    async def shop_list(self, ctx, shop_type: str):
+        """List all items in a shop"""
+        if shop_type not in self.SHOP_TYPES:
+            return await ctx.reply(f"Invalid shop type! Use one of: {', '.join(self.SHOP_TYPES.keys())}")
+            
+        items = await db.get_shop_items(shop_type, ctx.guild.id if ctx.guild else None)
+        
+        if not items:
+            return await ctx.reply(f"No items found in {shop_type} shop!")
+            
+        pages = []
+        chunks = [items[i:i+5] for i in range(0, len(items), 5)]
+        
+        for chunk in chunks:
             embed = discord.Embed(
-                description=(
-                    "**Global Shop Management**\n"
-                    "`.adminshop global add <name> <price> <desc>` - Add item\n"
-                    "`.adminshop global potion <name> <price> <type> <mult> <dur>` - Add potion\n"
-                    "`.adminshop global remove <name>` - Remove item\n"
-                    "`.adminshop global list` - List items"
-                ),
+                title=f"{self.SHOP_TYPES[shop_type]['icon']} {self.SHOP_TYPES[shop_type]['name']}",
                 color=0x2b2d31
             )
-            await ctx.send(embed=embed)
-
-    @adminshop_global.command(name="potion")
-    @commands.is_owner()
-    async def global_shop_potion(self, ctx, name: str = None, price: int = None, type: str = None,
-                          multiplier_str: str = None, duration_str: str = None, *, description: str = None):
-        """Add a potion to the global shop"""
-        # Parse multiplier and duration
-        if multiplier_str:
-            multiplier = self.parse_multiplier(multiplier_str)
-            if multiplier is None:
-                return await ctx.reply("❌ Invalid multiplier format! Use `2x`, `150%`, etc.")
-        else:
-            multiplier = None
-
-        if duration_str:
-            duration = self.parse_duration(duration_str)
-            if duration is None:
-                return await ctx.reply("❌ Invalid duration format! Use `1h`, `30m`, `90s`, etc.")
-        else:
-            duration = None
-
-        # Validate inputs
-        if not all([name, price, type, multiplier, duration]):
-            return await ctx.invoke(self.adminshop_potion)
-
-        if type not in self.buff_types:
-            embed = discord.Embed(description="❌ Invalid buff type", color=0x2b2d31)
-            return await ctx.reply(embed=embed)
-
-        # Add potion to global shop
-        potion_id = name.lower().replace(" ", "_")
-        self.shop_data["potions"][potion_id] = {
-            "name": name,
-            "price": price,
-            "type": type,
-            "multiplier": multiplier,
-            "duration": duration,
-            "description": description or self.buff_types[type]["description"]
-        }
-
-        self.save_shop_data()
-        
-        embed = discord.Embed(
-            description=f"✨ Added potion **{name}** to global shop\n"
-                      f"Type: {type}\n"
-                      f"Effect: {multiplier}x for {duration}min\n"
-                      f"Price: {price} 💰",
-            color=0x2b2d31
-        )
-        await ctx.reply(embed=embed)
-
-    async def display_shop(self, ctx, shop_data, title="Shop", show_admin=False):
-        """Display shop contents with pagination"""
-        pages = []
-        
-        # Overview with flash sales
-        overview = discord.Embed(
-            title=title,
-            description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}\n\n",
-            color=0x2b2d31
-        )
-        
-        # Add items
-        if shop_data.get("items"):
-            items_text = []
-            for name, item in shop_data["items"].items():
-                items_text.append(
-                    f"**{item['name']}** - {item['price']} {self.currency}\n"
-                    f"{item['description']}\n"
-                    f"`buy {name}` to purchase\n"
-                )
-            if items_text:
-                overview.add_field(
-                    name="📦 Items",
-                    value="\n".join(items_text[:3]) + "\n*Use the arrows to see more items*",
+            
+            for item in chunk:
+                name = f"{item['name']} ({item['price']} {self.currency})"
+                value = []
+                
+                value.append(f"ID: `{item['id']}`")
+                if "description" in item:
+                    value.append(item["description"])
+                if "type" in item:
+                    value.append(f"Type: {item['type']}")
+                if "multiplier" in item:
+                    value.append(f"Multiplier: {item['multiplier']}x")
+                if "duration" in item:
+                    value.append(f"Duration: {item['duration']}min")
+                if "amount" in item:
+                    value.append(f"Amount: {item['amount']}")
+                    
+                embed.add_field(
+                    name=name,
+                    value="\n".join(value),
                     inline=False
                 )
                 
-        # Add potions
-        if shop_data.get("potions"):
-            potions_text = []
-            for name, potion in shop_data["potions"].items():
-                potions_text.append(
-                    f"**{potion['name']}** - {potion['price']} {self.currency}\n"
-                    f"{potion['multiplier']}x {potion['type']} buff for {potion['duration']}min\n"
-                    f"`buy {name}` to purchase\n"
-                )
-            if potions_text:
-                overview.add_field(
-                    name="🧪 Potions", 
-                    value="\n".join(potions_text[:3]) + "\n*Use the arrows to see more potions*",
-                    inline=False
-                )
-        
-        pages.append(overview)
-        
-        # Create detail pages for items
-        items_chunk = list(shop_data.get("items", {}).items())
-        for i in range(0, len(items_chunk), 5):
-            chunk = items_chunk[i:i+5]
-            embed = discord.Embed(title="📦 Items", color=0x2b2d31)
-            for item_id, item in chunk:
-                embed.add_field(
-                    name=f"{item['name']} ({item['price']} {self.currency})",
-                    value=f"{item['description']}\n`buy {item_id}` to purchase",
-                    inline=False
-                )
             pages.append(embed)
-
-        # Create detail pages for potions  
-        potions_chunk = list(shop_data.get("potions", {}).items())
-        for i in range(0, len(potions_chunk), 5):
-            chunk = potions_chunk[i:i+5]
-            embed = discord.Embed(title="🧪 Potions", color=0x2b2d31)
-            for potion_id, potion in chunk:
-                embed.add_field(
-                    name=f"{potion['name']} ({potion['price']} {self.currency})",
-                    value=f"{potion['multiplier']}x {potion['type']} for {potion['duration']}min\n"
-                          f"{potion['description']}\n`buy {potion_id}` to purchase",
-                    inline=False
-                )
-            pages.append(embed)
-
-        if not pages:
-            return await ctx.send("Shop is empty!")
-
-        view = HelpPaginator(pages, ctx.author)
-        view.update_buttons()
-        message = await ctx.reply(embed=pages[0], view=view)
-        view.message = message
-
-    def load_shop_data(self) -> None:
-        """Load shop data from file"""
+            
+        if len(pages) > 1:
+            view = HelpPaginator(pages, ctx.author)
+            view.update_buttons()
+            message = await ctx.reply(embed=pages[0], view=view)
+            view.message = message
+        else:
+            await ctx.reply(embed=pages[0])
+            
+    @shop_admin.command(name="edit")
+    @commands.has_permissions(administrator=True)
+    async def shop_edit(self, ctx, shop_type: str, item_id: str, field: str, *, value: str):
+        """Edit a field of an existing shop item
+        
+        Example: .shop_admin edit potions luck_potion price 2000"""
+        if shop_type not in self.SHOP_TYPES:
+            return await ctx.reply(f"Invalid shop type! Use one of: {', '.join(self.SHOP_TYPES.keys())}")
+            
+        collection = getattr(self.db.db, f"shop_{shop_type}", None)
+        if not collection:
+            return await ctx.reply("❌ Invalid shop collection!")
+            
+        # Convert value to appropriate type
         try:
-            with open(self.data_file, 'r') as f:
-                data = json.load(f)
-                self.shop_data = data.get("global", {"items": {}, "potions": {}, "buffs": {}})
-                self.server_shops = data.get("servers", {})
-        except FileNotFoundError:
-            self.shop_data = {"items": {}, "potions": {}, "buffs": {}}
-            self.server_shops = {}
-            self.save_shop_data()
-
-    def save_shop_data(self) -> None:
-        """Save shop data to file"""
-        with open(self.data_file, 'w') as f:
-            json.dump({
-                "global": self.shop_data,
-                "servers": self.server_shops
-            }, f, indent=2)
-
-    def get_server_shop(self, guild_id: int) -> dict:
-        """Get server-specific shop data"""
-        return self.server_shops.get(str(guild_id), {"items": {}, "potions": {}})
-
-    @commands.command(name="sshop", aliases=["servershop"])
-    @commands.has_permissions(administrator=True)
-    async def server_shop(self, ctx):
-        """Server shop management commands"""
-        embed = discord.Embed(
-            description=(
-                "**Server Shop Management**\n"
-                "`.adminshop add <name> <price> <description>` - Add server item\n"
-                "`.adminshop potion <name> <price> <type> <mult> <duration>` - Add server potion\n"
-                "`.adminshop remove <name>` - Remove from server shop\n"
-                "`.adminshop list` - List server items\n\n"
-                "**Global Shop (Bot Admin Only)**\n"
-                "`.adminshop global ...` - Manage global shop"
-            ),
-            color=0x2b2d31
-        )
-        await ctx.send(embed=embed)
-
-    @commands.group(name="adminshop", aliases=["ashop"], invoke_without_command=True)
-    @commands.has_permissions(administrator=True)
-    async def adminshop_group(self, ctx):
-        """Server shop management commands"""
-        embed = discord.Embed(
-            description=(
-                "**Server Shop Management**\n"
-                "`.adminshop add <name> <price> <description>` - Add server item\n"
-                "`.adminshop potion <name> <price> <type> <mult> <duration>` - Add server potion\n"
-                "`.adminshop remove <name>` - Remove from server shop\n"
-                "`.adminshop list` - List server items\n\n"
-                "**Global Shop (Bot Admin Only)**\n"
-                "`.adminshop global ...` - Manage global shop"
-            ),
-            color=0x2b2d31
-        )
-        await ctx.send(embed=embed)
-
-    @adminshop_group.command(name="add")
-    @commands.has_permissions(administrator=True)
-    async def adminshop_add(self, ctx, name: str = None, price: int = None, *, description: str = None):
-        """Add an item to the server shop"""
-        await self.server_add_item(ctx, name, price, description)
-
-    @adminshop_group.command(name="potion")
-    @commands.has_permissions(administrator=True)
-    async def adminshop_potion(self, ctx, name: str = None, price: int = None, type: str = None,
-                        multiplier_str: str = None, duration_str: str = None, *, description: str = None):
-        """Add a potion to the server shop"""
-        if not any([name, price, type, multiplier_str, duration_str]):
-            embed = discord.Embed(
-                title="Potion Creation Guide",
-                description=(
-                    "**Usage:** `.adminshop potion <name> <price> <type> <multiplier> <duration> [description]`\n\n"
-                    "**Available Buff Types:**\n" + 
-                    "\n".join(f"• **{k}** - {v['name']}: {v['description']}" for k,v in self.buff_types.items()) +
-                    "\n\n**Multiplier Formats:**\n"
-                    "• Percentage: `30%`, `150%`\n"
-                    "• Multiplier: `1.3x`, `2x`, `15x`\n"
-                    "\n**Duration Formats:**\n"
-                    "• Hours: `2h`, `1.5h`\n"
-                    "• Minutes: `30m`, `5m`\n"
-                    "• Seconds: `90s`, `1e2s`\n"
-                    "• Combined: `1h 30m`, `5m 30s`"
-                ),
-                color=0x2b2d31
-            )
-            await ctx.reply(embed=embed)
-            return
-
-        # Parse multiplier and duration
-        if multiplier_str:
-            multiplier = self.parse_multiplier(multiplier_str)
-            if multiplier is None:
-                return await ctx.reply("❌ Invalid multiplier format! Use `2x`, `150%`, etc.")
-        else:
-            multiplier = None
-
-        if duration_str:
-            duration = self.parse_duration(duration_str)
-            if duration is None:
-                return await ctx.reply("❌ Invalid duration format! Use `1h`, `30m`, `90s`, etc.")
-        else:
-            duration = None
-
-        await self.server_add_potion(ctx, name, price, type, multiplier, duration, description)
-
-    @adminshop_group.command(name="remove")
-    @commands.has_permissions(administrator=True)
-    async def adminshop_remove(self, ctx, *, name: str):
-        """Remove item from server shop"""
-        await self.server_remove(ctx, name)
-
-    @adminshop_group.command(name="list") 
-    @commands.has_permissions(administrator=True)
-    async def adminshop_list(self, ctx):
-        """List server shop items"""
-        await self.server_list(ctx)
-
-    @adminshop_group.group(name="global", invoke_without_command=True)
-    @commands.is_owner()
-    async def adminshop_global(self, ctx):
-        """Global shop management"""
-        if ctx.invoked_subcommand is None:
-            embed = discord.Embed(
-                description=(
-                    "**Global Shop Management**\n"
-                    "`.adminshop global add <name> <price> <desc>` - Add item\n"
-                    "`.adminshop global potion <name> <price> <type> <mult> <dur>` - Add potion\n"
-                    "`.adminshop global remove <name>` - Remove item\n"
-                    "`.adminshop global list` - List items"
-                ),
-                color=0x2b2d31
-            )
-            await ctx.send(embed=embed)
-
-    @adminshop_global.command(name="potion")
-    @commands.is_owner()
-    async def global_shop_potion(self, ctx, name: str = None, price: int = None, type: str = None,
-                          multiplier_str: str = None, duration_str: str = None, *, description: str = None):
-        """Add a potion to the global shop"""
-        # Parse multiplier and duration
-        if multiplier_str:
-            multiplier = self.parse_multiplier(multiplier_str)
-            if multiplier is None:
-                return await ctx.reply("❌ Invalid multiplier format! Use `2x`, `150%`, etc.")
-        else:
-            multiplier = None
-
-        if duration_str:
-            duration = self.parse_duration(duration_str)
-            if duration is None:
-                return await ctx.reply("❌ Invalid duration format! Use `1h`, `30m`, `90s`, etc.")
-        else:
-            duration = None
-
-        # Validate inputs
-        if not all([name, price, type, multiplier, duration]):
-            return await ctx.invoke(self.adminshop_potion)
-
-        if type not in self.buff_types:
-            embed = discord.Embed(description="❌ Invalid buff type", color=0x2b2d31)
-            return await ctx.reply(embed=embed)
-
-        # Add potion to global shop
-        potion_id = name.lower().replace(" ", "_")
-        self.shop_data["potions"][potion_id] = {
-            "name": name,
-            "price": price,
-            "type": type,
-            "multiplier": multiplier,
-            "duration": duration,
-            "description": description or self.buff_types[type]["description"]
-        }
-
-        self.save_shop_data()
-        
-        embed = discord.Embed(
-            description=f"✨ Added potion **{name}** to global shop\n"
-                      f"Type: {type}\n"
-                      f"Effect: {multiplier}x for {duration}min\n"
-                      f"Price: {price} 💰",
-            color=0x2b2d31
-        )
-        await ctx.reply(embed=embed)
-
-    async def display_shop(self, ctx, shop_data, title="Shop", show_admin=False):
-        """Display shop contents with pagination"""
-        pages = []
-        
-        # Overview with flash sales
-        overview = discord.Embed(
-            title=title,
-            description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}\n\n",
-            color=0x2b2d31
-        )
-        
-        # Add items
-        if shop_data.get("items"):
-            items_text = []
-            for name, item in shop_data["items"].items():
-                items_text.append(
-                    f"**{item['name']}** - {item['price']} {self.currency}\n"
-                    f"{item['description']}\n"
-                    f"`buy {name}` to purchase\n"
-                )
-            if items_text:
-                overview.add_field(
-                    name="📦 Items",
-                    value="\n".join(items_text[:3]) + "\n*Use the arrows to see more items*",
-                    inline=False
-                )
+            if field in ["price", "duration", "amount"]:
+                value = int(value)
+            elif field in ["multiplier"]:
+                value = float(value)
+            elif value.lower() == "null":
+                value = None
                 
-        # Add potions
-        if shop_data.get("potions"):
-            potions_text = []
-            for name, potion in shop_data["potions"].items():
-                potions_text.append(
-                    f"**{potion['name']}** - {potion['price']} {self.currency}\n"
-                    f"{potion['multiplier']}x {potion['type']} buff for {potion['duration']}min\n"
-                    f"`buy {name}` to purchase\n"
+            # Update the item
+            result = await collection.update_one(
+                {
+                    "id": item_id,
+                    "guild_id": str(ctx.guild.id) if ctx.guild else None
+                },
+                {"$set": {field: value}}
+            )
+            
+            if result.modified_count > 0:
+                embed = discord.Embed(
+                    description=f"✨ Updated `{field}` to `{value}` for item `{item_id}`!",
+                    color=0x2b2d31
                 )
-            if potions_text:
-                overview.add_field(
-                    name="🧪 Potions", 
-                    value="\n".join(potions_text[:3]) + "\n*Use the arrows to see more potions*",
-                    inline=False
-                )
-        
-        pages.append(overview)
-        
-        # Create detail pages for items
-        items_chunk = list(shop_data.get("items", {}).items())
-        for i in range(0, len(items_chunk), 5):
-            chunk = items_chunk[i:i+5]
-            embed = discord.Embed(title="📦 Items", color=0x2b2d31)
-            for item_id, item in chunk:
-                embed.add_field(
-                    name=f"{item['name']} ({item['price']} {self.currency})",
-                    value=f"{item['description']}\n`buy {item_id}` to purchase",
-                    inline=False
-                )
-            pages.append(embed)
-
-        # Create detail pages for potions  
-        potions_chunk = list(shop_data.get("potions", {}).items())
-        for i in range(0, len(potions_chunk), 5):
-            chunk = potions_chunk[i:i+5]
-            embed = discord.Embed(title="🧪 Potions", color=0x2b2d31)
-            for potion_id, potion in chunk:
-                embed.add_field(
-                    name=f"{potion['name']} ({potion['price']} {self.currency})",
-                    value=f"{potion['multiplier']}x {potion['type']} for {potion['duration']}min\n"
-                          f"{potion['description']}\n`buy {potion_id}` to purchase",
-                    inline=False
-                )
-            pages.append(embed)
-
-        if not pages:
-            return await ctx.send("Shop is empty!")
-
-        view = HelpPaginator(pages, ctx.author)
-        view.update_buttons()
-        message = await ctx.reply(embed=pages[0], view=view)
-        view.message = message
+                await ctx.reply(embed=embed)
+            else:
+                await ctx.reply("❌ Item not found or no changes made")
+                
+        except ValueError:
+            await ctx.reply("❌ Invalid value type for this field!")
+        except Exception as e:
+            await ctx.reply(f"❌ Error: {str(e)}")
 
     async def rotate_global_buff(self):
         """Rotate global buffs every 15 minutes"""
@@ -834,6 +545,66 @@ class Admin(commands.Cog):
     async def on_ready(self):
         """Cog loaded - print status"""
         self.logger.info(f"{self.__class__.__name__} loaded")
+
+    @commands.command()
+    @commands.is_owner()
+    async def reset_economy(self, ctx, *, confirmation: str = None):
+        """Reset everyone's balance, inventory, and economic data (Bot Owner Only)
+        Usage: .reset_economy YES I WANT TO RESET EVERYTHING"""
+        
+        if confirmation != "YES I WANT TO RESET EVERYTHING":
+            embed = discord.Embed(
+                title="⚠️ Economy Reset",
+                description=(
+                    "**WARNING:** This will delete ALL economic data including:\n"
+                    "- User balances (wallet & bank)\n"
+                    "- Inventories\n"
+                    "- Fish collections\n"
+                    "- Active potions\n"
+                    "- Shop data\n\n"
+                    "To confirm, use the command:\n"
+                    "`.reset_economy YES I WANT TO RESET EVERYTHING`"
+                ),
+                color=discord.Color.red()
+            )
+            return await ctx.reply(embed=embed)
+            
+        try:
+            # Reset user data
+            await self.db.users.update_many(
+                {},
+                {
+                    "$set": {
+                        "wallet": 0,
+                        "bank": 0,
+                        "bank_limit": 10000,
+                        "inventory": [],
+                        "fish": [],
+                        "fishing_rods": [],
+                        "fishing_bait": []
+                    }
+                }
+            )
+            
+            # Reset active effects
+            await self.db.active_potions.delete_many({})
+            
+            # Reset shop data to defaults
+            self.shop_data = {
+                "items": {},
+                "potions": {},
+                "buffs": {},
+                "bait_shop": self.DEFAULT_FISHING_ITEMS["bait_shop"].copy(),
+                "rod_shop": self.DEFAULT_FISHING_ITEMS["rod_shop"].copy()
+            }
+            self.server_shops = {}
+            self.save_shop_data()
+            
+            await ctx.reply("✅ Successfully reset all economic data!")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to reset economy: {e}")
+            await ctx.reply("❌ An error occurred while resetting the economy")
 
 async def setup(bot):
     """Initialize the Admin cog with proper error handling"""
