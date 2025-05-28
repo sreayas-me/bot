@@ -586,7 +586,7 @@ def live_stats():
 
 @app.route("/invite")
 def invite():
-    return redirect(DISCORD_REDIRECT_URI)
+    return DISCORD_REDIRECT_URI
 
 if __name__ == "__main__":
     try:
