@@ -14,3 +14,5 @@ bronxbot-nginx.conf
 vercel.json
 vercel_requirements.txt
 dashboard/bronxbot-web.service
+test_fun_cog.py
+config.json

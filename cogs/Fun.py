@@ -281,7 +281,7 @@ class Fun(commands.Cog, ErrorHandler):
     @commands.command(aliases=['tt', 'typerace'])
     async def typingtest(self, ctx, difficulty: str = "easy"):
         """test your typing speed
-        
+    
         Difficulties: easy, medium, hard
         """
         if ctx.author.id in self.active_games:
@@ -315,10 +315,18 @@ class Fun(commands.Cog, ErrorHandler):
         
         try:
             sentence = random.choice(sentences[difficulty])
+            # Add invisible characters to prevent copy-paste
+            import secrets
+            def add_invisible(text):
+                # Add a zero-width space after each word
+                zwsp = '\u200b'
+                return zwsp.join(list(text))
+            disguised_sentence = add_invisible(sentence)
+
             start = time.time()
             
             embed = discord.Embed(
-                description=f"⌨️ Type this exactly:\n```{sentence}```\n`{difficulty.title()} | 60s limit`",
+                description=f"⌨️ Type this exactly:\n```{disguised_sentence}```\n`{difficulty.title()} | 60s limit`\n*Copy-paste won't work!*",
                 color=discord.Color.blue()
             )
             await ctx.reply(embed=embed)
@@ -329,7 +337,11 @@ class Fun(commands.Cog, ErrorHandler):
             try:
                 msg = await self.bot.wait_for('message', check=check, timeout=60)
                 elapsed = time.time() - start
-                
+
+                # Remove invisible chars from the original for checking
+                def strip_invisible(text):
+                    return text.replace('\u200b', '')
+
                 # Calculate stats
                 words = len(sentence.split())
                 wpm = words / (elapsed / 60)
@@ -337,15 +349,33 @@ class Fun(commands.Cog, ErrorHandler):
                 # Calculate accuracy
                 correct_chars = sum(a == b for a, b in zip(msg.content, sentence))
                 accuracy = (correct_chars / len(sentence)) * 100
-                
-                # Grade performance
-                if accuracy == 100:
+
+                # If the user's message matches the disguised sentence (with invisible chars), it's likely a paste
+                if msg.content == disguised_sentence:
+                    await ctx.reply("```No copy-pasting! Try typing it out yourself.```")
+                    return
+
+                # If the user's message matches the original sentence, but is too fast (<1.5s), it's suspicious
+                if msg.content == sentence and elapsed < 1.5:
+                    await ctx.reply("```That was too fast! No copy-pasting allowed.```")
+                    return
+
+                # --- Grading system ---
+                # Accuracy out of 50
+                accuracy_score = min(max(accuracy, 0), 100) / 2  # 0-50
+
+                # WPM out of 50 (scale: 60+ WPM = 50, 0 WPM = 0, linear in between)
+                wpm_score = min(max(wpm, 0), 60) / 60 * 50  # 0-50
+
+                grade_percent = accuracy_score + wpm_score
+
+                if grade_percent >= 95:
                     grade = "Perfect! 🏆"
-                elif accuracy >= 95:
+                elif grade_percent >= 85:
                     grade = "Excellent! ⭐"
-                elif accuracy >= 85:
+                elif grade_percent >= 70:
                     grade = "Good! 👍"
-                elif accuracy >= 70:
+                elif grade_percent >= 50:
                     grade = "Not bad! 👌"
                 else:
                     grade = "Keep practicing! 💪"
@@ -356,14 +386,14 @@ class Fun(commands.Cog, ErrorHandler):
                                 f"Time: `{elapsed:.2f}s`\n"
                                 f"Speed: `{wpm:.1f}` WPM\n"
                                 f"Accuracy: `{accuracy:.1f}%`\n"
-                                f"Grade: {grade}",
+                                f"Grade: `{grade_percent:.1f}%` - {grade}",
                     color=discord.Color.green()
                 )
                 await ctx.reply(embed=embed)
                 
             except asyncio.TimeoutError:
                 await ctx.reply("```time's up! try again when you're ready```")
-        
+    
         finally:
             self.active_games.discard(ctx.author.id)
 
