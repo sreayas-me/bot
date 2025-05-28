@@ -8,9 +8,25 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Discord Notification
+      - name: Discord notification
         uses: Ilshidur/action-discord@master
-        with:
-          args: "A new commit was pushed to the main branch!"
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        with:
+          args: |
+            {
+              "embeds": [
+                {
+                  "title": "🚀 New Push to Main!",
+                  "description": "User **${{ github.actor }}** pushed to **${{ github.repository }}**.",
+                  "color": 5814783,
+                  "fields": [
+                    {
+                      "name": "Commit Message",
+                      "value": "${{ github.event.head_commit.message }}"
+                    }
+                  ],
+                  "timestamp": "${{ github.event.head_commit.timestamp }}"
+                }
+              ]
+            }
