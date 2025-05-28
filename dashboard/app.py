@@ -4,22 +4,96 @@ import json
 from functools import wraps
 import time
 import os
-from utils.db import db  # This now uses the synchronous database
-from werkzeug.serving import make_server
-import asyncio
-import functools
-from config import Config
+from pymongo import MongoClient
+import pymongo.errors
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)  # Initialize Flask app at module level
-app.config.from_object(Config)  # Load configuration
 
 # Configure for production
 app.config['SERVER_NAME'] = None
 
-# Health check endpoint
-@app.route('/healthz')
-def health_check():
-    return jsonify({"status": "healthy", "timestamp": time.time()}), 200
+# Initialize MongoDB with better error handling
+MONGODB_URI = os.environ.get("MONGO_URI")
+try:
+    mongo_client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)  # 5 second timeout
+    # Test the connection
+    mongo_client.admin.command('ping')
+    db = mongo_client.bronxbot
+    MONGODB_AVAILABLE = True
+    print("MongoDB connection successful")
+except pymongo.errors.ServerSelectionTimeoutError as e:
+    print(f"MongoDB connection failed: {e}")
+    print("Running without database functionality")
+    MONGODB_AVAILABLE = False
+    db = None
+except Exception as e:
+    print(f"Unexpected MongoDB error: {e}")
+    MONGODB_AVAILABLE = False
+    db = None
+
+def get_guild_settings(guild_id: str):
+    """Get guild settings synchronously with error handling"""
+    if not MONGODB_AVAILABLE or db is None:
+        print("MongoDB not available, returning default settings")
+        return {
+            'prefixes': ['!'],
+            'welcome': {
+                'enabled': False,
+                'channel_id': None,
+                'message': 'Welcome to the server!'
+            },
+            'moderation': {
+                'log_channel': None,
+                'mute_role': None,
+                'jail_role': None
+            }
+        }
+    
+    try:
+        settings = db.guild_settings.find_one({"_id": str(guild_id)})
+        return settings if settings else {}
+    except Exception as e:
+        print(f"Error getting guild settings: {e}")
+        return {}
+
+def get_user_balance(user_id: str):
+    """Get user balance from database"""
+    if not MONGODB_AVAILABLE or not db:
+        return {'balance': 0, 'bank': 0}
+    
+    try:
+        user_data = db.users.find_one({"_id": str(user_id)})
+        if user_data:
+            return {
+                'balance': user_data.get('balance', 0),
+                'bank': user_data.get('bank', 0)
+            }
+        return {'balance': 0, 'bank': 0}
+    except Exception as e:
+        print(f"Error getting user balance: {e}")
+        return {'balance': 0, 'bank': 0}
+
+def get_guild_stats(guild_id: str):
+    """Get guild statistics from database"""
+    if not MONGODB_AVAILABLE or not db:
+        return {'member_count': 0, 'message_count': 0, 'active_users': 0}
+    
+    try:
+        stats = db.guild_stats.find_one({"_id": str(guild_id)})
+        if stats:
+            return {
+                'member_count': stats.get('member_count', 0),
+                'message_count': stats.get('message_count', 0),
+                'active_users': stats.get('active_users', 0)
+            }
+        return {'member_count': 0, 'message_count': 0, 'active_users': 0}
+    except Exception as e:
+        print(f"Error getting guild stats: {e}")
+        return {'member_count': 0, 'message_count': 0, 'active_users': 0}
 
 # Add thousands filter
 @app.template_filter('thousands')
@@ -34,16 +108,18 @@ def thousands_filter(value):
 DISCORD_CLIENT_ID = None
 DISCORD_CLIENT_SECRET = None
 DISCORD_BOT_OWNER_ID = None
+DISCORD_BOT_TOKEN = None
 config = {}
 
 def load_config():
     """Load configuration from environment variables or config file"""
-    global DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_OWNER_ID, config
+    global DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_OWNER_ID, DISCORD_BOT_TOKEN, config
     
     # First try environment variables
     DISCORD_CLIENT_ID = os.environ.get('DISCORD_CLIENT_ID')
     DISCORD_CLIENT_SECRET = os.environ.get('DISCORD_CLIENT_SECRET')
     DISCORD_BOT_OWNER_ID = os.environ.get('DISCORD_BOT_OWNER_ID')
+    DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN')
     
     # If env vars not set, try config file
     if not all([DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_OWNER_ID]):
@@ -53,6 +129,7 @@ def load_config():
             DISCORD_CLIENT_ID = DISCORD_CLIENT_ID or config.get('CLIENT_ID')
             DISCORD_CLIENT_SECRET = DISCORD_CLIENT_SECRET or config.get('CLIENT_SECRET')
             DISCORD_BOT_OWNER_ID = DISCORD_BOT_OWNER_ID or config.get('OWNER_ID')
+            DISCORD_BOT_TOKEN = DISCORD_BOT_TOKEN or config.get('TOKEN')
         except FileNotFoundError:
             print("Config file not found, using environment variables only")
         except json.JSONDecodeError:
@@ -113,7 +190,7 @@ def api_stats():
 def home():
     user_id = request.cookies.get('user_id')
     # Only check bot owner ID if Discord config is loaded
-    if DISCORD_BOT_OWNER_ID and user_id and user_id == DISCORD_BOT_OWNER_ID:
+    if DISCORD_BOT_OWNER_ID and user_id and user_id == DISCORD_BOT_OWNER_ID and request.host == 'localhost:5000':
         username = request.cookies.get('username', 'User')
         return render_template('DEVindex.html', username=username, stats=bot_stats) 
     elif user_id:
@@ -123,12 +200,16 @@ def home():
 
 @app.route('/login')
 def login():
+    if not DISCORD_CLIENT_ID:
+        return "Discord configuration not set up", 503
     return redirect(f'https://discord.com/api/oauth2/authorize?client_id={DISCORD_CLIENT_ID}&redirect_uri={DISCORD_REDIRECT_URI}&response_type=code&scope=identify+guilds')
 
 @app.route('/callback')
-
 def callback():
     code = request.args.get('code')
+    if not code:
+        return 'No authorization code provided', 400
+        
     data = {
         'client_id': DISCORD_CLIENT_ID,
         'client_secret': DISCORD_CLIENT_SECRET,
@@ -154,7 +235,7 @@ def callback():
         resp = make_response(redirect('/'))
         resp.set_cookie('user_id', user['id'])
         resp.set_cookie('username', user['username'])
-        resp.set_cookie('access_token', access_token)  # Store access token in cookie
+        resp.set_cookie('access_token', access_token)
         return resp
     return 'Authentication failed', 400
 
@@ -163,7 +244,7 @@ def logout():
     resp = make_response(redirect('/'))
     resp.delete_cookie('user_id')
     resp.delete_cookie('username')
-    resp.delete_cookie('access_token')  # Remove access token cookie
+    resp.delete_cookie('access_token')
     return resp
 
 def get_user_guilds(access_token):
@@ -179,6 +260,15 @@ def get_bot_guilds():
     """Fetch bot's server list from stats"""
     global bot_stats
     return bot_stats.get('guilds', [])
+
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'ok',
+        'mongodb_available': MONGODB_AVAILABLE,
+        'discord_configured': load_config()
+    })
 
 @app.route('/servers')
 @login_required
@@ -213,7 +303,6 @@ def servers():
 
 @app.route('/servers/<guild_id>/settings')
 @login_required
-
 def server_settings(guild_id):
     """Show settings for a specific server"""
     access_token = request.cookies.get('access_token')
@@ -226,21 +315,40 @@ def server_settings(guild_id):
         return "Unauthorized", 403
 
     # Get server settings from database
-    settings = db.get_guild_settings(guild_id)
+    settings = get_guild_settings(guild_id)
     
-    # Get guild info from Discord API
-    headers = {'Authorization': f'Bot {config["TOKEN"]}'}
-    guild_response = requests.get(f'https://discord.com/api/v10/guilds/{guild_id}', headers=headers)
-    channels_response = requests.get(f'https://discord.com/api/v10/guilds/{guild_id}/channels', headers=headers)
-    roles_response = requests.get(f'https://discord.com/api/v10/guilds/{guild_id}/roles', headers=headers)
+    # Initialize default values if settings is empty
+    guild_info = None
+    channels = []
+    roles = []
     
-    guild_info = guild_response.json() if guild_response.ok else None
-    channels = channels_response.json() if channels_response.ok else []
-    roles = roles_response.json() if roles_response.ok else []
+    # Only try to get Discord API data if bot token is available
+    if DISCORD_BOT_TOKEN:
+        headers = {'Authorization': f'Bot {DISCORD_BOT_TOKEN}'}
+        try:
+            guild_response = requests.get(f'https://discord.com/api/v10/guilds/{guild_id}', headers=headers)
+            channels_response = requests.get(f'https://discord.com/api/v10/guilds/{guild_id}/channels', headers=headers)
+            roles_response = requests.get(f'https://discord.com/api/v10/guilds/{guild_id}/roles', headers=headers)
+            
+            guild_info = guild_response.json() if guild_response.ok else None
+            channels = channels_response.json() if channels_response.ok else []
+            roles = roles_response.json() if roles_response.ok else []
+        except Exception as e:
+            print(f"Error fetching Discord API data: {e}")
+    else:
+        print("No bot token available, using minimal guild info")
+        # Use basic guild info from user's guild list
+        user_guild = next((g for g in user_guilds if g['id'] == guild_id), None)
+        if user_guild:
+            guild_info = {
+                'id': user_guild['id'],
+                'name': user_guild['name'],
+                'icon': user_guild.get('icon')
+            }
     
     # Filter text channels only and sort by position
     text_channels = sorted(
-        [c for c in channels if c['type'] == 0],  # 0 is text channel
+        [c for c in channels if c.get('type') == 0],  # 0 is text channel
         key=lambda c: c.get('position', 0)
     )
     
@@ -252,12 +360,12 @@ def server_settings(guild_id):
         settings=settings,
         channels=text_channels,
         roles=roles,
-        username=request.cookies.get('username', 'User')
+        username=request.cookies.get('username', 'User'),
+        mongodb_available=MONGODB_AVAILABLE
     )
 
 @app.route('/servers/<guild_id>/settings/update', methods=['POST'])
 @login_required
-
 def update_settings(guild_id):
     """Update settings for a specific server"""
     access_token = request.cookies.get('access_token')
@@ -268,10 +376,13 @@ def update_settings(guild_id):
     user_guilds = get_user_guilds(access_token)
     if not any(g['id'] == guild_id and (int(g['permissions']) & 0x20) == 0x20 for g in user_guilds):
         return "Unauthorized", 403
+    
+    if not MONGODB_AVAILABLE:
+        return redirect(f'/servers/{guild_id}/settings?error=database_unavailable')
         
     # Get settings from form
     settings = {
-        'prefixes': [p.strip() for p in request.form.get('prefixes', '').split(',') if p.strip()],  # Fix prefix splitting
+        'prefixes': [p.strip() for p in request.form.get('prefixes', '').split(',') if p.strip()],
         'welcome': {
             'enabled': bool(request.form.get('welcome_enabled')),
             'channel_id': request.form.get('welcome_channel'),
@@ -284,17 +395,24 @@ def update_settings(guild_id):
         }
     }
     
-    # Update database (now synchronous)
-    success = db.update_guild_settings(guild_id, settings)
-    
-    if success:
-        return redirect(f'/servers/{guild_id}/settings?success=1')
-    else:
+    try:
+        # Update database
+        result = db.guild_settings.update_one(
+            {"_id": str(guild_id)},
+            {"$set": settings},
+            upsert=True
+        )
+        
+        if result.acknowledged:
+            return redirect(f'/servers/{guild_id}/settings?success=1')
+        else:
+            return redirect(f'/servers/{guild_id}/settings?error=1')
+    except Exception as e:
+        print(f"Error updating guild settings: {e}")
         return redirect(f'/servers/{guild_id}/settings?error=1')
 
 @app.route('/settings')
 @login_required
-
 def settings_select():
     """Show server selection for settings"""
     access_token = request.cookies.get('access_token')
@@ -326,21 +444,19 @@ def settings_select():
 
 @app.route('/api/user/<user_id>/balance')
 @login_required
-
-def get_user_balance(user_id):
+def get_user_balance_api(user_id):
     """API endpoint to get user balance"""
     # Only allow the user to see their own balance or allow bot owner to see any balance
     requester_id = request.cookies.get('user_id')
     if requester_id != user_id and requester_id != DISCORD_BOT_OWNER_ID:
         return jsonify({"error": "Unauthorized"}), 403
     
-    balance = db.get_user_balance(user_id)
+    balance = get_user_balance(user_id)
     return jsonify(balance)
 
 @app.route('/api/guild/<guild_id>/stats')
 @login_required
-
-def get_guild_stats(guild_id):
+def get_guild_stats_api(guild_id):
     """API endpoint to get guild stats"""
     access_token = request.cookies.get('access_token')
     if not access_token:
@@ -351,7 +467,7 @@ def get_guild_stats(guild_id):
     if not any(g['id'] == guild_id and (int(g['permissions']) & 0x20) == 0x20 for g in user_guilds):
         return jsonify({"error": "Unauthorized"}), 403
     
-    stats = db.get_guild_stats(guild_id)
+    stats = get_guild_stats(guild_id)
     return jsonify(stats)
 
 @app.route('/debug')
@@ -361,6 +477,8 @@ def debug():
         'status': 'ok',
         'env': os.environ.get('FLASK_ENV'),
         'discord_configured': load_config(),
+        'mongodb_available': MONGODB_AVAILABLE,
+        'bot_token_available': bool(DISCORD_BOT_TOKEN),
         'redirect_uri': DISCORD_REDIRECT_URI,
         'config_source': 'env' if any([os.environ.get('DISCORD_CLIENT_ID'),
                                      os.environ.get('DISCORD_CLIENT_SECRET'),

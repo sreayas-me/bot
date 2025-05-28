@@ -73,6 +73,67 @@
                 <h1>Welcome back, {{ username }}! 👋</h1>
                 <p>Are you ready to take control of your Discord server?</p>
             </section>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Servers</h3>
+                    <p>{{ stats.server_count }}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Users</h3>
+                    <p>{{ stats.user_count }}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Uptime</h3>
+                    <p id="uptime" data-uptime="{{ stats.uptime }}">Calculating...</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Latency</h3>
+                    <p>{{ stats.latency }}ms</p>
+                </div>
+            </div>
+
+                <!-- Add new shard status section -->
+                <div class="shard-status">
+                    <h2>🔋 Shard Status</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Total Servers</h3>
+                            <p>{{ stats.server_count|default(0)|thousands }}</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Total Users</h3>
+                            <p>{{ stats.user_count|default(0)|thousands }}</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Latency</h3>
+                            <p>{{ "%.1f"|format(stats.latency|default(0)) }}ms</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Shards</h3>
+                            <p>{{ stats.shard_count }}</p>
+                        </div>
+                    </div>
+
+                    {% if stats.shard_stats %}
+                    <div class="shard-grid">
+                        {% for shard_id, shard in stats.shard_stats.items() %}
+                        <div class="shard-card {{ 'online' if shard.status == 'online' else 'offline' }}">
+                            <h4>
+                                {% if shard.status == 'online' %}🟢{% else %}🔴{% endif %}
+                                Shard {{ shard_id }}
+                            </h4>
+                            <p>Servers: {{ shard.guild_count }}</p>
+                            <p>Users: {{ shard.user_count }}</p>
+                            <p>Latency: {{ "%.1f"|format(shard.latency) }}ms</p>
+                            <p class="uptime">
+                                Online for: {{ shard.uptime }}
+                            </p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
         </main>
     </div>
 
