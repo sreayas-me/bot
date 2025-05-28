@@ -294,6 +294,10 @@ class Economy(commands.Cog):
         if bet > balance:
             return await ctx.reply("Insufficient funds!")
         
+        # Deduct the bet amount before spinning
+        if not await db.update_balance(ctx.author.id, -bet, ctx.guild.id):
+            return await ctx.reply("Failed to deduct bet from your balance!")
+        
         # Spinning animation
         msg = await ctx.reply("🎰 `spinning...`")
         for _ in range(3):
@@ -318,7 +322,9 @@ class Economy(commands.Cog):
             winnings = 0
             result = "Better luck next time!"
         
-        await db.update_balance(ctx.author.id, winnings, ctx.guild.id)
+        # Only add winnings if > 0
+        if winnings > 0:
+            await db.update_balance(ctx.author.id, winnings, ctx.guild.id)
         
         embed = discord.Embed(
             description=f"🎰 `{display}`\n\n{result}\n\n**Bet:** {bet}\n**Won:** {winnings}",
@@ -513,8 +519,10 @@ class Economy(commands.Cog):
     @commands.command()
     async def buy(self, ctx, item_id: str):
         """Buy an item from the shop"""
-        items = await self.get_shop_items(ctx.guild.id)
+        # 1. Check server shop first
+        items = await self.get_server_shop(ctx.guild.id)
         if item_id not in items:
+            # 2. Then check global shop
             global_items = await self.get_shop_items()
             if item_id not in global_items:
                 return await ctx.reply("Invalid item! Use `shop` to see available items.")
@@ -524,7 +532,7 @@ class Economy(commands.Cog):
         if not await db.update_balance(ctx.author.id, -item['price'], ctx.guild.id):
             return await ctx.reply("Insufficient funds!")
         
-        # Handle special items
+        # Handle special items (global shop only)
         if item_id == "vip":
             role = await ctx.guild.create_role(
                 name="VIP",
