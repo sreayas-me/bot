@@ -268,7 +268,7 @@ class Economy(commands.Cog):
         if hasattr(self, 'active_games'):
             self.active_games.discard(ctx.author.id)
 
-    @commands.command(name="deposit", aliases=["dep"])
+    @commands.command(name="deposit", aliases=["dep", 'd'])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def deposit(self, ctx, amount: str = None):
         """Deposit money into your bank"""
@@ -344,7 +344,7 @@ class Economy(commands.Cog):
             self.logger.error(f"Deposit error: {e}")
             await ctx.reply("An error occurred while processing your deposit.")
 
-    @commands.command(name="withdraw", aliases=["with"])
+    @commands.command(name="withdraw", aliases=["with", 'w'])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def withdraw(self, ctx, amount: str = None):
         """Withdraw money from your bank"""
@@ -412,7 +412,7 @@ class Economy(commands.Cog):
             self.logger.error(f"Withdraw error: {e}")
             await ctx.reply("An error occurred while processing your withdrawal.")
 
-    @commands.command(aliases=['bal'])
+    @commands.command(aliases=['bal', 'cash', 'bb'])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def balance(self, ctx, member: discord.Member = None):
         """Check your balance or someone else's"""
@@ -431,7 +431,7 @@ class Economy(commands.Cog):
         embed.set_thumbnail(url=member.display_avatar.url)
         await ctx.reply(embed=embed)
 
-    @commands.command(name="pay", aliases=["transfer"])
+    @commands.command(name="pay", aliases=["transfer", 'p'])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def pay(self, ctx, member: discord.Member, amount: int):
         """Transfer money to another user"""
@@ -446,7 +446,7 @@ class Economy(commands.Cog):
         else:
             await ctx.reply("Insufficient funds!")
 
-    @commands.command(aliases=['slot'])
+    @commands.command(aliases=['slot', 'sl'])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def slots(self, ctx, bet_amount: str = "10"):
         """Play the slot machine"""
