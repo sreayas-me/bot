@@ -1,6 +1,6 @@
 from discord.ext import commands
 from cogs.logging.logger import CogLogger
-from utils.db import async_db as db 
+from utils.db import async_db as db
 from cogs.Help import HelpPaginator
 from utils.betting import parse_bet
 import discord
@@ -26,6 +26,164 @@ def format_cooldown(seconds: float) -> str:
         parts.append(f"{remaining_seconds}s")
     
     return " ".join(parts)
+
+class EconomyShopView(discord.ui.View):
+    def __init__(self, pages, author, timeout=180):
+        super().__init__(timeout=timeout)
+        self.pages = pages
+        self.author = author
+        self.current_page = 0
+        self.message = None
+        
+        # Only show navigation if we have multiple pages
+        if len(self.pages) <= 1:
+            self.clear_items()
+            # Add only delete button for single page
+            delete_btn = discord.ui.Button(
+                label="🗑️ Close",
+                style=discord.ButtonStyle.danger,
+                custom_id="delete"
+            )
+            delete_btn.callback = self.delete_shop
+            self.add_item(delete_btn)
+        else:
+            self.update_buttons()
+    
+    def update_buttons(self):
+        """Update button states based on current page"""
+        # Clear existing items
+        self.clear_items()
+        
+        # Previous button
+        prev_btn = discord.ui.Button(
+            label="◀ Previous",
+            style=discord.ButtonStyle.secondary,
+            disabled=self.current_page == 0
+        )
+        prev_btn.callback = self.previous_page
+        self.add_item(prev_btn)
+        
+        # Page info button (disabled, just for display)
+        page_info_btn = discord.ui.Button(
+            label=f"Page {self.current_page + 1}/{len(self.pages)}",
+            style=discord.ButtonStyle.primary,
+            disabled=True
+        )
+        self.add_item(page_info_btn)
+        
+        # Next button
+        next_btn = discord.ui.Button(
+            label="Next ▶",
+            style=discord.ButtonStyle.secondary,
+            disabled=self.current_page == len(self.pages) - 1
+        )
+        next_btn.callback = self.next_page
+        self.add_item(next_btn)
+        
+        # Delete button (always present)
+        delete_btn = discord.ui.Button(
+            label="🗑️",
+            style=discord.ButtonStyle.danger,
+            custom_id="delete"
+        )
+        delete_btn.callback = self.delete_shop
+        self.add_item(delete_btn)
+        
+        # Add page selector if we have many pages (3+)
+        if len(self.pages) >= 3:
+            options = []
+            for i in range(len(self.pages)):
+                options.append(discord.SelectOption(
+                    label=f"Page {i + 1}",
+                    value=str(i),
+                    description=f"Go to page {i + 1} of the shop",
+                    emoji="🛍️"
+                ))
+            
+            page_select = discord.ui.Select(
+                placeholder="🛍️ Jump to page...",
+                options=options,
+                row=1
+            )
+            page_select.callback = self.select_page
+            self.add_item(page_select)
+    
+    async def previous_page(self, interaction: discord.Interaction):
+        """Go to previous page"""
+        if interaction.user != self.author:
+            return await interaction.response.send_message(
+                "❌ This isn't your shop menu!", 
+                ephemeral=True
+            )
+        
+        self.current_page = max(0, self.current_page - 1)
+        self.update_buttons()
+        await interaction.response.edit_message(
+            embed=self.pages[self.current_page], 
+            view=self
+        )
+    
+    async def next_page(self, interaction: discord.Interaction):
+        """Go to next page"""
+        if interaction.user != self.author:
+            return await interaction.response.send_message(
+                "❌ This isn't your shop menu!", 
+                ephemeral=True
+            )
+        
+        self.current_page = min(len(self.pages) - 1, self.current_page + 1)
+        self.update_buttons()
+        await interaction.response.edit_message(
+            embed=self.pages[self.current_page], 
+            view=self
+        )
+    
+    async def select_page(self, interaction: discord.Interaction):
+        """Jump to selected page"""
+        if interaction.user != self.author:
+            return await interaction.response.send_message(
+                "❌ This isn't your shop menu!", 
+                ephemeral=True
+            )
+        
+        self.current_page = int(interaction.data['values'][0])
+        self.update_buttons()
+        await interaction.response.edit_message(
+            embed=self.pages[self.current_page], 
+            view=self
+        )
+    
+    async def delete_shop(self, interaction: discord.Interaction):
+        """Delete the shop message"""
+        if interaction.user != self.author:
+            return await interaction.response.send_message(
+                "❌ Only the command author can close this shop!", 
+                ephemeral=True
+            )
+        
+        await interaction.response.defer()
+        if self.message:
+            try:
+                await self.message.delete()
+            except discord.NotFound:
+                pass  # Message was already deleted
+    
+    async def on_timeout(self):
+        """Disable all buttons when the view times out"""
+        for item in self.children:
+            item.disabled = True
+        
+        if self.message:
+            try:
+                # Add timeout message to embed
+                if self.pages and len(self.pages) > 0:
+                    embed = self.pages[self.current_page].copy()
+                    embed.set_footer(text="⏰ This shop menu has expired")
+                    await self.message.edit(embed=embed, view=self)
+                else:
+                    await self.message.edit(view=self)
+            except (discord.NotFound, discord.HTTPException):
+                pass  # Message was deleted or couldn't be edited
 
 class Economy(commands.Cog):
     def __init__(self, bot):
@@ -69,42 +227,11 @@ class Economy(commands.Cog):
         # Initialize fishing buffs
         self.fishing_cooldowns = {}
         
-    async def get_shop_items(self, guild_id: int = None) -> dict:
-        """Get shop items from database"""
+    async def get_shop_items(self, type:str, guild_id: int = None) -> dict:
+        """Get shop items from database (Economy cog method)"""
         try:
-            # Get server-specific or global shop items
-            shop_id = f"server_{guild_id}" if guild_id else "global"
-            shop = await db.shops.find_one({"_id": shop_id})
-            
-            if shop:
-                return shop.get("items", {})
-                
-            # If no items found, initialize with defaults for global shop
-            if not guild_id:
-                default_items = {
-                    "vip": {
-                        "name": "VIP Role",
-                        "price": 10000,
-                        "description": "Get a special VIP role with unique color"
-                    },
-                    "color": {
-                        "name": "Custom Color", 
-                        "price": 5000,
-                        "description": "Create a custom colored role for yourself"
-                    },
-                    "bank_upgrade": {
-                        "name": "Bank Upgrade",
-                        "price": 2500,
-                        "description": "Increase your bank storage limit by 5000"
-                    }
-                }
-                await db.shops.insert_one({
-                    "_id": "global",
-                    "items": default_items
-                })
-                return default_items
-                
-            return {}
+            # Use the legacy method from database to avoid conflicts
+            return await db.get_shop_items(type, guild_id)
         except Exception as e:
             self.logger.error(f"Failed to get shop items: {e}")
             return {}
@@ -135,8 +262,8 @@ class Economy(commands.Cog):
                 embed = discord.Embed(
                     description=(
                         "**BronkBuks Bank Deposit Guide**\n\n"
-                        f"Your Wallet: **{wallet}** {self.currency}\n"
-                        f"Bank Space: **{space}** {self.currency}\n\n"
+                        f"Your Wallet: **{wallet:,}** {self.currency}\n"
+                        f"Bank Space: **{space:,}** {self.currency}\n\n"
                         "**Usage:**\n"
                         "`.deposit <amount>`\n"
                         "`.deposit 50%` - Deposit 50% of wallet\n"
@@ -180,13 +307,18 @@ class Economy(commands.Cog):
             if amount > wallet:
                 return await ctx.reply("You don't have that much in your wallet!")
             if amount > space:
-                return await ctx.reply(f"Your bank can only hold {space} more coins!")
+                return await ctx.reply(f"Your bank can only hold {space:,} more coins!")
 
-            # Update balances using transactions
-            if await db.transfer_money(ctx.author.id, ctx.author.id, amount, ctx.guild.id):
-                await ctx.reply(f"Deposited **{amount:,}** {self.currency} into your bank!")
+            # FIXED: Update wallet and bank separately instead of using transfer_money
+            if await db.update_wallet(ctx.author.id, -amount, ctx.guild.id):
+                if await db.update_bank(ctx.author.id, amount, ctx.guild.id):
+                    await ctx.reply(f"💰 Deposited **{amount:,}** {self.currency} into your bank!")
+                else:
+                    # Revert wallet change if bank update fails
+                    await db.update_wallet(ctx.author.id, amount, ctx.guild.id)
+                    await ctx.reply("❌ Failed to deposit money! Transaction reverted.")
             else:
-                await ctx.reply("Failed to deposit money!")
+                await ctx.reply("❌ Failed to deposit money!")
                 
         except Exception as e:
             self.logger.error(f"Deposit error: {e}")
@@ -196,58 +328,69 @@ class Economy(commands.Cog):
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def withdraw(self, ctx, amount: str = None):
         """Withdraw money from your bank"""
-        if not amount:
-            wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+        try:
+            if not amount:
+                wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+                bank = await db.get_bank_balance(ctx.author.id, ctx.guild.id)
+                
+                embed = discord.Embed(
+                    description=(
+                        "**BronkBuks Bank Withdrawal Guide**\n\n"
+                        f"Your Bank: **{bank:,}** {self.currency}\n"
+                        f"Your Wallet: **{wallet:,}** {self.currency}\n\n"
+                        "**Usage:**\n"
+                        "`.withdraw <amount>`\n"
+                        "`.withdraw 50%` - Withdraw 50% of bank\n"
+                        "`.withdraw all` - Withdraw everything\n"
+                        "`.withdraw 1k` - Withdraw 1,000\n"
+                        "`.withdraw 1.5m` - Withdraw 1,500,000"
+                    ),
+                    color=0x2b2d31
+                )
+                return await ctx.reply(embed=embed)
+
             bank = await db.get_bank_balance(ctx.author.id, ctx.guild.id)
-            
-            embed = discord.Embed(
-                description=(
-                    "**BronkBuks Bank Withdrawal Guide**\n\n"
-                    f"Your Bank: **{bank}** {self.currency}\n"
-                    f"Your Wallet: **{wallet}** {self.currency}\n\n"
-                    "**Usage:**\n"
-                    "`.withdraw <amount>`\n"
-                    "`.withdraw 50%` - Withdraw 50% of bank\n"
-                    "`.withdraw all` - Withdraw everything\n"
-                    "`.withdraw 1k` - Withdraw 1,000\n"
-                    "`.withdraw 1.5m` - Withdraw 1,500,000"
-                ),
-                color=0x2b2d31
-            )
-            return await ctx.reply(embed=embed)
 
-        bank = await db.get_bank_balance(ctx.author.id, ctx.guild.id)
+            # Parse amount with k/m suffix support
+            if amount.lower() in ['all', 'max']:
+                amount = bank
+            elif amount.endswith('%'):
+                try:
+                    percentage = float(amount[:-1])
+                    if not 0 < percentage <= 100:
+                        return await ctx.reply("Percentage must be between 0 and 100!")
+                    amount = int((percentage / 100) * bank)
+                except ValueError:
+                    return await ctx.reply("Invalid percentage!")
+            else:
+                try:
+                    if amount.lower().endswith('k'):
+                        amount = int(float(amount[:-1]) * 1000)
+                    elif amount.lower().endswith('m'):
+                        amount = int(float(amount[:-1]) * 1000000)
+                    else:
+                        amount = int(amount)
+                except ValueError:
+                    return await ctx.reply("Invalid amount!")
 
-        # Parse amount
-        if amount.lower() in ['all', 'max']:
-            amount = bank
-        elif amount.endswith('%'):
-            try:
-                percentage = float(amount[:-1])
-                if not 0 < percentage <= 100:
-                    return await ctx.reply("Percentage must be between 0 and 100!")
-                amount = round((percentage / 100) * bank)
-            except ValueError:
-                return await ctx.reply("Invalid percentage!")
-        else:
-            try:
-                amount = int(amount)
-            except ValueError:
-                return await ctx.reply("Invalid amount!")
+            if amount <= 0:
+                return await ctx.reply("Amount must be positive!")
+            if amount > bank:
+                return await ctx.reply("You don't have that much in your bank!")
 
-        if amount <= 0:
-            return await ctx.reply("Amount must be positive!")
-        if amount > bank:
-            return await ctx.reply("You don't have that much in your bank!")
-
-        # Update balances
-        if await db.update_bank(ctx.author.id, -amount, ctx.guild.id):
-            if await db.update_wallet(ctx.author.id, amount, ctx.guild.id):
-                await ctx.reply(f"Withdrew **{amount}** {self.currency} from your bank!")
-                return
-            await db.update_bank(ctx.author.id, amount, ctx.guild.id)  # Refund if wallet update fails
-
-        await ctx.reply("Failed to withdraw money!")
+            # FIXED: Better transaction handling with proper rollback
+            if await db.update_bank(ctx.author.id, -amount, ctx.guild.id):
+                if await db.update_wallet(ctx.author.id, amount, ctx.guild.id):
+                    await ctx.reply(f"💸 Withdrew **{amount:,}** {self.currency} from your bank!")
+                else:
+                    # Revert bank change if wallet update fails
+                    await db.update_bank(ctx.author.id, amount, ctx.guild.id)
+                    await ctx.reply("❌ Failed to withdraw money! Transaction reverted.")
+            else:
+                await ctx.reply("❌ Failed to withdraw money!")
+        except Exception as e:
+            self.logger.error(f"Withdraw error: {e}")
+            await ctx.reply("An error occurred while processing your withdrawal.")
 
     @commands.command(aliases=['bal'])
     @commands.cooldown(1, 3, commands.BucketType.user)
@@ -260,11 +403,12 @@ class Economy(commands.Cog):
         
         embed = discord.Embed(
             title=f"{member.display_name}'s BronkBuks Balance",
-            description=f"Wallet: **{wallet:,}** {self.currency}\n" \
-                       f"Bank: **{bank:,}**/**{bank_limit:,}** {self.currency}\n" \
-                       f"Net Worth: **{wallet + bank:,}** {self.currency}",
+            description=f"💵 Wallet: **{wallet:,}** {self.currency}\n" \
+                    f"🏦 Bank: **{bank:,}**/**{bank_limit:,}** {self.currency}\n" \
+                    f"💎 Net Worth: **{wallet + bank:,}** {self.currency}",
             color=member.color or discord.Color.green()
         )
+        embed.set_thumbnail(url=member.display_avatar.url)
         await ctx.reply(embed=embed)
 
     @commands.command(name="pay", aliases=["transfer"])
@@ -345,6 +489,14 @@ class Economy(commands.Cog):
         await ctx.reply(f"Daily reward claimed! +**{amount}** {self.currency}")
 
     @commands.command()
+    @commands.cooldown(1, 30, commands.BucketType.user)
+    async def beg(self, ctx):
+        """get ur money up"""
+        amount = random.randint(0, 150)
+        await db.update_wallet(ctx.author.id, amount, ctx.guild.id)
+        await ctx.reply(f"you got +**{amount}** {self.currency}")
+
+    @commands.command()
     @commands.cooldown(1, 3600, commands.BucketType.user)
     async def work(self, ctx):
         """Work for some money"""
@@ -376,105 +528,168 @@ class Economy(commands.Cog):
 
     @commands.command(aliases=['lb'])
     @commands.cooldown(1, 3, commands.BucketType.user)
-    async def leaderboard(self, ctx):
-        """View the richest users in the current server"""
-        pipeline = [
-            {"$match": {"guild_id": str(ctx.guild.id)}},
-            {"$project": {
-                "_id": "$user_id",
-                "total": {"$sum": ["$wallet", "$bank"]}
-            }},
-            {"$sort": {"total": -1}},
-            {"$limit": 10}
-        ]
+    async def leaderboard(self, ctx, scope: str = "server"):
+        """View the richest users in the current server or globally"""
         
-        users = await db.db.economy.aggregate(pipeline).to_list(10)
-        
-        if not users:
-            return await ctx.reply(embed=discord.Embed(description="No economy data for this server", color=0x2b2d31))
+        # Check if user wants global leaderboard
+        if scope.lower() in ["global", "g", "world", "all"]:
+            return await self._show_global_leaderboard(ctx)
+        else:
+            return await self._show_server_leaderboard(ctx)
 
-        content = []
-        total_wealth = 0
-        position_emojis = {1: "🥇", 2: "🥈", 3: "🥉"}
-        
-        for i, user in enumerate(users, 1):
-            member = ctx.guild.get_member(user['_id'])
-            if member:
-                formatted_amount = "{:,}".format(user['total'])
+    async def _show_server_leaderboard(self, ctx):
+        """Show server-specific leaderboard"""
+        try:
+            # Use the db instance (which is async_db)
+            if not await db.ensure_connected():
+                return await ctx.reply(embed=discord.Embed(
+                    description="❌ Database connection failed", 
+                    color=0xff0000
+                ))
+            
+            users = []
+            
+            # Get all users in the server and check their balances
+            for member in ctx.guild.members:
+                if not member.bot:
+                    try:
+                        wallet = await db.get_wallet_balance(member.id, ctx.guild.id)
+                        bank = await db.get_bank_balance(member.id, ctx.guild.id)
+                        total = wallet + bank
+                        if total > 0:  # Only include users with money
+                            users.append({
+                                "member": member,
+                                "total": total
+                            })
+                    except Exception as e:
+                        print(f"DEBUG: Error getting balance for {member.id}: {e}")
+                        continue
+            
+            if not users:
+                embed = discord.Embed(
+                    description="No economy data for this server.\n💡 Users need to earn money first (work, daily, etc.)", 
+                    color=0x2b2d31
+                )
+                return await ctx.reply(embed=embed)
+            
+            # Sort by total wealth and take top 10
+            users.sort(key=lambda x: x["total"], reverse=True)
+            users = users[:10]
+            
+            content = []
+            total_wealth = 0
+            position_emojis = {1: "🥇", 2: "🥈", 3: "🥉"}
+            
+            for i, user in enumerate(users, 1):
+                total = user["total"]
+                formatted_amount = "{:,}".format(total)
                 position = position_emojis.get(i, f"`{i}.`")
-                content.append(f"{position} {member.display_name} • **{formatted_amount}** {self.currency}")
-                total_wealth += user['total']
-        
-        if not content:
-            return await ctx.reply(embed=discord.Embed(description="No active users found", color=0x2b2d31))
+                content.append(f"{position} {user['member'].display_name} • **{formatted_amount}** {self.currency}")
+                total_wealth += total
+            
+            embed = discord.Embed(
+                title=f"💰 Richest Users in {ctx.guild.name}",
+                description="\n".join(content),
+                color=0x2b2d31
+            )
+            
+            formatted_total = "{:,}".format(total_wealth)
+            average_wealth = "{:,}".format(total_wealth // len(content)) if content else "0"
+            embed.set_footer(text=f"Total Wealth: ${formatted_total} $BB • Average: ${average_wealth} $BB\n💡 Use `.leaderboard global` for global rankings")
+            
+            await ctx.reply(embed=embed)
+            
+        except Exception as e:
+            print(f"DEBUG: Server leaderboard error: {e}")
+            return await ctx.reply(embed=discord.Embed(
+                description="❌ An error occurred while fetching the leaderboard", 
+                color=0xff0000
+            ))
 
-        embed = discord.Embed(
-            title=f"💰 Richest Users in {ctx.guild.name}",
-            description="\n".join(content),
-            color=0x2b2d31
-        )
-        
-        formatted_total = "{:,}".format(total_wealth)
-        average_wealth = "{:,}".format(total_wealth // len(content)) if content else "0"
-        embed.set_footer(text=f"Total Wealth: {formatted_total} {self.currency} • Average: {average_wealth} {self.currency}")
-        await ctx.reply(embed=embed)
+    async def _show_global_leaderboard(self, ctx):
+        """Show global leaderboard across all servers"""
+        try:
+            if not await db.ensure_connected():
+                return await ctx.reply(embed=discord.Embed(
+                    description="❌ Database connection failed", 
+                    color=0xff0000
+                ))
+            
+            # MongoDB aggregation pipeline to get top users globally
+            pipeline = [
+                {
+                    "$group": {
+                        "_id": "$_id",  # User ID is stored as _id in your schema
+                        "total": {"$sum": {"$add": ["$wallet", "$bank"]}}
+                    }
+                },
+                {"$sort": {"total": -1}},
+                {"$limit": 10}
+            ]
+            
+            # Use the db instance properly
+            users = await db.db.users.aggregate(pipeline).to_list(10)
+            
+            if not users:
+                return await ctx.reply(embed=discord.Embed(
+                    description="No global economy data found", 
+                    color=0x2b2d31
+                ))
+            
+            content = []
+            total_wealth = 0
+            position_emojis = {1: "🥇", 2: "🥈", 3: "🥉"}
+            
+            for i, user in enumerate(users, 1):
+                user_id = int(user['_id'])  # _id is the user ID in your schema
+                total = user['total']
+                total_wealth += total
+                
+                # Try to get member from current guild first
+                member = ctx.guild.get_member(user_id)
+                if not member:
+                    # Try to find user in any mutual guild
+                    member = self.bot.get_user(user_id)
+                
+                if member:
+                    position = position_emojis.get(i, f"`{i}.`")
+                    formatted_amount = "{:,}".format(total)
+                    display_name = getattr(member, 'display_name', member.name)
+                    content.append(f"{position} {display_name} • **{formatted_amount}** {self.currency}")
+            
+            if not content:
+                return await ctx.reply(embed=discord.Embed(
+                    description="No active users found", 
+                    color=0x2b2d31
+                ))
+            
+            embed = discord.Embed(
+                title="🌎 Global Economy Leaderboard",
+                description="\n".join(content),
+                color=0x2b2d31
+            )
+            
+            formatted_total = "{:,}".format(total_wealth)
+            average_wealth = "{:,}".format(total_wealth // len(content)) if content else "0"
+            embed.set_footer(text=f"Total Wealth: {formatted_total} {self.currency} • Average: {average_wealth} {self.currency}")
+            
+            await ctx.reply(embed=embed)
+            
+        except Exception as e:
+            print(f"DEBUG: Global leaderboard error: {e}")
+            return await ctx.reply(embed=discord.Embed(
+                description="❌ An error occurred while fetching the global leaderboard", 
+                color=0xff0000
+            ))
 
-    @commands.command(aliases=['ghop', 'globalb', 'gtop', 'globaltop', 'glb'])
+    # Keep the old globalboard command as an alias for backward compatibility
+    @commands.command(aliases=['gboard', 'globalb', 'gtop', 'globaltop', 'glb'])
     @commands.cooldown(1, 30, commands.BucketType.user)
     async def globalboard(self, ctx):
-        """View global leaderboard across all servers"""
-        pipeline = [
-            {"$group": {
-                "_id": "$user_id",
-                "total": {"$sum": {"$add": ["$wallet", "$bank"]}}
-            }},
-            {"$sort": {"total": -1}},
-            {"$limit": 10}
-        ]
+        """View global leaderboard across all servers (alias for .leaderboard global)"""
+        await self._show_global_leaderboard(ctx)
         
-        users = await db.db.economy.aggregate(pipeline).to_list(10)
-        
-        if not users:
-            return await ctx.reply(embed=discord.Embed(description="No global economy data found", color=0x2b2d31))
-
-        content = []
-        total_wealth = 0
-        position_emojis = {1: "🥇", 2: "🥈", 3: "🥉"}
-        
-        for i, user in enumerate(users, 1):
-            user_id = user['_id']
-            total = user['total']
-            total_wealth += total
-            
-            # Try to get member from current guild first
-            member = ctx.guild.get_member(user_id)
-            if not member:
-                # Try to find user in any mutual guild
-                for guild in self.bot.guilds:
-                    member = guild.get_member(user_id)
-                    if member:
-                        break
-            
-            if member:
-                position = position_emojis.get(i, f"`{i}.`")
-                formatted_amount = "{:,}".format(total)
-                content.append(f"{position} {member.name} • **{formatted_amount}** {self.currency}")
-        
-        if not content:
-            return await ctx.reply(embed=discord.Embed(description="No active users found", color=0x2b2d31))
-
-        embed = discord.Embed(
-            title="🌎 Global Economy Leaderboard",
-            description="\n".join(content),
-            color=0x2b2d31
-        )
-        
-        formatted_total = "{:,}".format(total_wealth)
-        average_wealth = "{:,}".format(total_wealth // len(content)) if content else "0"
-        embed.set_footer(text=f"Total Wealth: {formatted_total} {self.currency} • Average: {average_wealth} {self.currency}")
-        await ctx.reply(embed=embed)
-
-    @commands.command(aliases=['ghop'])
+    @commands.command(aliases=['gshop'])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def globalshop(self, ctx):
         """View available items in the global shop"""
@@ -498,8 +713,8 @@ class Economy(commands.Cog):
         
         # Overview page with flash sales
         overview = discord.Embed(
-            description=f"🛍️ **Global Shop**\n\nYour Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}\n\n"
-                       f"**🔥 Flash Sales**\n",
+            description=f"🛍️ **Global Shop**\n\nYour Balance: **{await db.get_wallet_balance(ctx.author.id)}** $BB\n\n"
+                    f"**🔥 Flash Sales**\n",
             color=discord.Color.blue()
         )
         
@@ -545,157 +760,12 @@ class Economy(commands.Cog):
     @commands.command()
     async def buy(self, ctx, item_id: str):
         """Buy an item from the shop"""
-        shop_data = await self.get_shop_items()
-        found_item = None
-        shop_type = None
+        success, message = await db.buy_item(ctx.author.id, item_id, ctx.guild.id)
         
-        # Check different shop categories
-        for category in ["items", "potions", "bait_shop", "rod_shop"]:
-            if category in shop_data and item_id in shop_data[category]:
-                found_item = shop_data[category][item_id].copy()  # Make a copy to modify
-                shop_type = category
-                break
-                
-        if not found_item:
-            # Check server shop if not found in global
-            server_shop = await self.get_server_shop(ctx.guild.id)
-            for category in ["items", "potions"]:
-                if category in server_shop and item_id in server_shop[category]:
-                    found_item = server_shop[category][item_id].copy()
-                    shop_type = category
-                    break
-                    
-        if not found_item:
-            return await ctx.reply("Invalid item! Use `.shop` to see available items.")
-            
-        # Check if first-time beginner gear (free)
-        if item_id in ["beginner_rod", "beginner_bait"]:
-            fishing_items = await db.get_fishing_items(ctx.author.id)
-            if (item_id == "beginner_rod" and not fishing_items["rods"]) or \
-               (item_id == "beginner_bait" and not fishing_items["bait"]):
-                # First time getting this item - it's free
-                found_item["price"] = 0
-                
-        # Check if user can afford it
-        if not await db.update_balance(ctx.author.id, -found_item['price'], ctx.guild.id):
-            return await ctx.reply("Insufficient funds!")
-            
-        # Handle different item types
-        if shop_type == "bait_shop":
-            # Add bait to inventory
-            bait_item = {
-                "id": str(uuid.uuid4()),
-                "type": "bait",
-                **found_item
-            }
-            if await db.add_fishing_item(ctx.author.id, bait_item, "bait"):
-                return await ctx.reply(f"✨ Bought {found_item['amount']}x **{found_item['name']}**!")
-                
-        elif shop_type == "rod_shop":
-            # Add rod to inventory
-            rod_item = {
-                "id": str(uuid.uuid4()),
-                "type": "rod",
-                **found_item
-            }
-            if await db.add_fishing_item(ctx.author.id, rod_item, "rod"):
-                return await ctx.reply(f"✨ Bought **{found_item['name']}**!")
-                
-        elif shop_type == "potions":
-            # Add potion to inventory
-            potion_item = {
-                "id": str(uuid.uuid4()),
-                **found_item
-            }
-            if await db.add_potion(ctx.author.id, potion_item):
-                await ctx.reply(f"✨ Bought **{found_item['name']}**!")
-            else:
-                await db.update_balance(ctx.author.id, found_item['price'], ctx.guild.id)  # Refund
-                await ctx.reply("❌ Failed to add potion! You've been refunded.")
-                
-        else:  # Regular items
-            if item_id == "vip":
-                try:
-                    role = await ctx.guild.create_role(
-                        name="VIP",
-                        color=discord.Color.gold(),
-                        reason=f"VIP role purchased by {ctx.author}"
-                    )
-                    await ctx.author.add_roles(role)
-                    await ctx.reply(f"✨ VIP role created and assigned!")
-                except:
-                    await db.update_balance(ctx.author.id, found_item['price'], ctx.guild.id)  # Refund
-                    return await ctx.reply("Failed to create VIP role. You've been refunded.")
-            elif item_id == "color":
-                try:
-                    await ctx.author.send("Reply with a hex color code (e.g., #FF0000)")
-                    color_msg = await self.bot.wait_for(
-                        'message',
-                        check=lambda m: m.author == ctx.author and m.channel.type == discord.ChannelType.private,
-                        timeout=30
-                    )
-                    color = await commands.ColorConverter().convert(ctx, color_msg.content)
-                    role = await ctx.guild.create_role(
-                        name=f"{ctx.author.name}'s Color",
-                        color=color,
-                        reason=f"Custom color purchased by {ctx.author}"
-                    )
-                    await ctx.author.add_roles(role)
-                except:
-                    await db.update_balance(ctx.author.id, found_item['price'], ctx.guild.id)  # Refund
-                    return await ctx.reply("Color selection failed. You've been refunded.")
-            elif item_id == "bank_upgrade":
-                if await db.increase_bank_limit(ctx.author.id, 5000, ctx.guild.id):
-                    embed = discord.Embed(
-                        description=f"✨ Bank storage increased by **5,000** {self.currency}\n" \
-                                  f"New limit: **{await db.get_bank_limit(ctx.author.id, ctx.guild.id)}** {self.currency}",
-                        color=discord.Color.green()
-                    )
-                    return await ctx.reply(embed=embed)
-                else:
-                    await db.update_balance(ctx.author.id, found_item['price'], ctx.guild.id)  # Refund
-                    return await ctx.reply("Failed to upgrade bank. You've been refunded.")
-                    
-            await ctx.reply(f"Successfully purchased **{found_item['name']}**!")
-        # Handle special items (global shop only)
-        if item_id == "vip":
-            role = await ctx.guild.create_role(
-                name="VIP",
-                color=discord.Color.gold(),
-                reason=f"VIP role purchased by {ctx.author}"
-            )
-            await ctx.author.add_roles(role)
-        elif item_id == "color":
-            try:
-                await ctx.author.send("Reply with a hex color code (e.g., #FF0000)")
-                color_msg = await self.bot.wait_for(
-                    'message',
-                    check=lambda m: m.author == ctx.author and m.channel.type == discord.ChannelType.private,
-                    timeout=30
-                )
-                color = await commands.ColorConverter().convert(ctx, color_msg.content)
-                role = await ctx.guild.create_role(
-                    name=f"{ctx.author.name}'s Color",
-                    color=color,
-                    reason=f"Custom color purchased by {ctx.author}"
-                )
-                await ctx.author.add_roles(role)
-            except:
-                await db.update_balance(ctx.author.id, item['price'], ctx.guild.id)  # Refund
-                return await ctx.reply("Color selection failed. You've been refunded.")
-        elif item_id == "bank_upgrade":
-            if await db.increase_bank_limit(ctx.author.id, 5000, ctx.guild.id):
-                embed = discord.Embed(
-                    description=f"✨ Bank storage increased by **5,000** {self.currency}\n" \
-                              f"New limit: **{await db.get_bank_limit(ctx.author.id, ctx.guild.id)}** {self.currency}",
-                    color=discord.Color.green()
-                )
-                return await ctx.reply(embed=embed)
-            else:
-                await db.update_balance(ctx.author.id, item['price'], ctx.guild.id)  # Refund
-                return await ctx.reply("Failed to upgrade bank. You've been refunded.")
-        
-        await ctx.reply(f"Successfully purchased **{item['name']}**!")
+        if success:
+            await ctx.reply(f"✅ {message}")
+        else:
+            await ctx.reply(f"❌ {message}")
 
     @commands.command(aliases=['cf'])
     @commands.cooldown(1, 3, commands.BucketType.user)
@@ -978,90 +1048,114 @@ class Economy(commands.Cog):
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop_items(self, ctx):
         """View general items shop"""
-        shop_data = await self.get_shop_items()
-        items = shop_data.get("items", {})
+        items = await db.get_shop_items("items", ctx.guild.id if ctx.guild else None)
+        if not items:
+            return await ctx.reply("❌ No items available in the shop!")
+        
+        # Ensure items is a list of dictionaries with required fields
+        if not isinstance(items, list):
+            items = list(items.values()) if isinstance(items, dict) else []
         
         if not items:
-            return await ctx.reply("No items available in the shop!")
-            
-        pages = []
-        chunks = [list(items.items())[i:i+5] for i in range(0, len(items), 5)]
+            return await ctx.reply("❌ No items available in the shop!")
         
-        for chunk in chunks:
+        # Validate items
+        valid_items = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if not all(key in item for key in ['name', 'price', 'description', 'id']):
+                continue
+            
+            # Ensure values aren't None or empty
+            if not all(str(item[key]).strip() for key in ['name', 'description']):
+                continue
+                
+            valid_items.append(item)
+        
+        if not valid_items:
+            return await ctx.reply("❌ No valid items available in the shop!")
+        
+        try:
+            balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+            balance_str = str(balance) if balance is not None else "0"
+        except Exception:
+            balance_str = "0"
+        
+        # Create pages
+        pages = []
+        chunks = [valid_items[i:i+5] for i in range(0, len(valid_items), 5)]
+        
+        for page_num, chunk in enumerate(chunks, 1):
             embed = discord.Embed(
                 title="🛍️ Item Shop",
-                description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}",
+                description=f"💰 Your Balance: **{balance_str}** {self.currency}",
                 color=discord.Color.blue()
             )
             
-            for item_id, item in chunk:
+            for item in chunk:
+                # Truncate description if too long
+                desc = str(item['description'])[:900]
+                if len(str(item['description'])) > 900:
+                    desc += "..."
+                
+                # Create field name
+                field_name = f"{str(item['name'])[:200]} - {item['price']} {self.currency}"
+                
+                # Create field value
+                field_value = f"{desc}\n💳 `{ctx.prefix}buy {item['id']}` to purchase"
+                
+                # Safety check on field value length
+                if len(field_value) > 1024:
+                    field_value = field_value[:1020] + "..."
+                
                 embed.add_field(
-                    name=f"{item['name']} - {item['price']} {self.currency}",
-                    value=f"{item['description']}\n`buy {item_id}` to purchase",
+                    name=field_name,
+                    value=field_value,
                     inline=False
                 )
-                
+            
+            # Add page footer
+            if len(chunks) > 1:
+                embed.set_footer(text=f"Page {page_num}/{len(chunks)} • {len(valid_items)} total items")
+            else:
+                embed.set_footer(text=f"{len(valid_items)} items available")
+            
             pages.append(embed)
-            
-        if pages:
-            view = HelpPaginator(pages, ctx.author)
-            view.update_buttons()
-            message = await ctx.reply(embed=pages[0], view=view)
-            view.message = message
-            
-    @shop.command(name="upgrades")
-    @commands.cooldown(1, 3, commands.BucketType.user)
-    async def shop_upgrades(self, ctx):
-        """View available upgrades"""
-        upgrades = {
-            "bank_upgrade": {
-                "name": "Bank Upgrade",
-                "price": 2500,
-                "description": "Increase bank limit by 5000"
-            },
-            "rod_upgrade": {
-                "name": "Rod Enhancement",
-                "price": 10000,
-                "description": "Upgrade your current rod's multiplier by 0.2x"
-            }
-        }
         
-        embed = discord.Embed(
-            title="⚡ Upgrades Shop",
-            description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}",
-            color=discord.Color.blue()
-        )
-        
-        for upgrade_id, upgrade in upgrades.items():
-            embed.add_field(
-                name=f"{upgrade['name']} - {upgrade['price']} {self.currency}",
-                value=f"{upgrade['description']}\n`buy {upgrade_id}` to purchase",
-                inline=False
-            )
-            
-        await ctx.reply(embed=embed)
+        # Create and send with custom view
+        view = EconomyShopView(pages, ctx.author)
+        message = await ctx.reply(embed=pages[0], view=view)
+        view.message = message
         
     @shop.command(name="rods", aliases=["rod"])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop_rods(self, ctx):
         """View available fishing rods"""
-        shop_data = await self.get_shop_items()
-        if "rod_shop" not in shop_data:
+        rods = await db.get_shop_items("fishing", ctx.guild.id if ctx.guild else None)
+        
+        if not rods:
             return await ctx.reply("Rod shop is currently unavailable!")
             
-        rods = shop_data["rod_shop"]
+        # Filter for rods only
+        rod_items = [item for item in rods if item.get('type') == 'rod']
+        
+        if not rod_items:
+            return await ctx.reply("No rods available!")
+            
         pages = []
         
-        for rod_id, rod in rods.items():
+        for rod in rod_items:
             embed = discord.Embed(
                 title="🎣 Fishing Rod Shop",
                 description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}",
                 color=discord.Color.blue()
             )
             
+            rod_id = rod.get('id', rod.get('_id', 'unknown'))
             embed.add_field(
                 name=f"{rod['name']} - {rod['price']} {self.currency}",
-                value=f"{rod['description']}\nMultiplier: {rod['multiplier']}x\n`buy {rod_id}` to purchase",
+                value=f"{rod['description']}\nMultiplier: {rod.get('multiplier', 1)}x\n`buy {rod_id}` to purchase",
                 inline=False
             )
             pages.append(embed)
@@ -1071,21 +1165,25 @@ class Economy(commands.Cog):
             view.update_buttons()
             message = await ctx.reply(embed=pages[0], view=view)
             view.message = message
-        else:
-            await ctx.reply("No rods available!")
             
     @shop.command(name="bait", aliases=["baits"])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def shop_bait(self, ctx):
         """View available fishing bait"""
-        shop_data = await self.get_shop_items()
-        if "bait_shop" not in shop_data:
+        fishing_items = await db.get_shop_items("fishing", ctx.guild.id if ctx.guild else None)
+        
+        if not fishing_items:
             return await ctx.reply("Bait shop is currently unavailable!")
             
-        baits = shop_data["bait_shop"]
+        # Filter for bait only
+        baits = [item for item in fishing_items if item.get('type') == 'bait']
+        
+        if not baits:
+            return await ctx.reply("No bait available!")
+            
         pages = []
         
-        for bait_id, bait in baits.items():
+        for bait in baits:
             embed = discord.Embed(
                 title="🪱 Fishing Bait Shop",
                 description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}",
@@ -1097,13 +1195,14 @@ class Economy(commands.Cog):
             for fish_type, rate in bait.get("catch_rates", {}).items():
                 if rate > 0:
                     rates.append(f"{fish_type.title()}: {int(rate * 100)}%")
-                    
+            
+            bait_id = bait.get('id', bait.get('_id', 'unknown'))        
             embed.add_field(
                 name=f"{bait['name']} - {bait['price']} {self.currency}",
                 value=f"{bait['description']}\n" \
-                      f"Amount: {bait['amount']} per purchase\n" \
-                      f"Catch Rates: {', '.join(rates)}\n" \
-                      f"`buy {bait_id}` to purchase",
+                    f"Amount: {bait.get('amount', 1)} per purchase\n" \
+                    f"Catch Rates: {', '.join(rates) if rates else 'Standard'}\n" \
+                    f"`buy {bait_id}` to purchase",
                 inline=False
             )
             pages.append(embed)
@@ -1113,8 +1212,134 @@ class Economy(commands.Cog):
             view.update_buttons()
             message = await ctx.reply(embed=pages[0], view=view)
             view.message = message
-        else:
-            await ctx.reply("No bait available!")
+
+    @shop.command(name="potions")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def shop_potions(self, ctx):
+        """View available potions"""
+        potions = await db.get_shop_items("potions", ctx.guild.id if ctx.guild else None)
+        
+        if not potions:
+            return await ctx.reply("No potions available in the shop!")
+            
+        embed = discord.Embed(
+            title="🧪 Potion Shop",
+            description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id)}** {self.currency}",
+            color=discord.Color.purple()
+        )
+        
+        for potion in potions:
+            duration = potion.get('duration', 60)
+            duration_text = f"{duration} minutes"
+            if duration >= 60:
+                hours = duration // 60
+                minutes = duration % 60
+                if minutes == 0:
+                    duration_text = f"{hours} hour{'s' if hours > 1 else ''}"
+                else:
+                    duration_text = f"{hours}h {minutes}m"
+            
+            potion_id = potion.get('id', potion.get('_id', 'unknown'))
+            embed.add_field(
+                name=f"{potion['name']} - {potion['price']} {self.currency}",
+                value=f"{potion['description']}\n" \
+                    f"Type: {potion.get('type', 'general').title()}\n" \
+                    f"Multiplier: {potion.get('multiplier', 1)}x\n" \
+                    f"Duration: {duration_text}\n" \
+                    f"`buy {potion_id}` to purchase",
+                inline=False
+            )
+            
+        await ctx.reply(embed=embed)
+    async def buy_item(self, user_id: int, item_id: str, guild_id: int = None) -> tuple[bool, str]:
+        """Buy an item from any shop"""
+        if not await self.ensure_connected():
+            return False, "Database connection failed"
+            
+        try:
+            # Check all shop collections for the item
+            item = None
+            item_type = None
+            
+            # Check shop_items
+            item = await self.db.shop_items.find_one({"id": item_id})
+            if item:
+                item_type = "item"
+            
+            # Check shop_fishing
+            if not item:
+                item = await self.db.shop_fishing.find_one({"id": item_id})
+                if item:
+                    item_type = "fishing"
+            
+            # Check shop_potions
+            if not item:
+                item = await self.db.shop_potions.find_one({"id": item_id})
+                if item:
+                    item_type = "potion"
+                    
+            # Check shop_upgrades
+            if not item:
+                item = await self.db.shop_upgrades.find_one({"id": item_id})
+                if item:
+                    item_type = "upgrade"
+            
+            if not item:
+                return False, "Item not found in any shop"
+                
+            # Check if user has enough money
+            wallet_balance = await self.get_wallet_balance(user_id, guild_id)
+            if wallet_balance < item["price"]:
+                return False, f"Insufficient funds. Need {item['price']}, have {wallet_balance}"
+                
+            # Process the purchase based on item type
+            async with await self.client.start_session() as session:
+                async with session.start_transaction():
+                    # Deduct money
+                    if not await self.update_wallet(user_id, -item["price"], guild_id):
+                        return False, "Failed to deduct payment"
+                    
+                    # Handle different item types
+                    if item_type == "fishing":
+                        if item["type"] == "rod":
+                            if not await self.add_fishing_item(user_id, item, "rod"):
+                                await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                                return False, "Failed to add fishing rod"
+                        elif item["type"] == "bait":
+                            if not await self.add_fishing_item(user_id, item, "bait"):
+                                await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                                return False, "Failed to add fishing bait"
+                                
+                    elif item_type == "potion":
+                        if not await self.add_potion(user_id, item):
+                            await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                            return False, "Failed to activate potion"
+                            
+                    elif item_type == "upgrade":
+                        if item["type"] == "bank":
+                            if not await self.increase_bank_limit(user_id, item["amount"], guild_id):
+                                await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                                return False, "Failed to upgrade bank"
+                        elif item["type"] == "fishing":
+                            # Handle rod upgrade logic here
+                            pass
+                            
+                    elif item_type == "item":
+                        # Add to inventory
+                        result = await self.db.users.update_one(
+                            {"_id": str(user_id)},
+                            {"$push": {"inventory": item}},
+                            upsert=True
+                        )
+                        if result.modified_count == 0 and not result.upserted_id:
+                            await self.update_wallet(user_id, item["price"], guild_id)  # Refund
+                            return False, "Failed to add item to inventory"
+                    
+                    return True, f"Successfully purchased {item['name']}!"
+                    
+        except Exception as e:
+            self.logger.error(f"Failed to buy item {item_id}: {e}")
+            return False, f"Purchase failed: {str(e)}"
 
     @commands.command()
     @commands.cooldown(1, 3, commands.BucketType.user)
@@ -1395,7 +1620,7 @@ class Economy(commands.Cog):
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def rod_shop(self, ctx):
         """View available fishing rods"""
-        shop_data = await self.get_shop_items()
+        shop_data = await self.get_shop_items("rod_shop", ctx.guild.id if ctx.guild else None)
         if "rod_shop" not in shop_data:
             return await ctx.reply("❌ Rod shop is currently unavailable!")
             
@@ -1426,7 +1651,7 @@ class Economy(commands.Cog):
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def bait_shop(self, ctx):
         """View available fishing bait"""
-        shop_data = await self.get_shop_items()
+        shop_data = await self.get_shop_items("bait_shop", ctx.guild.id if ctx.guild else None)
         if "bait_shop" not in shop_data:
             return await ctx.reply("❌ Bait shop is currently unavailable!")
             
