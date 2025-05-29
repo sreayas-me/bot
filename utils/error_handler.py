@@ -50,10 +50,7 @@ class ErrorHandler:
                 await ctx.reply("❌ You don't meet the requirements to use this command")
                 
             else:
-                await ctx.reply(
-                    f"❌ An unexpected error occurred! Error ID: `{error_id}`\n"
-                    "This has been logged and will be investigated."
-                )
+                pass
                 
         except Exception as e:
             self.logger.error(f"Error handling error: {e}")

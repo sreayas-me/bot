@@ -264,19 +264,47 @@ class Utility(commands.Cog, ErrorHandler):
             await ctx.reply("```Failed to fetch first message```")
 
     @commands.command(aliases=['remindme', 'remind'])
-    async def reminder(self, ctx, time: str, *, message: str):
+    async def reminder(self, ctx, time: str=None, *, message: str="You asked me to remind you, but didnt give me a reason."):
         """Set a reminder. Example: .remindme 10m Take a break!"""
         units = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
         try:
             seconds = int(time[:-1]) * units[time[-1]]
         except Exception:
-            return await ctx.reply("Format: `.remindme 10m Take a break!` (s/m/h/d)")
-        await ctx.reply(f"⏰ I'll remind you in {time}: `{message}`")
+            return await ctx.reply(embed=discord.Embed(
+                description="Format: `.remindme 10m Take a break!` (s/m/h/d)",
+                color=discord.Color.red()
+            ))
+        if not time or not message:
+            return await ctx.reply(embed=discord.Embed(
+                description="Format: `.remindme 10m Take a break!` (s/m/h/d)",
+                color=discord.Color.red()
+            ))
+        if seconds <= 0:
+            return await ctx.reply(embed=discord.Embed(
+                description="Time must be positive!",
+                color=discord.Color.red()
+            ))
+        if seconds > 604800:  # 1 week
+            return await ctx.reply(embed=discord.Embed(
+                description="Time must be less than 1 week!",
+                color=discord.Color.red()
+            ))
+        
+        await ctx.reply(embed=discord.Embed(
+            description=f"⏰ I'll remind you in {time}: `{message}`",
+            color=discord.Color.green()
+        ))
         await asyncio.sleep(seconds)
         try:
-            await ctx.author.send(f"⏰ Reminder: {message}")
+            await ctx.author.send(embed=discord.Embed(
+                description=f"⏰ Reminder: {message}",
+                color=discord.Color.blue()
+            ))
         except Exception:
-            await ctx.send(f"{ctx.author.mention} ⏰ Reminder: {message}")
+            await ctx.send(embed=discord.Embed(
+                description=f"{ctx.author.mention} ⏰ Reminder: {message}",
+                color=discord.Color.blue()
+            ))
 
     @commands.command()
     async def multipoll(self, ctx, question: str, *options):
