@@ -292,19 +292,31 @@ class Fun(commands.Cog, ErrorHandler):
                 "the quick brown fox jumps over the lazy dog",
                 "hello world this is a simple test",
                 "discord bots are pretty cool",
-                "python is a great programming language"
+                "python is a great programming language",
+                "i love learning new things every day",
+                "practice makes perfect in everything you do",
+                "coding can be fun and rewarding",
+                "stay positive and keep moving forward"
             ],
             "medium": [
                 "tsukami has a lot of melanin on his bones",
                 "south bronx is a pretty cool server despite the vanity",
                 "there is no such thing as a free lunch in this world",
-                "programming requires patience and logical thinking skills"
+                "programming requires patience and logical thinking skills",
+                "sometimes mistakes are the best teachers in life",
+                "never underestimate the power of a kind word",
+                "consistency is the key to achieving your goals",
+                "every challenge is an opportunity to grow"
             ],
             "hard": [
                 "you are what you eat unless you eat yourself, then you are what you are",
                 "a man is not complete until he is married, then he is finished",
                 "the complexity of modern software systems requires careful architectural planning",
-                "asynchronous programming paradigms enable efficient resource utilization"
+                "asynchronous programming paradigms enable efficient resource utilization",
+                "perseverance in the face of adversity often leads to unexpected success",
+                "the intersection of creativity and logic defines the art of programming",
+                "understanding recursion requires first understanding recursion itself",
+                "effective communication is essential for collaborative problem solving"
             ]
         }
         
