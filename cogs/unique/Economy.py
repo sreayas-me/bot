@@ -413,22 +413,21 @@ class Economy(commands.Cog):
             await ctx.reply("An error occurred while processing your withdrawal.")
 
     @commands.command(aliases=['bal', 'cash', 'bb'])
-    @commands.cooldown(1, 3, commands.BucketType.user)
     async def balance(self, ctx, member: discord.Member = None):
-        """Check your balance or someone else's"""
         member = member or ctx.author
         wallet = await db.get_wallet_balance(member.id, ctx.guild.id)
         bank = await db.get_bank_balance(member.id, ctx.guild.id)
         bank_limit = await db.get_bank_limit(member.id, ctx.guild.id)
         
         embed = discord.Embed(
-            title=f"{member.display_name}'s BronkBuks Balance",
-            description=f"💵 Wallet: **{wallet:,}** {self.currency}\n" \
-                    f"🏦 Bank: **{bank:,}**/**{bank_limit:,}** {self.currency}\n" \
-                    f"💎 Net Worth: **{wallet + bank:,}** {self.currency}",
-            color=member.color or discord.Color.green()
+            title=f"{member.display_name}'s Balance",
+            description=(
+                f"💵 Wallet: **{wallet:,}** {self.currency}\n"
+                f"🏦 Bank: **{bank:,}**/**{bank_limit:,}** {self.currency}\n"
+                f"💰 Net Worth: **{wallet + bank:,}** {self.currency}"
+            ),
+            color=member.color
         )
-        embed.set_thumbnail(url=member.display_avatar.url)
         await ctx.reply(embed=embed)
 
     @commands.command(name="pay", aliases=["transfer", 'p'])
@@ -933,12 +932,23 @@ class Economy(commands.Cog):
     @commands.command()
     async def buy(self, ctx, item_id: str):
         """Buy an item from the shop"""
-        success, message = await db.buy_item(ctx.author.id, item_id, ctx.guild.id)
-        
-        if success:
-            await ctx.reply(f"✅ {message}")
-        else:
-            await ctx.reply(f"❌ {message}")
+        try:
+            # First try to buy normally
+            success, message = await db.buy_item_simple(ctx.author.id, item_id, ctx.guild.id)
+            
+            if success:
+                # If it's a bank upgrade, show new bank limit
+                if "bank_note" in item_id:
+                    new_limit = await db.get_bank_limit(ctx.author.id, ctx.guild.id)
+                    await ctx.reply(f"✅ {message}\nYour new bank limit is **{new_limit:,}** coins!")
+                else:
+                    await ctx.reply(f"✅ {message}")
+            else:
+                await ctx.reply(f"❌ {message}")
+                
+        except Exception as e:
+            self.logger.error(f"Buy command error: {e}")
+            await ctx.reply("❌ Failed to complete purchase. Please try again later.")
 
     @commands.command(aliases=['jp'])
     async def jackpot(self, ctx, bet_amount: str = "25"):
@@ -1238,7 +1248,7 @@ class Economy(commands.Cog):
 
                 elif action in ['double', 'd'] and can_double:
                     # Double the bet
-                    if not await db.update_balance(ctx.author.id, -bet, ctx.guild.id):
+                    if not await db.update_wallet(ctx.author.id, -bet, ctx.guild.id):
                         await ctx.send("Not enough money to double down!")
                         continue
                     
@@ -1249,7 +1259,7 @@ class Economy(commands.Cog):
 
                 elif action in ['split', 'sp'] and can_split:
                     # Split the hand
-                    if not await db.update_balance(ctx.author.id, -bet, ctx.guild.id):
+                    if not await db.update_wallet(ctx.author.id, -bet, ctx.guild.id):
                         await ctx.send("Not enough money to split!")
                         continue
                     
@@ -1297,7 +1307,7 @@ class Economy(commands.Cog):
 
         # Update balance
         if total_winnings > 0:
-            await db.update_balance(ctx.author.id, total_winnings, ctx.guild.id)
+            await db.update_wallet(ctx.author.id, total_winnings, ctx.guild.id)
 
         # Show final results
         embed = discord.Embed(
@@ -1364,7 +1374,7 @@ class Economy(commands.Cog):
                 inline=True
             )
             
-        embed.set_footer(text=f"Your Balance: {await db.get_wallet_balance(ctx.author.id)} {self.currency}")
+        embed.set_footer(text=f"Your Balance: {await db.get_wallet_balance(ctx.author.id)}")
         await ctx.reply(embed=embed)
         
     @shop.command(name="items")
@@ -1695,6 +1705,93 @@ class Economy(commands.Cog):
         except Exception as e:
             self.logger.error(f"Error in potion shop: {e}")
             await ctx.reply("An error occurred while loading the potion shop.")
+
+    @shop.command(name="upgrades")
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def shop_upgrades(self, ctx):
+        """View available upgrades like bank expansions"""
+        try:
+            # Get upgrade items from database
+            upgrades = await db.get_shop_items("upgrades", ctx.guild.id if ctx.guild else None)
+            
+            if not upgrades:
+                return await ctx.reply("❌ No upgrades available in the shop!")
+                
+            # Ensure upgrades is a list of dictionaries with required fields
+            if not isinstance(upgrades, list):
+                upgrades = list(upgrades.values()) if isinstance(upgrades, dict) else []
+                
+            if not upgrades:
+                return await ctx.reply("❌ No upgrades available in the shop!")
+                
+            # Validate upgrade items
+            valid_upgrades = []
+            for upgrade in upgrades:
+                if not isinstance(upgrade, dict):
+                    continue
+                if not all(key in upgrade for key in ['name', 'price', 'description', 'id', 'type', 'amount']):
+                    continue
+                # Skip non-bank upgrades
+                if upgrade.get('type') != 'bank':
+                    continue
+                # Ensure values aren't None or empty
+                if not all(str(upgrade[key]).strip() for key in ['name', 'description']):
+                    continue
+                valid_upgrades.append(upgrade)
+                
+            if not valid_upgrades:
+                return await ctx.reply("❌ No valid bank upgrades available in the shop!")
+                
+            try:
+                balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+                balance_str = str(balance) if balance is not None else "0"
+            except Exception:
+                balance_str = "0"
+                
+            # Create pages with simplified format
+            pages = []
+            chunks = [valid_upgrades[i:i+5] for i in range(0, len(valid_upgrades), 5)]
+            
+            for page_num, chunk in enumerate(chunks, 1):
+                embed = discord.Embed(
+                    title="⚡ Upgrade Shop",
+                    description=f"💰 Your Balance: **{balance_str}** {self.currency}",
+                    color=discord.Color.gold()
+                )
+                
+                for upgrade in chunk:
+                    # Create field name with price
+                    field_name = f"{str(upgrade['name'])[:30]} - {upgrade['price']} {self.currency}"
+                    
+                    # Create field value with buy command
+                    field_value = (
+                        f"Increases bank limit by **{upgrade['amount']:,}** coins\n"
+                        f"{upgrade['description']}\n"
+                        f"`buy {upgrade['id']}`"
+                    )
+                    
+                    embed.add_field(
+                        name=field_name,
+                        value=field_value,
+                        inline=False
+                    )
+                
+                # Add page footer
+                if len(chunks) > 1:
+                    embed.set_footer(text=f"Page {page_num}/{len(chunks)} • {len(valid_upgrades)} total upgrades")
+                else:
+                    embed.set_footer(text=f"{len(valid_upgrades)} upgrades available")
+                    
+                pages.append(embed)
+            
+            # Create and send with EconomyShopView (which doesn't have the select menu issue)
+            view = EconomyShopView(pages, ctx.author)
+            message = await ctx.reply(embed=pages[0], view=view)
+            view.message = message
+            
+        except Exception as e:
+            self.logger.error(f"Error in upgrades shop: {e}")
+            await ctx.reply("An error occurred while loading the upgrades shop.")
 
     async def buy_item(self, user_id: int, item_id: str, guild_id: int = None) -> tuple[bool, str]:
         """Buy an item from any shop"""

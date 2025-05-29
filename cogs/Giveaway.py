@@ -144,6 +144,16 @@ class Giveaway(commands.Cog):
         # Store stats
         await async_db.store_stats(ctx.guild.id, "donated")
 
+        if ctx.guild.id == 1259717095382319215:
+            role = discord.utils.get(ctx.guild.roles, id=1261514786311766106)
+            if role:
+                try:
+                    await ctx.author.add_roles(role)
+                except Exception as e:
+                    self.logger.error(f"Error assigning role: {e}")
+                    await ctx.reply("❌ Failed to assign the donor role!")
+
+
         embed = discord.Embed(
             title="💝 Donation Successful!",
             description=f"{ctx.author.mention} donated **{amount:,}** coins to the server giveaway balance!",

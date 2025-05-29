@@ -425,11 +425,18 @@ class AsyncDatabase:
                 
             elif item_type == "upgrade":
                 if item["type"] == "bank":
-                    success = await self.increase_bank_limit(user_id, item["amount"], guild_id)
-                    error_msg = "Failed to upgrade bank"
-                elif item["type"] == "fishing":
-                    # Handle rod upgrade logic here
-                    success = True  # Placeholder
+                    # Handle bank upgrade
+                    current_limit = await self.get_bank_limit(user_id, guild_id)
+                    new_limit = current_limit + item["amount"]
+                    
+                    # Update bank limit
+                    result = await self.db.users.update_one(
+                        {"_id": str(user_id)},
+                        {"$set": {"bank_limit": new_limit}}
+                    )
+                    if result.modified_count > 0:
+                        return True, f"✅ Bank limit increased to {new_limit} coins!"
+                    return False, "❌ Failed to upgrade bank"
                     
             elif item_type == "item":
                 # Add to inventory
@@ -527,6 +534,26 @@ class AsyncDatabase:
         if not await self.ensure_connected():
             return False
             
+        if await self.db.shop_upgrades.count_documents({}) == 0:
+            await self.db.shop_upgrades.insert_many([
+                {
+                    "id": "bank_note_small",
+                    "name": "Small Bank Note",
+                    "price": 5000,
+                    "type": "bank",
+                    "amount": 10000,
+                    "description": "Expand your bank storage"
+                },
+                {
+                    "id": "bank_note_large",
+                    "name": "Large Bank Note",
+                    "price": 20000,
+                    "type": "bank",
+                    "amount": 50000,
+                    "description": "Significantly expand your bank storage"
+                }
+            ])
+
         # Create collections if they don't exist
         collections = [
             "users",
