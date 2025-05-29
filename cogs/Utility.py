@@ -432,10 +432,17 @@ class Utility(commands.Cog, ErrorHandler):
     @commands.command()
     async def botinfo(self, ctx):
         """Show bot statistics and info."""
+        delta = discord.utils.utcnow() - self.bot.launch_time
+        total_seconds = int(delta.total_seconds())
+        days, remainder = divmod(total_seconds, 86400)
+        hours, remainder = divmod(remainder, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        uptime_str = f"{days} days, {hours} hours, {minutes} minutes, {seconds} seconds"
+
         embed = discord.Embed(
             title="Bot Info",
             color=0x2b2d31,
-            description=f"Uptime: {(discord.utils.utcnow() - self.bot.launch_time)}"
+            description=f"Uptime: {uptime_str}"
         )
         embed.add_field(name="Servers", value=len(self.bot.guilds))
         embed.add_field(name="Users", value=len(set(self.bot.get_all_members())))
