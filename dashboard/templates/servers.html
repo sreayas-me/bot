@@ -18,7 +18,7 @@
     <meta property="og:title" content="BronxBot - Server Management">
     <meta property="og:description" content="Manage your Discord servers with BronxBot. Configure settings, view server statistics, and optimize your server experience all in one place.">
     <meta property="og:image" content="{{ url_for('static', filename='images/southbronx.png', _external=True) }}">
-    <meta name="theme-color" content="#5865F2">f
+    <meta name="theme-color" content="#5865F2">
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="{{ request.url }}">
@@ -28,18 +28,97 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* Responsive grid improvements */
+        .server-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        .server-card {
+            background: #23272a;
+            border-radius: 12px;
+            padding: 1.5rem;
+            display: flex;
+            align-items: center;
+            transition: box-shadow 0.2s, transform 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            text-decoration: none;
+            color: inherit;
+        }
+        .server-card.active:hover, .server-card.active:focus {
+            box-shadow: 0 4px 16px #5865f2aa;
+            transform: translateY(-2px) scale(1.02);
+        }
+        .server-card.disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        .server-icon img, .server-icon i {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: #2c2f33;
+            object-fit: cover;
+            display: block;
+        }
+        .server-icon {
+            margin-right: 1.2rem;
+            flex-shrink: 0;
+        }
+        .server-info h3 {
+            margin: 0 0 0.5rem 0;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+        .server-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        .server-status.active {
+            color: #43b581;
+        }
+        .server-status.inactive {
+            color: #f04747;
+        }
+        .add-bot-link {
+            color: #5865f2;
+            text-decoration: underline;
+            font-weight: 500;
+        }
+        .add-bot-link:hover, .add-bot-link:focus {
+            color: #4752c4;
+        }
+        .settings-hint {
+            color: #aaa;
+            font-size: 0.95em;
+        }
+        @media (max-width: 600px) {
+            .server-card {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .server-icon {
+                margin-right: 0;
+                margin-bottom: 1rem;
+            }
+        }
+    </style>
 </head>
 <body>
-    <nav class="navbar">
+    <nav class="navbar" aria-label="Main navigation">
         <div class="nav-content">
-            <button id="nav-toggle" class="nav-toggle">
+            <button id="nav-toggle" class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
                 <i class="fas fa-bars"></i>
             </button>
             <a href="/" class="nav-brand">BronxBot</a>
             <div class="nav-links collapsible">
                 <a href="/" class="nav-link">Dashboard</a>
                 <a href="/settings" class="nav-link">Settings</a>
-                <a href="/servers" class="nav-link active">Servers</a>
+                <a href="/servers" class="nav-link active" aria-current="page">Servers</a>
                 <a href="/logout" class="nav-link">Logout</a>
             </div>
         </div>
@@ -51,47 +130,47 @@
                 <h1>Your Servers</h1>
                 <p>Manage bot settings for your Discord servers</p>
                 
-                <div class="server-grid">
+                <div class="server-grid" role="list">
                     {% for guild in guilds %}
                         {% if guild.bot_present %}
-                            <a href="{{ '/servers/' + guild.id + '/settings' }}" class="server-card active">
+                            <a href="{{ '/servers/' + guild.id + '/settings' }}" class="server-card active" role="listitem" tabindex="0" aria-label="Configure {{ guild.name|e }}">
                                 <div class="server-icon">
                                     {% if guild.icon_url %}
-                                        <img src="{{ guild.icon_url }}" alt="{{ guild.name }}">
+                                        <img src="{{ guild.icon_url }}" alt="{{ guild.name|e }} icon">
                                     {% else %}
-                                        <i class="fas fa-server"></i>
+                                        <i class="fas fa-server" aria-hidden="true"></i>
                                     {% endif %}
                                 </div>
                                 <div class="server-info">
-                                    <h3>{{ guild.name }}</h3>
+                                    <h3>{{ guild.name|e }}</h3>
                                     <div class="server-actions">
-                                        <span class="server-status active">
-                                            <i class="fas fa-check"></i> Bot Active
+                                        <span class="server-status active" title="Bot is active in this server">
+                                            <i class="fas fa-check" aria-hidden="true"></i> Bot Active
                                         </span>
-                                        <span class="settings-hint">
-                                            <i class="fas fa-cog"></i> Configure Settings
+                                        <span class="settings-hint" title="Configure server settings">
+                                            <i class="fas fa-cog" aria-hidden="true"></i> Configure Settings
                                         </span>
                                     </div>
                                 </div>
                             </a>
                         {% else %}
-                            <div class="server-card disabled">
+                            <div class="server-card disabled" role="listitem" aria-disabled="true">
                                 <div class="server-icon">
                                     {% if guild.icon_url %}
-                                        <img src="{{ guild.icon_url }}" alt="{{ guild.name }}">
+                                        <img src="{{ guild.icon_url }}" alt="{{ guild.name|e }} icon">
                                     {% else %}
-                                        <i class="fas fa-server"></i>
+                                        <i class="fas fa-server" aria-hidden="true"></i>
                                     {% endif %}
                                 </div>
                                 <div class="server-info">
-                                    <h3>{{ guild.name }}</h3>
+                                    <h3>{{ guild.name|e }}</h3>
                                     <div class="server-actions">
-                                        <span class="server-status inactive">
-                                            <i class="fas fa-times"></i> Bot Not Added
+                                        <span class="server-status inactive" title="Bot is not in this server">
+                                            <i class="fas fa-times" aria-hidden="true"></i> Bot Not Added
                                         </span>
                                         <a href="https://discord.com/api/oauth2/authorize?client_id={{ config.CLIENT_ID }}&permissions=8&scope=bot%20applications.commands&guild_id={{ guild.id }}" 
-                                           class="add-bot-link">
-                                            <i class="fas fa-plus"></i> Add Bot
+                                           class="add-bot-link" title="Add BronxBot to this server" tabindex="0">
+                                            <i class="fas fa-plus" aria-hidden="true"></i> Add Bot
                                         </a>
                                     </div>
                                 </div>

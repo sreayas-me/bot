@@ -2,19 +2,20 @@ import discord
 import random
 import json
 import logging
+import re
+from uuid import uuid4
 from discord.ext import commands, tasks
-import datetime
-import asyncio
+from discord.utils import utcnow
 from cogs.logging.logger import CogLogger
 from utils.db import async_db
 
 class Giveaway(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.logger = CogLogger(self.__class__.__name__)
-        self.bot.launch_time = discord.utils.utcnow()
-        self.active_giveaways = {}  # Store active giveaways in memory
-        self.check_giveaways.start()  # Start background task
+        self.bot.launch_time = utcnow()
+        self.active_giveaways: dict[str, dict] = {}
+        self.check_giveaways.start()
         self.logger.info("Giveaway cog initialized")
 
     def cog_unload(self):
@@ -25,22 +26,18 @@ class Giveaway(commands.Cog):
     async def check_giveaways(self):
         """Check for expired giveaways every 30 seconds"""
         try:
-            current_time = datetime.datetime.now()
-            expired_giveaways = []
-            
-            for giveaway_id, giveaway_data in self.active_giveaways.items():
-                if current_time >= giveaway_data['end_time']:
-                    expired_giveaways.append(giveaway_id)
-            
+            current_time = utcnow()
+            expired_giveaways = [
+                gid for gid, data in self.active_giveaways.items()
+                if current_time >= data['end_time']
+            ]
             for giveaway_id in expired_giveaways:
                 await self.end_giveaway(giveaway_id)
-                
         except Exception as e:
             self.logger.error(f"Error checking giveaways: {e}")
 
     @check_giveaways.before_loop
     async def before_check_giveaways(self):
-        """Wait for bot to be ready before starting the loop"""
         await self.bot.wait_until_ready()
 
     async def get_server_balance(self, guild_id: int) -> int:
@@ -57,10 +54,8 @@ class Giveaway(commands.Cog):
         try:
             current_balance = await self.get_server_balance(guild_id)
             new_balance = current_balance + amount
-            
             if new_balance < 0:
                 return False
-                
             return await async_db.update_guild_settings(guild_id, {'server_balance': new_balance})
         except Exception as e:
             self.logger.error(f"Error updating server balance: {e}")
@@ -69,15 +64,14 @@ class Giveaway(commands.Cog):
     async def get_multiplier_info(self, user_id: int) -> dict:
         """Get active multipliers for a user"""
         try:
-            # This would integrate with your potion/buff system
-            # For now, return a base multiplier
+            # Integrate with your potion/buff system here
             return {'multiplier': 1.0, 'description': 'No active multipliers'}
         except Exception as e:
             self.logger.error(f"Error getting multiplier info: {e}")
             return {'multiplier': 1.0, 'description': 'Error getting multipliers'}
 
     @commands.group(name='giveaway', aliases=['gw'], invoke_without_command=True)
-    async def giveaway_group(self, ctx):
+    async def giveaway_group(self, ctx: commands.Context):
         """Giveaway command group"""
         embed = discord.Embed(
             title="🎉 Giveaway Commands",
@@ -112,36 +106,30 @@ class Giveaway(commands.Cog):
         await ctx.send(embed=embed)
 
     @giveaway_group.command(name='donate')
-    async def donate_to_server(self, ctx, amount: int):
+    async def donate_to_server(self, ctx: commands.Context, amount: int):
         """Donate money to the server giveaway balance"""
         if amount <= 0:
             await ctx.reply("❌ Amount must be positive!")
             return
 
-        # Check if user has enough money
         wallet_balance = await async_db.get_wallet_balance(ctx.author.id, ctx.guild.id)
         if wallet_balance < amount:
             await ctx.reply(f"❌ Insufficient funds! You have {wallet_balance:,} coins but need {amount:,}.")
             return
 
-        # Get multiplier info
         multiplier_info = await self.get_multiplier_info(ctx.author.id)
         multiplier = multiplier_info['multiplier']
         boosted_amount = int(amount * multiplier)
 
-        # Deduct from user wallet
         if not await async_db.update_wallet(ctx.author.id, -amount, ctx.guild.id):
             await ctx.reply("❌ Failed to deduct donation from your wallet!")
             return
 
-        # Add to server balance
         if not await self.update_server_balance(ctx.guild.id, boosted_amount):
-            # Refund user if server balance update fails
             await async_db.update_wallet(ctx.author.id, amount, ctx.guild.id)
             await ctx.reply("❌ Failed to update server balance!")
             return
 
-        # Store stats
         await async_db.store_stats(ctx.guild.id, "donated")
 
         if ctx.guild.id == 1259717095382319215:
@@ -153,13 +141,11 @@ class Giveaway(commands.Cog):
                     self.logger.error(f"Error assigning role: {e}")
                     await ctx.reply("❌ Failed to assign the donor role!")
 
-
         embed = discord.Embed(
             title="💝 Donation Successful!",
             description=f"{ctx.author.mention} donated **{amount:,}** coins to the server giveaway balance!",
             color=discord.Color.green()
         )
-        
         if multiplier > 1.0:
             embed.add_field(
                 name="🚀 Multiplier Applied!",
@@ -178,7 +164,6 @@ class Giveaway(commands.Cog):
             value=f"**{server_balance:,}** coins",
             inline=True
         )
-        
         embed.set_footer(text=f"Thank you for contributing to {ctx.guild.name}!")
         await ctx.send(embed=embed)
 
@@ -197,39 +182,35 @@ class Giveaway(commands.Cog):
 
     @giveaway_group.command(name='create')
     @commands.has_permissions(manage_guild=True)
-    async def create_giveaway(self, ctx, amount: int, duration: str, *, description: str = "Amazing Giveaway!"):
+    async def create_giveaway(self, ctx: commands.Context, amount: int, duration: str, *, description: str = "Amazing Giveaway!"):
         """Create a new giveaway"""
         if amount <= 0:
             await ctx.reply("❌ Giveaway amount must be positive!")
             return
 
-        # Check server balance
         server_balance = await self.get_server_balance(ctx.guild.id)
         if server_balance < amount:
             await ctx.reply(f"❌ Insufficient server balance! Available: {server_balance:,}, needed: {amount:,}")
             return
 
-        # Parse duration
         try:
             duration_seconds = self.parse_duration(duration)
-            if duration_seconds < 60:  # Minimum 1 minute
+            if duration_seconds < 60:
                 await ctx.reply("❌ Minimum giveaway duration is 1 minute!")
                 return
-            if duration_seconds > 7 * 24 * 3600:  # Maximum 7 days
+            if duration_seconds > 7 * 24 * 3600:
                 await ctx.reply("❌ Maximum giveaway duration is 7 days!")
                 return
         except ValueError:
             await ctx.reply("❌ Invalid duration format! Use formats like: 1h, 30m, 2d, 1h30m")
             return
 
-        # Deduct from server balance
         if not await self.update_server_balance(ctx.guild.id, -amount):
             await ctx.reply("❌ Failed to deduct from server balance!")
             return
 
-        # Create giveaway embed
-        end_time = datetime.datetime.now() + datetime.timedelta(seconds=duration_seconds)
-        giveaway_id = f"{ctx.guild.id}_{int(datetime.datetime.now().timestamp())}"
+        end_time = utcnow() + discord.utils.timedelta(seconds=duration_seconds)
+        giveaway_id = str(uuid4())
 
         embed = discord.Embed(
             title="🎉 GIVEAWAY 🎉",
@@ -253,11 +234,9 @@ class Giveaway(commands.Cog):
         )
         embed.set_footer(text=f"Giveaway ID: {giveaway_id}")
 
-        # Send giveaway message
         giveaway_msg = await ctx.send(embed=embed)
         await giveaway_msg.add_reaction("🎉")
 
-        # Store giveaway data
         self.active_giveaways[giveaway_id] = {
             'guild_id': ctx.guild.id,
             'channel_id': ctx.channel.id,
@@ -266,12 +245,11 @@ class Giveaway(commands.Cog):
             'description': description,
             'end_time': end_time,
             'host_id': ctx.author.id,
-            'participants': []  # Changed from set() to []
+            'participants': []
         }
 
-        # Save to database (persistent storage)
         await async_db.update_guild_settings(
-            ctx.guild.id, 
+            ctx.guild.id,
             {f'giveaway_{giveaway_id}': self.active_giveaways[giveaway_id]}
         )
 
@@ -422,37 +400,28 @@ class Giveaway(commands.Cog):
                 del self.active_giveaways[giveaway_id]
 
     def parse_duration(self, duration_str: str) -> int:
-        """Parse duration string into seconds"""
-        duration_str = duration_str.lower().replace(' ', '')
+        """Parse duration string into seconds. Supports 1h30m, 2d, etc."""
+        pattern = re.compile(r'(\d+)([smhd])')
+        matches = pattern.findall(duration_str.lower().replace(' ', ''))
+        if not matches:
+            raise ValueError("Invalid duration format")
         total_seconds = 0
-        current_number = ''
-        
-        for char in duration_str:
-            if char.isdigit():
-                current_number += char
-            elif char in 'smhd':
-                if not current_number:
-                    raise ValueError("Invalid duration format")
-                
-                number = int(current_number)
-                if char == 's':
-                    total_seconds += number
-                elif char == 'm':
-                    total_seconds += number * 60
-                elif char == 'h':
-                    total_seconds += number * 3600
-                elif char == 'd':
-                    total_seconds += number * 86400
-                
-                current_number = ''
-            else:
-                raise ValueError("Invalid duration format")
-        
-        if current_number:
-            # Assume minutes if no unit specified
-            total_seconds += int(current_number) * 60
-            
+        for value, unit in matches:
+            value = int(value)
+            if unit == 's':
+                total_seconds += value
+            elif unit == 'm':
+                total_seconds += value * 60
+            elif unit == 'h':
+                total_seconds += value * 3600
+            elif unit == 'd':
+                total_seconds += value * 86400
         return total_seconds
+
+    async def handle_error(self, ctx: commands.Context, error: Exception, command_name: str = ""):
+        """Generic error handler for giveaway commands"""
+        self.logger.error(f"Error in {command_name}: {error}")
+        await ctx.reply("❌ An unexpected error occurred. Please try again later.")
 
     @donate_to_server.error
     async def donate_error(self, ctx, error):
