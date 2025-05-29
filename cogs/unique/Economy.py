@@ -1102,32 +1102,36 @@ class Economy(commands.Cog):
 
     @commands.command(aliases=['cf'])
     @commands.cooldown(1, 3, commands.BucketType.user)
-    async def coinflip(self, ctx, bet_amount: str, choice: str):
+    async def coinflip(self, ctx, bet_amount: str, choice: str = None):
         """Bet on a coinflip (heads/tails)"""
         balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
         bet, error = parse_bet(bet_amount, balance)
         
         if error:
-            return await ctx.reply(error)
+            return await ctx.reply(embed=discord.Embed(description=error, color=discord.Color.red()))
         
         if bet < 10:
-            return await ctx.reply("Minimum bet is 10!")
+            return await ctx.reply(embed=discord.Embed(description="Minimum bet is 10!", color=discord.Color.red()))
         
-        if choice.lower() not in ['heads', 'tails', 'h', 't']:
-            return await ctx.reply("Choose either 'heads' or 'tails'!")
+        if not choice or choice.lower() not in ['heads', 'tails', 'h', 't']:
+            return await ctx.reply(embed=discord.Embed(description="Choose either 'heads' or 'tails'!", color=discord.Color.red()))
         
         if not await db.update_wallet(ctx.author.id, -bet, ctx.guild.id):
-            return await ctx.reply("Insufficient funds!")
+            return await ctx.reply(embed=discord.Embed(description="Insufficient funds!", color=discord.Color.red()))
         
         result = random.choice(['heads', 'tails'])
         user_choice = choice[0].lower()
         
+        suspense = min(5, bet // 1000)  # 5 seconds max
+        msg = await ctx.reply(embed=discord.Embed(description=f"Flipping the coin... **{bet}** {self.currency} on the line...", color=discord.Color.blurple()))
+        await asyncio.sleep(suspense)
+        
         if (user_choice == 'h' and result == 'heads') or (user_choice == 't' and result == 'tails'):
             winnings = bet * 2
             await db.update_wallet(ctx.author.id, winnings, ctx.guild.id)
-            await ctx.reply(f"It's **{result}**! You won **{winnings}** {self.currency}!")
+            await msg.edit(embed=discord.Embed(description=f"**IT'S {result.upper()}!** You won **{winnings}** {self.currency}!", color=discord.Color.green()))
         else:
-            await ctx.reply(f"It's **{result}**! You lost **{bet}** {self.currency}!")
+            await msg.edit(embed=discord.Embed(description=f"**IT'S {result.upper()}!** You lost **{bet}** {self.currency}!", color=discord.Color.red()))
 
     @commands.command(aliases=['bj'])
     @commands.cooldown(1, 5, commands.BucketType.user)  # 5 second cooldown
