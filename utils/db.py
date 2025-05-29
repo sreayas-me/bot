@@ -8,29 +8,30 @@ import logging
 from typing import Dict, Any, Optional
 import threading
 
-# Initialize default config
-config = {
-    "MONGO_URI": os.getenv("MONGO_URI"),
-    "TOKEN": os.getenv("DISCORD_TOKEN"),
-    "CLIENT_ID": os.getenv("DISCORD_CLIENT_ID"),
-    "CLIENT_SECRET": os.getenv("DISCORD_CLIENT_SECRET"),
-    "OWNER_ID": os.getenv("DISCORD_BOT_OWNER_ID")
-}
+def load_config() -> dict:
+    """Load config from environment variables, then config.json as fallback."""
+    config = {
+        "MONGO_URI": os.getenv("MONGO_URI"),
+        "TOKEN": os.getenv("DISCORD_TOKEN"),
+        "CLIENT_ID": os.getenv("DISCORD_CLIENT_ID"),
+        "CLIENT_SECRET": os.getenv("DISCORD_CLIENT_SECRET"),
+        "OWNER_ID": os.getenv("DISCORD_BOT_OWNER_ID")
+    }
+    if not all([config["MONGO_URI"], config["TOKEN"], config["CLIENT_ID"]]):
+        try:
+            with open('data/config.json') as f:
+                file_config = json.load(f)
+                for key in config:
+                    if not config[key] and key in file_config:
+                        config[key] = file_config[key]
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logging.warning(f"Could not load config.json: {e}. Using environment variables only.")
+    return config
 
-# Try to load from config file if environment variables are not set
-if not all([config["MONGO_URI"], config["TOKEN"], config["CLIENT_ID"]]):
-    try:
-        with open('data/config.json') as f:
-            file_config = json.load(f)
-            # Update config with file values only if env vars are not set
-            for key in config:
-                if not config[key] and key in file_config:
-                    config[key] = file_config[key]
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logging.warning(f"Could not load config.json: {e}. Using environment variables only.")
+config = load_config()
 
 class AsyncDatabase:
-    """Async database class for use with Discord bot"""
+    """Async database class for use with Discord bot (MongoDB)"""
     _instance = None
     _client = None
     _db = None
@@ -51,7 +52,7 @@ class AsyncDatabase:
             MONGO_URI = os.getenv('MONGO_URI', config['MONGO_URI'])
             self._client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
         return self._client
-        
+
     @property
     def db(self):
         if self._db is None:
@@ -59,7 +60,7 @@ class AsyncDatabase:
         return self._db
 
     async def ensure_connected(self) -> bool:
-        """Ensure database connection is active"""
+        """Ensure database connection is active."""
         if not self._connected:
             try:
                 await self.client.admin.command('ping')
@@ -781,7 +782,7 @@ class AsyncDatabase:
         return False, "Failed to upgrade interest level"
 
 class SyncDatabase:
-    """Synchronous database class for use with Flask web interface"""
+    """Synchronous database class for use with Flask web interface (SQLite & MongoDB)"""
     _instance = None
     _client = None
     _db = None
@@ -795,42 +796,34 @@ class SyncDatabase:
                     cls._instance._connected = False
                     cls._instance.logger = logging.getLogger('SyncDatabase')
         return cls._instance
-        
+
     def __init__(self):
         if hasattr(self, '_initialized'):
             return
-            
         self._initialized = True
         self._connected = False
         self.logger = logging.getLogger('SyncDatabase')
-        
+
         # Ensure data directory exists
         data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
         os.makedirs(data_dir, exist_ok=True)
-        
-        # Get database path from environment or use default
         db_path = os.getenv('SQLITE_DATABASE_PATH', os.path.join(data_dir, 'database.sqlite'))
         self.logger.info(f"Using SQLite database at {db_path}")
-        
+
         try:
-            # Initialize SQLite connection
             import sqlite3
             self.conn = sqlite3.connect(db_path, check_same_thread=False)
             self.cursor = self.conn.cursor()
-            
-            # Create tables if they don't exist
             self._create_tables()
             self.conn.commit()
-            
             self.logger.info("SQLite database initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize SQLite database: {e}")
             raise
-            
+
     def _create_tables(self):
-        """Create database tables if they don't exist"""
+        """Create database tables if they don't exist."""
         try:
-            # Economy table
             self.cursor.execute("""
                 CREATE TABLE IF NOT EXISTS economy (
                     user_id INTEGER,
@@ -840,8 +833,6 @@ class SyncDatabase:
                     PRIMARY KEY (user_id, guild_id)
                 )
             """)
-            
-            # Guild stats table
             self.cursor.execute("""
                 CREATE TABLE IF NOT EXISTS guild_stats (
                     guild_id INTEGER,
@@ -858,10 +849,9 @@ class SyncDatabase:
     def client(self):
         if self._client is None:
             MONGO_URI = os.getenv('MONGO_URI', config['MONGO_URI'])
-            # Use pymongo for synchronous operations
             self._client = pymongo.MongoClient(MONGO_URI)
         return self._client
-        
+
     @property
     def db(self):
         if self._db is None:
@@ -869,7 +859,7 @@ class SyncDatabase:
         return self._db
 
     def ensure_connected(self) -> bool:
-        """Ensure database connection is active"""
+        """Ensure database connection is active."""
         if not self._connected:
             try:
                 self.client.admin.command('ping')
