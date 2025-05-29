@@ -1163,8 +1163,6 @@ class Economy(commands.Cog):
                     aces += 1
                 else:
                     total += min(card, 10)
-            
-            # Handle aces
             for _ in range(aces):
                 if total + 11 <= 21:
                     total += 11
@@ -1185,6 +1183,7 @@ class Economy(commands.Cog):
 
         # Deal initial cards
         player_hands = [[random.randint(1, 13), random.randint(1, 13)]]
+        hand_bets = [bet]
         dealer_hand = [random.randint(1, 13), random.randint(1, 13)]
         current_hand = 0
         doubled = [False]  # Track doubled hands
@@ -1199,15 +1198,19 @@ class Economy(commands.Cog):
             dealer_cards = f"{format_card(dealer_hand[0])} ??"
 
             # Check for split option
-            can_split = (len(hand) == 2 and 
-                        min(hand[0], 10) == min(hand[1], 10) and 
-                        len(player_hands) < 4 and 
-                        await db.get_user_balance(ctx.author.id, ctx.guild.id) >= bet)
+            can_split = (
+                len(hand) == 2 and 
+                min(hand[0], 10) == min(hand[1], 10) and 
+                len(player_hands) < 4 and 
+                await db.get_user_balance(ctx.author.id, ctx.guild.id) >= hand_bets[current_hand]
+            )
 
             # Check for double down option
-            can_double = (len(hand) == 2 and 
-                         not doubled[current_hand] and 
-                         await db.get_user_balance(ctx.author.id, ctx.guild.id) >= bet)
+            can_double = (
+                len(hand) == 2 and 
+                not doubled[current_hand] and 
+                await db.get_user_balance(ctx.author.id, ctx.guild.id) >= hand_bets[current_hand]
+            )
 
             # Show game state
             embed = discord.Embed(
@@ -1215,7 +1218,7 @@ class Economy(commands.Cog):
                 description=(
                     f"**Dealer's Hand:** {dealer_cards}\n"
                     f"**Your Hand {current_hand + 1}:** {player_cards} (Total: {player_total})\n"
-                    f"**Current Bet:** {bet}\n\n"
+                    f"**Current Bet:** {hand_bets[current_hand]}\n\n"
                     "Options:\n"
                     "• Type `hit` to take another card\n"
                     "• Type `stand` to keep your hand\n" +
@@ -1234,9 +1237,11 @@ class Economy(commands.Cog):
                 valid_actions.extend(['split', 'sp'])
 
             def check(m):
-                return (m.author == ctx.author and 
-                        m.channel == ctx.channel and 
-                        m.content.lower() in valid_actions)
+                return (
+                    m.author == ctx.author and 
+                    m.channel == ctx.channel and 
+                    m.content.lower() in valid_actions
+                )
 
             try:
                 action = await self.bot.wait_for('message', timeout=30, check=check)
@@ -1251,26 +1256,25 @@ class Economy(commands.Cog):
                     current_hand += 1  # Stand, move to next hand
 
                 elif action in ['double', 'd'] and can_double:
-                    # Double the bet
-                    if not await db.update_wallet(ctx.author.id, -bet, ctx.guild.id):
+                    # Double the bet for this hand
+                    if not await db.update_wallet(ctx.author.id, -hand_bets[current_hand], ctx.guild.id):
                         await ctx.send("Not enough money to double down!")
                         continue
-                    
-                    bet *= 2
+                    hand_bets[current_hand] *= 2
                     hand.append(random.randint(1, 13))
                     doubled[current_hand] = True
                     current_hand += 1
 
                 elif action in ['split', 'sp'] and can_split:
                     # Split the hand
-                    if not await db.update_wallet(ctx.author.id, -bet, ctx.guild.id):
+                    if not await db.update_wallet(ctx.author.id, -hand_bets[current_hand], ctx.guild.id):
                         await ctx.send("Not enough money to split!")
                         continue
-                    
                     new_hand = [hand.pop()]
                     hand.append(random.randint(1, 13))
                     new_hand.append(random.randint(1, 13))
                     player_hands.append(new_hand)
+                    hand_bets.append(hand_bets[current_hand])  # Same bet for new hand
                     doubled.append(False)
 
             except asyncio.TimeoutError:
@@ -1291,27 +1295,27 @@ class Economy(commands.Cog):
         
         for i, hand in enumerate(player_hands):
             player_total = calculate_hand(hand)
-            hand_bet = bet * 2 if doubled[i] else bet
-            
+            hand_bet = hand_bets[i]
             if player_total > 21:
                 result = "Bust"
-                winnings = -hand_bet
+                winnings = 0  # Already lost bet
             elif dealer_total > 21 or player_total > dealer_total:
                 result = "Win"
-                winnings = hand_bet
+                winnings = hand_bet * 2  # Win: get back bet + winnings
             elif player_total < dealer_total:
                 result = "Lose"
-                winnings = -hand_bet
+                winnings = 0  # Already lost bet
             else:
                 result = "Push"
-                winnings = 0
-            
+                winnings = hand_bet  # Get back bet only
+
             total_winnings += winnings
             results.append(f"Hand {i + 1}: {' '.join(format_card(c) for c in hand)} ({player_total}) - {result}")
 
-        # Update balance
-        if total_winnings > 0:
-            await db.update_wallet(ctx.author.id, total_winnings, ctx.guild.id)
+        # Calculate net winnings (subtract initial total bet)
+        net_winnings = total_winnings - sum(hand_bets)
+        if net_winnings != 0:
+            await db.update_wallet(ctx.author.id, net_winnings, ctx.guild.id)
 
         # Show final results
         embed = discord.Embed(
@@ -1319,9 +1323,9 @@ class Economy(commands.Cog):
             description=(
                 f"**Dealer's Hand:** {dealer_cards} (Total: {dealer_total})\n\n" +
                 "\n".join(results) + "\n\n" +
-                f"**Total {'Winnings' if total_winnings >= 0 else 'Loss'}:** {abs(total_winnings)}"
+                f"**Net {'Winnings' if net_winnings >= 0 else 'Loss'}:** {abs(net_winnings)}"
             ),
-            color=discord.Color.green() if total_winnings > 0 else discord.Color.red()
+            color=discord.Color.green() if net_winnings > 0 else discord.Color.red()
         )
         await ctx.send(embed=embed)
 
@@ -1808,6 +1812,8 @@ class Economy(commands.Cog):
             item_type = None
             
             # First check the bait shop (special structure)
+           
+
             bait_shop = await self.db.shops.find_one({"_id": f"bait_shop_{guild_id}" if guild_id else "bait_shop_global"})
             if bait_shop and item_id in bait_shop.get("items", {}):
                 item = bait_shop["items"][item_id]
