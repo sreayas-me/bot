@@ -263,6 +263,159 @@ class Utility(commands.Cog, ErrorHandler):
             self.logger.error(f"Failed to fetch first message: {e}")
             await ctx.reply("```Failed to fetch first message```")
 
+    @commands.command(aliases=['remindme', 'remind'])
+    async def reminder(self, ctx, time: str, *, message: str):
+        """Set a reminder. Example: .remindme 10m Take a break!"""
+        units = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
+        try:
+            seconds = int(time[:-1]) * units[time[-1]]
+        except Exception:
+            return await ctx.reply("Format: `.remindme 10m Take a break!` (s/m/h/d)")
+        await ctx.reply(f"⏰ I'll remind you in {time}: `{message}`")
+        await asyncio.sleep(seconds)
+        try:
+            await ctx.author.send(f"⏰ Reminder: {message}")
+        except Exception:
+            await ctx.send(f"{ctx.author.mention} ⏰ Reminder: {message}")
+
+    @commands.command()
+    async def multipoll(self, ctx, question: str, *options):
+        """Create a poll with multiple options. Example: .multipoll "Favorite?" "Red" "Blue" "Green" """
+        if len(options) < 2 or len(options) > 10:
+            return await ctx.reply("You need 2-10 options.")
+        emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟']
+        desc = "\n".join(f"{emojis[i]} {opt}" for i, opt in enumerate(options))
+        embed = discord.Embed(title=question, description=desc, color=0x2b2d31)
+        msg = await ctx.send(embed=embed)
+        for i in range(len(options)):
+            await msg.add_reaction(emojis[i])
+
+    @commands.command()
+    async def roleinfo(self, ctx, *, role: discord.Role):
+        """Show info about a role."""
+        embed = discord.Embed(
+            title=f"Role: {role.name}",
+            color=role.color
+        )
+        embed.add_field(name="ID", value=role.id)
+        embed.add_field(name="Members", value=len(role.members))
+        embed.add_field(name="Mentionable", value=role.mentionable)
+        embed.add_field(name="Hoisted", value=role.hoist)
+        embed.add_field(name="Position", value=role.position)
+        embed.add_field(name="Created", value=role.created_at.strftime('%Y-%m-%d'))
+        embed.set_footer(text=f"Color: {role.color}")
+        await ctx.reply(embed=embed)
+
+    @commands.command()
+    async def banner(self, ctx, user: discord.Member = None):
+        """Show a user's banner."""
+        user = user or ctx.author
+        user = await ctx.guild.fetch_member(user.id)
+        banner = user.banner
+        if banner:
+            embed = discord.Embed(title=f"{user.display_name}'s Banner", color=user.color)
+            embed.set_image(url=banner.url)
+            await ctx.reply(embed=embed)
+        else:
+            await ctx.reply("User has no banner.")
+
+    @commands.command()
+    async def emojiinfo(self, ctx, emoji: discord.PartialEmoji):
+        """Show info about a custom emoji."""
+        embed = discord.Embed(title=f"Emoji: {emoji.name}", color=0x2b2d31)
+        embed.add_field(name="ID", value=emoji.id)
+        embed.add_field(name="Animated", value=emoji.animated)
+        embed.add_field(name="URL", value=emoji.url)
+        embed.set_image(url=emoji.url)
+        await ctx.reply(embed=embed)
+
+    @commands.command()
+    async def servericon(self, ctx):
+        """Get the server's icon."""
+        if ctx.guild.icon:
+            await ctx.reply(ctx.guild.icon.url)
+        else:
+            await ctx.reply("This server has no icon.")
+
+    @commands.command()
+    async def serverbanner(self, ctx):
+        """Get the server's banner."""
+        if ctx.guild.banner:
+            await ctx.reply(ctx.guild.banner.url)
+        else:
+            await ctx.reply("This server has no banner.")
+
+    # --- AFK System ---
+    afk_users = {}
+
+    @commands.command()
+    async def afk(self, ctx, *, reason="AFK"):
+        """Set your AFK status."""
+        self.afk_users[ctx.author.id] = reason
+        await ctx.reply(f"{ctx.author.mention} is now AFK: {reason}")
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot:
+            return
+        # Remove AFK if user sends a message
+        if message.author.id in self.afk_users:
+            del self.afk_users[message.author.id]
+            try:
+                await message.reply("Welcome back! Removed your AFK.")
+            except Exception:
+                pass
+        # Notify if mentioning AFK users
+        for user_id in self.afk_users:
+            if f"<@{user_id}>" in message.content or f"<@!{user_id}>" in message.content:
+                reason = self.afk_users[user_id]
+                await message.channel.send(f"<@{user_id}> is AFK: {reason}")
+                break
+
+    # --- Snipe Command ---
+    last_deleted = {}  # {guild_id: {channel_id: (message, deleted_at)}}
+
+    @commands.Cog.listener()
+    async def on_message_delete(self, message):
+        if message.guild:
+            guild_id = message.guild.id
+            channel_id = message.channel.id
+            if guild_id not in self.last_deleted:
+                self.last_deleted[guild_id] = {}
+            self.last_deleted[guild_id][channel_id] = (message, discord.utils.utcnow())
+
+    @commands.command()
+    async def snipe(self, ctx):
+        """Show the last deleted message in this channel (within 1 hour)."""
+        guild_id = ctx.guild.id
+        channel_id = ctx.channel.id
+        entry = self.last_deleted.get(guild_id, {}).get(channel_id)
+        if entry:
+            msg, deleted_at = entry
+            # Only show if deleted within the last hour
+            if (discord.utils.utcnow() - deleted_at).total_seconds() <= 3600:
+                embed = discord.Embed(description=msg.content, color=0x2b2d31)
+                embed.set_author(name=str(msg.author), icon_url=msg.author.display_avatar.url)
+                embed.timestamp = msg.created_at
+                await ctx.reply(embed=embed)
+                return
+        await ctx.reply("Nothing to snipe in the past hour!")
+
+    @commands.command()
+    async def botinfo(self, ctx):
+        """Show bot statistics and info."""
+        embed = discord.Embed(
+            title="Bot Info",
+            color=0x2b2d31,
+            description=f"Uptime: {(discord.utils.utcnow() - self.bot.launch_time)}"
+        )
+        embed.add_field(name="Servers", value=len(self.bot.guilds))
+        embed.add_field(name="Users", value=len(set(self.bot.get_all_members())))
+        embed.add_field(name="Commands", value=len(self.bot.commands))
+        embed.set_footer(text=f"ID: {self.bot.user.id}")
+        embed.set_thumbnail(url=self.bot.user.display_avatar.url)
+        await ctx.reply(embed=embed)
+
     @commands.Cog.listener() 
     async def on_command_error(self, ctx, error):
         if ctx.command and ctx.command.cog_name == self.__class__.__name__:
