@@ -1315,7 +1315,7 @@ class Economy(commands.Cog):
         # Calculate net winnings (subtract initial total bet)
         net_winnings = total_winnings - sum(hand_bets)
         if net_winnings != 0:
-            await db.update_wallet(ctx.author.id, net_winnings, ctx.guild.id)
+            await db.update_balance(ctx.author.id, total_winnings, ctx.guild.id)
 
         # Show final results
         embed = discord.Embed(
