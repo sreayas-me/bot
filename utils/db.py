@@ -244,26 +244,33 @@ class AsyncDatabase:
         return result[0]["total"] if result else 0
 
     async def get_inventory(self, user_id: int, guild_id: int = None) -> list:
-        """Get user's inventory"""
+        """Get user's inventory with proper quantity grouping"""
         if not await self.ensure_connected():
             return []
+        
         user = await self.db.users.find_one({"_id": str(user_id)})
-        return user.get("inventory", []) if user else []
-
-    async def add_potion(self, user_id: int, potion: dict) -> bool:
-        """Add active potion effect to user"""
-        if not await self.ensure_connected():
-            return False
-        expiry = datetime.datetime.now() + datetime.timedelta(minutes=potion['duration'])
-        result = await self.db.active_potions.insert_one({
-            "user_id": str(user_id),
-            "type": potion['buff_type'],
-            "multiplier": potion['multiplier'],
-            "expires_at": expiry
-        })
-        return result.inserted_id is not None
-
-    # Add this method to your AsyncDatabase class
+        if not user or "inventory" not in user:
+            return []
+        
+        # Group items by name/id and count quantities
+        from collections import defaultdict
+        item_counts = defaultdict(int)
+        item_data = {}
+        
+        for item in user.get("inventory", []):
+            item_key = item.get("id", item.get("name", "unknown"))
+            item_counts[item_key] += 1
+            if item_key not in item_data:
+                item_data[item_key] = item.copy()
+        
+        # Convert to list with quantities
+        result = []
+        for item_key, quantity in item_counts.items():
+            item = item_data[item_key].copy()
+            item["quantity"] = quantity
+            result.append(item)
+        
+        return result
 
     async def buy_item(self, user_id: int, item_id: str, guild_id: int = None) -> tuple[bool, str]:
         """Buy an item from any shop"""
@@ -364,12 +371,12 @@ class AsyncDatabase:
 
 
     async def buy_item_simple(self, user_id: int, item_id: str, guild_id: int = None) -> tuple[bool, str]:
-        """Buy an item from any shop (without transactions)"""
+        """Buy an item from any shop (fixed version)"""
         if not await self.ensure_connected():
             return False, "Database connection failed"
             
         try:
-            # Check all shop collections for the item
+            # Find the item in shops
             item = None
             item_type = None
             
@@ -378,19 +385,17 @@ class AsyncDatabase:
             if item:
                 item_type = "item"
             
-            # Check shop_fishing
+            # Check other shop types...
             if not item:
                 item = await self.db.shop_fishing.find_one({"id": item_id})
                 if item:
                     item_type = "fishing"
             
-            # Check shop_potions
             if not item:
                 item = await self.db.shop_potions.find_one({"id": item_id})
                 if item:
                     item_type = "potion"
                     
-            # Check shop_upgrades
             if not item:
                 item = await self.db.shop_upgrades.find_one({"id": item_id})
                 if item:
@@ -402,7 +407,7 @@ class AsyncDatabase:
             # Check if user has enough money
             wallet_balance = await self.get_wallet_balance(user_id, guild_id)
             if wallet_balance < item["price"]:
-                return False, f"Insufficient funds. Need {item['price']}, have {wallet_balance}"
+                return False, f"Insufficient funds. Need {item['price']:,}, have {wallet_balance:,}"
                 
             # Deduct money first
             if not await self.update_wallet(user_id, -item["price"], guild_id):
@@ -412,42 +417,28 @@ class AsyncDatabase:
             success = False
             error_msg = ""
             
-            if item_type == "fishing":
-                if item["type"] == "rod":
-                    success = await self.add_fishing_item(user_id, item, "rod")
-                    error_msg = "Failed to add fishing rod"
-                elif item["type"] == "bait":
-                    success = await self.add_fishing_item(user_id, item, "bait")
-                    error_msg = "Failed to add fishing bait"
-                    
-            elif item_type == "potion":
-                success = await self.add_potion(user_id, item)
-                error_msg = "Failed to activate potion"
+            if item_type == "item":
+                # Add to inventory - create a clean copy without MongoDB ObjectId
+                clean_item = {
+                    "id": item["id"],
+                    "name": item["name"],
+                    "price": item["price"],
+                    "description": item.get("description", ""),
+                    "type": item.get("type", "item")
+                }
                 
-            elif item_type == "upgrade":
-                if item["type"] == "bank":
-                    # Handle bank upgrade
-                    current_limit = await self.get_bank_limit(user_id, guild_id)
-                    new_limit = current_limit + item["amount"]
-                    
-                    # Update bank limit
-                    result = await self.db.users.update_one(
-                        {"_id": str(user_id)},
-                        {"$set": {"bank_limit": new_limit}}
-                    )
-                    if result.modified_count > 0:
-                        return True, f"✅ Bank limit increased to {new_limit} coins!"
-                    return False, "❌ Failed to upgrade bank"
-                    
-            elif item_type == "item":
-                # Add to inventory
                 result = await self.db.users.update_one(
                     {"_id": str(user_id)},
-                    {"$push": {"inventory": item}},
+                    {"$push": {"inventory": clean_item}},
                     upsert=True
                 )
                 success = result.modified_count > 0 or result.upserted_id is not None
                 error_msg = "Failed to add item to inventory"
+            
+            # Handle other item types as before...
+            elif item_type == "potion":
+                success = await self.add_potion(user_id, item)
+                error_msg = "Failed to activate potion"
             
             # If something went wrong, refund the money
             if not success:
@@ -457,7 +448,6 @@ class AsyncDatabase:
             return True, f"Successfully purchased {item['name']}!"
                         
         except Exception as e:
-            self.logger.error(f"Failed to buy item {item_id}: {e}")
             # Try to refund if we got this far
             try:
                 await self.update_wallet(user_id, item["price"], guild_id)
@@ -465,14 +455,38 @@ class AsyncDatabase:
                 pass
             return False, f"Purchase failed: {str(e)}"
 
-    async def remove_from_inventory(self, user_id: int, guild_id: int, item_id: str) -> bool:
-        """Remove item from user's inventory"""
+    async def remove_from_inventory(self, user_id: int, guild_id: int, item_id: str, quantity: int = 1) -> bool:
+        """Remove specific quantity of items from user's inventory"""
         if not await self.ensure_connected():
             return False
+        
+        user = await self.db.users.find_one({"_id": str(user_id)})
+        if not user or "inventory" not in user:
+            return False
+        
+        inventory = user["inventory"]
+        items_to_remove = []
+        removed_count = 0
+        
+        # Find items to remove (remove only the specified quantity)
+        for i, item in enumerate(inventory):
+            if (item.get("id") == item_id or item.get("name") == item_id) and removed_count < quantity:
+                items_to_remove.append(i)
+                removed_count += 1
+        
+        if removed_count < quantity:
+            return False  # Not enough items to remove
+        
+        # Remove items from inventory (in reverse order to maintain indices)
+        for index in reversed(items_to_remove):
+            inventory.pop(index)
+        
+        # Update the user's inventory
         result = await self.db.users.update_one(
             {"_id": str(user_id)},
-            {"$pull": {"inventory": {"id": item_id}}}
+            {"$set": {"inventory": inventory}}
         )
+        
         return result.modified_count > 0
 
     async def get_fish(self, user_id: int) -> list:
@@ -753,33 +767,81 @@ class AsyncDatabase:
         
         current_level = await self.get_interest_level(user_id)
         
-        if current_level >= 20 and not item_required:
-            return False, "You need a special item to upgrade beyond level 20!"
+        # Check max level
+        if current_level >= 60:
+            return False, "You've reached the maximum interest level!\n-# for now..."
         
-        # Check if user has required item (for levels > 20)
+        # Check wallet balance
+        wallet_balance = await self.get_wallet_balance(user_id)
+        if wallet_balance < cost:
+            return False, f"Insufficient funds! You need {cost:,} coins but only have {wallet_balance:,}."
+        
+        # Check if user has required item (for levels >= 20)
         if current_level >= 20:
             inventory = await self.get_inventory(user_id)
-            if not any(item.get("id") == "interest_token" for item in inventory):
+            has_token = False
+            
+            for item in inventory:
+                if (item.get("id") == "interest_token" or 
+                    item.get("name", "").lower() == "interest token"):
+                    has_token = True
+                    break
+            
+            if not has_token:
                 return False, "You need an Interest Token to upgrade beyond level 20!"
         
-        # Deduct cost
-        if not await self.update_wallet(user_id, -cost):
-            return False, "Insufficient funds for this upgrade!"
-        
-        # Remove item if needed
-        if current_level >= 20:
-            await self.remove_from_inventory(user_id, None, "interest_token")
-        
-        # Update level
-        result = await self.db.users.update_one(
-            {"_id": str(user_id)},
-            {"$inc": {"interest_level": 1}},
-            upsert=True
-        )
-        
-        if result.modified_count > 0 or result.upserted_id is not None:
-            return True, f"Interest level upgraded to {current_level + 1}!"
-        return False, "Failed to upgrade interest level"
+        try:
+            # Start transaction-like operations
+            # 1. Deduct cost
+            if not await self.update_wallet(user_id, -cost):
+                return False, "Failed to deduct upgrade cost!"
+            
+            # 2. Remove ONE interest token if needed (not all of them!)
+            if current_level >= 20:
+                token_removed = await self.remove_from_inventory(user_id, None, "interest_token", 1)
+                if not token_removed:
+                    # Try with name instead of ID
+                    token_removed = await self.remove_from_inventory(user_id, None, "Interest Token", 1)
+                
+                if not token_removed:
+                    # Refund the money
+                    await self.update_wallet(user_id, cost)
+                    return False, "Failed to consume Interest Token!"
+            
+            # 3. Update interest level
+            result = await self.db.users.update_one(
+                {"_id": str(user_id)},
+                {"$inc": {"interest_level": 1}},
+                upsert=True
+            )
+            
+            if result.modified_count > 0 or result.upserted_id is not None:
+                new_level = current_level + 1
+                new_rate = 0.003 + (new_level * 0.05)
+                return True, f"✅ Interest level upgraded to **{new_level}**! Your new daily rate is **{new_rate:.3f}%**"
+            else:
+                # Something went wrong, refund everything
+                await self.update_wallet(user_id, cost)
+                if current_level >= 20:
+                    # Add the token back (create new token item)
+                    token_item = {
+                        "id": "interest_token",
+                        "name": "Interest Token",
+                        "price": 50000,
+                        "description": "Required to upgrade interest rate beyond level 20",
+                        "type": "special"
+                    }
+                    await self.db.users.update_one(
+                        {"_id": str(user_id)},
+                        {"$push": {"inventory": token_item}},
+                        upsert=True
+                    )
+                return False, "Failed to upgrade interest level"
+                
+        except Exception as e:
+            # Error occurred, try to refund
+            await self.update_wallet(user_id, cost)
+            return False, f"Upgrade failed: {str(e)}"
 
 class SyncDatabase:
     """Synchronous database class for use with Flask web interface (SQLite & MongoDB)"""

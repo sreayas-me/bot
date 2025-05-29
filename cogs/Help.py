@@ -1,10 +1,13 @@
 import discord
+import json
 from discord.ext import commands
 from cogs.logging.logger import CogLogger
 from utils.error_handler import ErrorHandler
 
 logger = CogLogger('Help')
-
+with open('data/config.json', 'r') as f:
+    data = json.load(f)
+BOT_ADMINS = data['OWNER_IDS']
 
 class HelpPaginator(discord.ui.View):
     def __init__(self, pages, author, timeout=180):
@@ -145,7 +148,10 @@ class Help(commands.Cog, ErrorHandler):
         page_index = 1  # Start at 1 because overview is at 0
         
         for cog_name, cog in sorted(self.bot.cogs.items(), key=lambda x: x[0].lower()):
-            if cog_name.lower() in ['help', 'jishaku', 'dev', 'moderation', 'admin', 'votebans', 'stats', 'welcoming']:
+            if cog_name.lower() in ['help', 'jishaku', 'dev', 'moderation', 'votebans', 'stats', 'welcoming']:
+                continue
+
+            if ctx.author.id not in BOT_ADMINS and cog_name.lower() in ['admin', 'owner']:
                 continue
             
             commands_list = [cmd for cmd in cog.get_commands() if not cmd.hidden]

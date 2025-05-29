@@ -1145,8 +1145,8 @@ class Economy(commands.Cog):
     def _item_supports_multiple(self, item: dict) -> bool:
         """Check if item can be purchased multiple times"""
         # Items that typically can't be bought multiple times
-        single_purchase_types = ["role", "upgrade"]
-        single_purchase_items = ["vip", "color_role", "interest_token"]
+        single_purchase_types = ["role"]
+        single_purchase_items = ["vip", "color_role"]
         
         if item.get("type") in single_purchase_types:
             return False
@@ -1156,6 +1156,309 @@ class Economy(commands.Cog):
             return False
             
         return True
+
+    async def _confirm_purchase(self, ctx, purchase_plan: list, total_cost: int) -> bool:
+        """Ask user to confirm expensive/bulk purchases"""
+        embed = discord.Embed(
+            title="🛒 Confirm Purchase",
+            color=0xffa500
+        )
+        
+        items_text = []
+        for item, amount, cost in purchase_plan:
+            items_text.append(f"**{amount}x** {item['name']} - {cost:,} coins")
+        
+        embed.add_field(
+            name="Items to Purchase:",
+            value="\n".join(items_text),
+            inline=False
+        )
+        
+        embed.add_field(
+            name="Total Cost:",
+            value=f"**{total_cost:,}** coins",
+            inline=False
+        )
+        
+        embed.set_footer(text="React with ✅ to confirm or ❌ to cancel (30s timeout)")
+        
+        message = await ctx.reply(embed=embed)
+        await message.add_reaction("✅")
+        await message.add_reaction("❌")
+        
+        def check(reaction, user):
+            return (user == ctx.author and 
+                    str(reaction.emoji) in ["✅", "❌"] and 
+                    reaction.message.id == message.id)
+        
+        try:
+            reaction, user = await self.bot.wait_for('reaction_add', timeout=30.0, check=check)
+            return str(reaction.emoji) == "✅"
+        except asyncio.TimeoutError:
+            await message.edit(embed=discord.Embed(
+                title="⏰ Purchase Cancelled",
+                description="Purchase confirmation timed out.",
+                color=0xff0000
+            ))
+            return False
+
+    async def _execute_bulk_purchase(self, ctx, purchase_plan: list, total_cost: int):
+        """Execute the bulk purchase with proper error handling"""
+        user_id = ctx.author.id
+        guild_id = ctx.guild.id
+        
+        # Start transaction by deducting total cost first
+        if not await db.update_wallet(user_id, -total_cost, guild_id):
+            await ctx.reply("❌ Failed to deduct payment. Purchase cancelled.")
+            return
+        
+        successful_purchases = []
+        failed_purchases = []
+        refund_amount = 0
+        
+        # Process each item
+        for item, amount, item_cost in purchase_plan:
+            for i in range(amount):
+                success = await self._purchase_single_item(user_id, item, guild_id)
+                if success:
+                    successful_purchases.append(item['name'])
+                else:
+                    failed_purchases.append(item['name'])
+                    refund_amount += item['price']
+        
+        # Refund failed purchases
+        if refund_amount > 0:
+            await db.update_wallet(user_id, refund_amount, guild_id)
+        
+        # Send results
+        await self._send_purchase_results(ctx, successful_purchases, failed_purchases, total_cost - refund_amount, refund_amount)
+
+    async def _purchase_single_item(self, user_id: int, item: dict, guild_id: int) -> bool:
+        """Purchase a single item (no cost deduction)"""
+        try:
+            shop_type = item.get('_shop_type', 'items')
+            
+            if shop_type == "fishing":
+                if item.get("type") == "rod":
+                    return await db.add_fishing_item(user_id, item, "rod")
+                elif item.get("type") == "bait":
+                    return await db.add_fishing_item(user_id, item, "bait")
+                    
+            elif shop_type == "potions":
+                return await db.add_potion(user_id, item)
+                
+            elif shop_type == "upgrades":
+                if item.get("_id") == "interest_token":
+                    # Special handling for interest token
+                    result = await db.db.users.update_one(
+                        {"_id": str(user_id)},
+                        {
+                            "$push": {"inventory": item},
+                            "$set": {"interest_token_active": True, "interest_rate_bonus": 0.05}
+                        },
+                        upsert=True
+                    )
+                    return result.modified_count > 0 or result.upserted_id is not None
+                if item.get("type") == "bank":
+                    return await db.increase_bank_limit(user_id, item.get("amount", 0), guild_id)
+                    
+            elif shop_type == "items":
+                result = await db.db.users.update_one(
+                    {"_id": str(user_id)},
+                    {"$push": {"inventory": item}},
+                    upsert=True
+                )
+                return result.modified_count > 0 or result.upserted_id is not None
+                
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Failed to purchase {item.get('name', 'unknown')}: {e}")
+            return False
+
+    @commands.command()
+    async def buy(self, ctx, *, args: str = None):
+        """Buy items from the shop
+        
+        Usage:
+        .buy - Show shop menu
+        .buy <item_id> - Buy 1 of an item
+        .buy <item_id> <amount> - Buy multiple of the same item
+        .buy <item_id1> <amount1> <item_id2> <amount2> ... - Buy multiple different items
+        """
+        try:
+            if not args:
+                # Show shop menu
+                await self._show_shop_menu(ctx)
+                return
+                
+            # Parse arguments
+            parsed_items = self._parse_buy_args(args)
+            
+            if not parsed_items:
+                await ctx.reply(f"❌ Invalid format. Use `{ctx.prefix}buy <item_id> [amount]` or `{ctx.prefix}buy help` for more info.")
+                return
+                
+            # Handle help command
+            if len(parsed_items) == 1 and parsed_items[0][0].lower() == "help":
+                await self._show_buy_help(ctx)
+                return
+                
+            # Process purchases
+            await self._process_bulk_purchase(ctx, parsed_items)
+            
+        except Exception as e:
+            self.logger.error(f"Buy command error: {e}")
+            await ctx.reply("❌ Failed to complete purchase. Please try again later.")
+
+    def _parse_buy_args(self, args: str) -> list:
+        """Parse buy command arguments into [(item_id, amount), ...]"""
+        parts = args.split()
+        items = []
+        
+        i = 0
+        while i < len(parts):
+            item_id = parts[i]
+            amount = 1
+            
+            # Check if next part is a number
+            if i + 1 < len(parts) and parts[i + 1].isdigit():
+                amount = int(parts[i + 1])
+                i += 2
+            else:
+                i += 1
+                
+            items.append((item_id, amount))
+            
+        return items
+
+    async def _show_shop_menu(self, ctx):
+        """Show available shop categories"""
+        embed = discord.Embed(
+            title="🛍️ Shop Menu",
+            description="Choose a category to browse items:",
+            color=0x00ff00
+        )
+        
+        categories = {
+            "items": "🎁 General Items",
+            "fishing": "🎣 Fishing Gear", 
+            "potions": "🧪 Potions & Buffs",
+            "upgrades": "⬆️ Upgrades"
+        }
+        
+        for category, display_name in categories.items():
+            try:
+                items = await db.get_shop_items(category, ctx.guild.id)
+                item_count = len(items)
+                embed.add_field(
+                    name=display_name,
+                    value=f"`!shop {category}` ({item_count} items)",
+                    inline=True
+                )
+            except:
+                embed.add_field(
+                    name=display_name,
+                    value=f"`{ctx.prefix}shop {category}` (??? items)",
+                    inline=True
+                )
+        
+        embed.add_field(
+            name="💡 Quick Buy",
+            value=f"`{ctx.prefix}buy <item_id> [amount]`\n`{ctx.prefix}buy help` for more options",
+            inline=False
+        )
+        
+        await ctx.reply(embed=embed)
+
+    async def _show_buy_help(self, ctx):
+        """Show detailed buy command help"""
+        embed = discord.Embed(
+            title="💡 Buy Command Help",
+            color=0x3498db
+        )
+        
+        examples = [
+            (f"`{ctx.prefix}buy vip`", "Buy 1 VIP role"),
+            (f"`{ctx.prefix}buy basic_bait 5`", "Buy 5 basic bait"),
+            (f"`{ctx.prefix}buy vip 1 basic_bait 10`", "Buy 1 VIP role and 10 basic bait"),
+            (f"`{ctx.prefix}buy bank_upgrade 3 fishing_luck 2`", "Buy 3 bank upgrades and 2 fishing luck potions")
+        ]
+        
+        for command, description in examples:
+            embed.add_field(
+                name=command,
+                value=description,
+                inline=False
+            )
+        
+        embed.add_field(
+            name="📝 Notes",
+            value=f"• Use `{ctx.prefix}shop <category>` to see available items\n• Amounts default to 1 if not specified\n• Transactions are atomic - if one item fails, nothing is purchased",
+            inline=False
+        )
+        
+        await ctx.reply(embed=embed)
+
+    async def _process_bulk_purchase(self, ctx, items: list):
+        """Process multiple item purchases"""
+        user_id = ctx.author.id
+        guild_id = ctx.guild.id
+        
+        # Validate all items and calculate total cost
+        purchase_plan = []
+        total_cost = 0
+        
+        for item_id, amount in items:
+            if amount <= 0:
+                await ctx.reply(f"❌ Invalid amount for {item_id}. Amount must be positive.")
+                return
+                
+            if amount > 100:  # Reasonable limit
+                await ctx.reply(f"❌ Amount too large for {item_id}. Maximum 100 per item.")
+                return
+                
+            # Find item in shops
+            item = await self._find_item_in_shops(item_id)
+            if not item:
+                await ctx.reply(f"❌ Item `{item_id}` not found in any shop.")
+                return
+                
+            # Check if item supports multiple purchases
+            if not self._item_supports_multiple(item) and amount > 1:
+                await ctx.reply(f"❌ `{item['name']}` can only be purchased once at a time.")
+                return
+                
+            item_cost = item['price'] * amount
+            total_cost += item_cost
+            purchase_plan.append((item, amount, item_cost))
+        
+        # Check if user has enough money
+        wallet_balance = await db.get_wallet_balance(user_id, guild_id)
+        if wallet_balance < total_cost:
+            await ctx.reply(f"❌ Insufficient funds. Need **{total_cost:,}** coins, you have **{wallet_balance:,}** coins.")
+            return
+        
+        # Show purchase confirmation for expensive purchases
+        if total_cost > 10000 or len(purchase_plan) > 3:
+            if not await self._confirm_purchase(ctx, purchase_plan, total_cost):
+                return
+        
+        # Execute purchases
+        await self._execute_bulk_purchase(ctx, purchase_plan, total_cost)
+
+    async def _find_item_in_shops(self, item_id: str):
+        """Find item across all shop types"""
+        shop_types = ["items", "fishing", "potions", "upgrades"]
+        
+        for shop_type in shop_types:
+            collection = getattr(db.db, f"shop_{shop_type}", None)
+            if collection:
+                item = await collection.find_one({"id": item_id})
+                if item:
+                    item['_shop_type'] = shop_type
+                    return item
+        return None
 
     async def _confirm_purchase(self, ctx, purchase_plan: list, total_cost: int) -> bool:
         """Ask user to confirm expensive/bulk purchases"""
@@ -1250,6 +1553,14 @@ class Economy(commands.Cog):
             elif shop_type == "upgrades":
                 if item.get("type") == "bank":
                     return await db.increase_bank_limit(user_id, item.get("amount", 0), guild_id)
+                elif item.get("type") == "upgrade":
+                    # Handle upgrade items - add to inventory
+                    result = await db.db.users.update_one(
+                        {"_id": str(user_id)},
+                        {"$push": {"inventory": item}},
+                        upsert=True
+                    )
+                    return result.modified_count > 0 or result.upserted_id is not None
                     
             elif shop_type == "items":
                 result = await db.db.users.update_one(
@@ -2321,18 +2632,39 @@ class Economy(commands.Cog):
         if not potions:
             return await ctx.reply("No potions available in the shop!")
 
+        # Validate potions data
+        valid_potions = {}
+        for potion_id, potion in potions.items():
+            if not isinstance(potion, dict):
+                continue
+            if not all(key in potion for key in ['name', 'price', 'multiplier', 'type', 'duration']):
+                continue
+            # Ensure values aren't None or empty
+            if not all(str(potion[key]).strip() for key in ['name', 'type'] if potion.get(key)):
+                continue
+            valid_potions[potion_id] = potion
+
+        if not valid_potions:
+            return await ctx.reply("No valid potions available in the shop!")
+
+        try:
+            balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+            balance_str = str(balance) if balance is not None else "0"
+        except Exception:
+            balance_str = "0"
+
         # Create embed pages for potions
         pages = []
         
         # Overview page
         overview = discord.Embed(
             title="🧪 Available Potions",
-            description=f"Your Balance: **{await db.get_wallet_balance(ctx.author.id, ctx.guild.id)}** {self.currency}\n\n",
+            description=f"Your Balance: **{balance_str}** {self.currency}\n\n",
             color=discord.Color.blue()
         )
         
         # Add first 3 potions to overview
-        sample_potions = list(potions.items())[:3]
+        sample_potions = list(valid_potions.items())[:3]
         for potion_id, potion in sample_potions:
             overview.description += (
                 f"**{potion['name']}** - {potion['price']} {self.currency}\n"
@@ -2341,37 +2673,48 @@ class Economy(commands.Cog):
                 f"`buy {potion_id}` to purchase\n\n"
             )
             
-        if len(potions) > 3:
+        if len(valid_potions) > 3:
             overview.description += "*Use the arrows to see more potions*"
         
         pages.append(overview)
         
         # Create detail pages - 4 potions per page
-        items = list(potions.items())
-        for i in range(0, len(items), 4):
-            chunk = items[i:i+4]
+        items = list(valid_potions.items())
+        chunks = [items[i:i+4] for i in range(0, len(items), 4)]
+        
+        for page_num, chunk in enumerate(chunks, 1):
             embed = discord.Embed(
                 title="🧪 Potions Shop",
                 color=discord.Color.blue()
             )
             
             for potion_id, potion in chunk:
+                # Truncate description if too long
+                desc = str(potion.get('description', ''))[:100]
+                if len(str(potion.get('description', ''))) > 100:
+                    desc += "..."
+                    
                 embed.add_field(
                     name=f"{potion['name']} - {potion['price']} {self.currency}",
                     value=(
                         f"Type: {potion['type']}\n"
                         f"Effect: {potion['multiplier']}x for {potion['duration']}min\n"
-                        f"{potion.get('description', '')}\n"
+                        f"{desc}\n"
                         f"`buy {potion_id}` to purchase"
                     ),
                     inline=False
                 )
             
+            # Add page footer
+            if len(chunks) > 1:
+                embed.set_footer(text=f"Page {page_num + 1}/{len(chunks) + 1} • {len(valid_potions)} total potions")
+            else:
+                embed.set_footer(text=f"{len(valid_potions)} potions available")
+            
             pages.append(embed)
 
-        # Use the existing HelpPaginator for navigation
-        view = HelpPaginator(pages, ctx.author)
-        view.update_buttons()
+        # Use EconomyShopView instead of HelpPaginator
+        view = EconomyShopView(pages, ctx.author)
         message = await ctx.reply(embed=pages[0], view=view)
         view.message = message
 
@@ -2380,43 +2723,50 @@ class Economy(commands.Cog):
     async def inventory(self, ctx):
         """View your inventory with filtering and pagination"""
         items = await db.get_inventory(ctx.author.id, ctx.guild.id)
-        
         if not items:
             return await ctx.reply("Your inventory is empty!")
-
-        # Create initial pages with all items
+        
+        # Items now come pre-grouped with quantities
         pages = []
         chunks = [items[i:i+6] for i in range(0, len(items), 6)]
         
-        for chunk in chunks:
+        for page_num, chunk in enumerate(chunks, 1):
             embed = discord.Embed(
                 title=f"🎒 {ctx.author.name}'s Inventory",
                 color=ctx.author.color or discord.Color.blue()
             )
             
             for item in chunk:
-                name = f"{item.get('name', 'Unknown Item')}"
+                quantity = item.get('quantity', 1)
+                name = item.get('name', 'Unknown Item')
+                
+                # Show quantity if more than 1
+                if quantity > 1:
+                    name = f"**{quantity}x** {name}"
+                
+                # Add emojis based on type
                 if item.get("type") == "potion":
                     name = f"🧪 {name}"
+                elif item.get("type") == "special":
+                    name = f"⭐ {name}"
                 elif item.get("type") == "consumable":
                     name = f"🍖 {name}"
-                elif item.get("type") == "collectible":
-                    name = f"🎨 {name}"
                 
-                value = f"ID: `{item.get('id')}`\n"
-                if item.get("type") == "potion":
-                    value += f"Effect: {item.get('multiplier')}x {item.get('buff_type')} for {item.get('duration')}min\n"
-                value += item.get("description", "No description")
+                value = item.get("description", "No description")[:100]
+                if len(item.get("description", "")) > 100:
+                    value += "..."
                 
                 embed.add_field(name=name, value=value, inline=False)
+            
+            if len(chunks) > 1:
+                embed.set_footer(text=f"Page {page_num}/{len(chunks)} • {len(items)} total items")
+            else:
+                embed.set_footer(text=f"{len(items)} items in inventory")
+            pages.append(embed)
         
-        pages.append(embed)
-
-        # Create view with filter and pagination
-        view = InventoryView(pages, ctx.author, items)
-        view.update_buttons()
-        message = await ctx.reply(embed=pages[0], view=view)
-        view.message = message
+        # Use your existing view
+        view = EconomyShopView(pages, ctx.author)
+        await ctx.reply(embed=pages[0], view=view)
 
     @commands.command(name="use")
     @commands.cooldown(1, 3, commands.BucketType.user)
@@ -2769,6 +3119,80 @@ class Economy(commands.Cog):
                     )
                     return await ctx.reply(embed=embed)
             await ctx.reply("❌ Failed to sell fish!")
+    
+    async def debug_user_state(self, ctx, user_id: int):
+        """Debug helper to check user's database state"""
+        try:
+            # Check user document
+            user_doc = await db.db.users.find_one({"_id": str(user_id)})
+            
+            if not user_doc:
+                await ctx.reply("❌ User document not found in database")
+                return
+                
+            # Check inventory
+            inventory = user_doc.get('inventory', [])
+            inventory_items = [item.get('name', item.get('id', 'unknown')) for item in inventory]
+            
+            embed = discord.Embed(title="🔍 User Debug Info", color=0x3498db)
+            embed.add_field(name="User ID", value=str(user_id), inline=True)
+            embed.add_field(name="Document Exists", value="✅ Yes", inline=True)
+            embed.add_field(name="Inventory Count", value=len(inventory), inline=True)
+            embed.add_field(name="Inventory Items", value="\n".join(inventory_items) if inventory_items else "Empty", inline=False)
+            
+            # Check for interest token specifically
+            has_interest_token = any(item.get('id') == 'interest_token' for item in inventory)
+            embed.add_field(name="Has Interest Token", value="✅ Yes" if has_interest_token else "❌ No", inline=True)
+            
+            await ctx.reply(embed=embed)
+            
+        except Exception as e:
+            await ctx.reply(f"❌ Debug error: {e}")
+
+    async def debug_item_lookup(self, ctx, item_id: str):
+        """Debug helper to check item in shop databases"""
+        try:
+            item = await self._find_item_in_shops(item_id)
+            
+            if not item:
+                await ctx.reply(f"❌ Item `{item_id}` not found in any shop")
+                return
+                
+            embed = discord.Embed(title=f"🔍 Item Debug: {item_id}", color=0x3498db)
+            embed.add_field(name="Name", value=item.get('name', 'N/A'), inline=True)
+            embed.add_field(name="Price", value=f"{item.get('price', 0):,}", inline=True)
+            embed.add_field(name="Shop Type", value=item.get('_shop_type', 'unknown'), inline=True)
+            embed.add_field(name="Item Type", value=item.get('type', 'N/A'), inline=True)
+            embed.add_field(name="Multiple Purchase", value="✅ Yes" if self._item_supports_multiple(item) else "❌ No", inline=True)
+            
+            # Show item data without json formatting
+            item_data = []
+            for key, value in item.items():
+                if not key.startswith('_'):
+                    item_data.append(f"{key}: {value}")
+            
+            if item_data:
+                embed.add_field(name="Item Data", value="```\n" + "\n".join(item_data[:10]) + "```", inline=False)
+            
+            await ctx.reply(embed=embed)
+            
+        except Exception as e:
+            await ctx.reply(f"❌ Debug error: {e}")
+
+    # Add these as commands for debugging
+    @commands.command(hidden=True)
+    @commands.is_owner()  
+    async def debug_user(self, ctx, user_id: int = None):
+        """Debug user database state"""
+        if not user_id:
+            user_id = ctx.author.id
+        await self.debug_user_state(ctx, user_id)
+
+    @commands.command(hidden=True) 
+    @commands.is_owner() 
+    async def debug_item(self, ctx, item_id: str):
+        """Debug item configuration"""
+        await self.debug_item_lookup(ctx, item_id)
 
 class InventorySelect(discord.ui.Select):
     def __init__(self):
