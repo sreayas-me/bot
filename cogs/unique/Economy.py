@@ -1138,8 +1138,8 @@ class Economy(commands.Cog):
         if bet > balance:
             return await ctx.reply("You don't have enough money!")
 
-        # Deduct initial bet
-        await db.update_balance(ctx.author.id, -bet, ctx.guild.id)
+        if not await db.update_wallet(ctx.author.id, -bet, ctx.guild.id):
+            return await ctx.reply("Failed to deduct bet from your balance!")
 
         def calculate_hand(hand):
             total = 0
