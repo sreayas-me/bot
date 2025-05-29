@@ -569,6 +569,13 @@ class AsyncDatabase:
                     "price": 5000,
                     "description": "Create a custom colored role",
                     "type": "role"
+                },
+                {
+                    "id": "interest_token",
+                    "name": "Interest Token",
+                    "price": 50000,
+                    "description": "Required to upgrade interest rate beyond level 20",
+                    "type": "special"
                 }
             ])
             
@@ -656,6 +663,7 @@ class AsyncDatabase:
                 }
             ])
         return True
+        
     async def get_shop_items(self, shop_type: str, guild_id: int = None) -> list:
         """Get items from a specific shop type"""
         if not await self.ensure_connected():
@@ -702,6 +710,48 @@ class AsyncDatabase:
             upsert=True
         )
         return result.modified_count > 0 or result.upserted_id is not None
+
+    async def get_interest_level(self, user_id: int) -> int:
+        """Get user's interest level"""
+        if not await self.ensure_connected():
+            return 0
+        user = await self.db.users.find_one({"_id": str(user_id)})
+        return user.get("interest_level", 0) if user else 0
+
+    async def upgrade_interest(self, user_id: int, cost: int, item_required: bool = False) -> tuple[bool, str]:
+        """Upgrade user's interest level"""
+        if not await self.ensure_connected():
+            return False, "Database connection failed"
+        
+        current_level = await self.get_interest_level(user_id)
+        
+        if current_level >= 20 and not item_required:
+            return False, "You need a special item to upgrade beyond level 20!"
+        
+        # Check if user has required item (for levels > 20)
+        if current_level >= 20:
+            inventory = await self.get_inventory(user_id)
+            if not any(item.get("id") == "interest_token" for item in inventory):
+                return False, "You need an Interest Token to upgrade beyond level 20!"
+        
+        # Deduct cost
+        if not await self.update_wallet(user_id, -cost):
+            return False, "Insufficient funds for this upgrade!"
+        
+        # Remove item if needed
+        if current_level >= 20:
+            await self.remove_from_inventory(user_id, None, "interest_token")
+        
+        # Update level
+        result = await self.db.users.update_one(
+            {"_id": str(user_id)},
+            {"$inc": {"interest_level": 1}},
+            upsert=True
+        )
+        
+        if result.modified_count > 0 or result.upserted_id is not None:
+            return True, f"Interest level upgraded to {current_level + 1}!"
+        return False, "Failed to upgrade interest level"
 
 class SyncDatabase:
     """Synchronous database class for use with Flask web interface"""
@@ -880,6 +930,8 @@ class SyncDatabase:
         except Exception as e:
             self.logger.error(f"Error getting stats: {e}")
             return {}
+
+
 
 # Create global database instances
 async_db = AsyncDatabase.get_instance()  # For Discord bot
