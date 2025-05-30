@@ -1,9 +1,10 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import json
 from pathlib import Path
 from datetime import datetime, timedelta
 import asyncio
+from collections import defaultdict
 from cogs.logging.logger import CogLogger
 
 logger = CogLogger('VoteBans')
@@ -20,13 +21,216 @@ class VoteBans(commands.Cog):
         self.data_path = Path("data/votebans.json")
         self.vote_data = self.load_data()
         
-        # Rate limiting control
+        # Rate limiting and caching
         self.message_edit_queue = asyncio.Queue()
         self.last_edit_time = {}
-        self.edit_cooldown = 2.0  # 2 seconds between edits per message
+        self.edit_cooldown = 2.0
+        self.reaction_cache = defaultdict(dict)  # message_id: {emoji: [user_ids]}
+        self.last_reaction_check = {}
         
-        # Start the message edit processor
+        # Start processors
         self.bot.loop.create_task(self.process_message_edits())
+        self.verify_reactions.start()
+    
+    def cog_unload(self):
+        self.verify_reactions.cancel()
+    
+    @tasks.loop(minutes=5)  # Reduced from 30 seconds to 5 minutes
+    async def verify_reactions(self):
+        """Efficiently verify reactions with caching and batching"""
+        logger.debug("Running optimized reaction verification...")
+        
+        # Process in batches to avoid rate limits
+        active_votes = [v for v in self.vote_data.values() if not v.get("completed", True)]
+        for i in range(0, len(active_votes), 5):  # Process 5 votes at a time
+            batch = active_votes[i:i+5]
+            await self._process_batch(batch)
+            await asyncio.sleep(10)  # Space out batches
+    
+    async def _process_batch(self, batch):
+        """Process a batch of votes efficiently"""
+        for vote_info in batch:
+            try:
+                message_id = vote_info["message_id"]
+                channel_id = vote_info["channel_id"]
+                
+                # Check if we recently processed this message
+                if self.last_reaction_check.get(message_id, 0) > datetime.now().timestamp() - 300:
+                    continue
+                
+                channel = self.bot.get_channel(channel_id)
+                if not channel:
+                    continue
+                    
+                message = await self.safe_fetch_message(channel, message_id)
+                if not message:
+                    vote_info["completed"] = True
+                    continue
+                
+                # Get reactions efficiently
+                yes_reaction = next((r for r in message.reactions if str(r.emoji) == "✅"), None)
+                no_reaction = next((r for r in message.reactions if str(r.emoji) == "❌"), None)
+                
+                # Update cache
+                cache_entry = {}
+                if yes_reaction:
+                    cache_entry["✅"] = [user.id async for user in yes_reaction.users() if not user.bot]
+                if no_reaction:
+                    cache_entry["❌"] = [user.id async for user in no_reaction.users() if not user.bot]
+                self.reaction_cache[message_id] = cache_entry
+                
+                # Update stored votes if different
+                current_yes = set(cache_entry.get("✅", []))
+                current_no = set(cache_entry.get("❌", []))
+                stored_yes = set(vote_info["votes"]["✅"])
+                stored_no = set(vote_info["votes"]["❌"])
+                
+                if current_yes != stored_yes or current_no != stored_no:
+                    vote_info["votes"]["✅"] = list(current_yes)
+                    vote_info["votes"]["❌"] = list(current_no)
+                    
+                    total_votes = len(current_yes) + len(current_no)
+                    if total_votes >= self.required_votes:
+                        await self.complete_vote(str(vote_info["user_id"]), message)
+                    else:
+                        await self.queue_message_edit(message_id, channel_id, 
+                                                   await self.create_vote_embed(vote_info))
+                
+                self.last_reaction_check[message_id] = datetime.now().timestamp()
+                
+            except Exception as e:
+                logger.error(f"Error in batch processing: {e}")
+                continue
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload):
+        """Handle reaction adds with cache support"""
+        if not await self.should_process_reaction(payload):
+            return
+            
+        emoji = str(payload.emoji)
+        message_id = payload.message_id
+        
+        # Update cache immediately
+        if message_id in self.reaction_cache:
+            if emoji in self.reaction_cache[message_id]:
+                if payload.user_id not in self.reaction_cache[message_id][emoji]:
+                    self.reaction_cache[message_id][emoji].append(payload.user_id)
+            else:
+                self.reaction_cache[message_id][emoji] = [payload.user_id]
+        
+        await self.process_reaction_change(payload, added=True)
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_remove(self, payload):
+        """Handle reaction removes with cache support"""
+        if not await self.should_process_reaction(payload):
+            return
+            
+        emoji = str(payload.emoji)
+        message_id = payload.message_id
+        
+        # Update cache immediately
+        if message_id in self.reaction_cache and emoji in self.reaction_cache[message_id]:
+            if payload.user_id in self.reaction_cache[message_id][emoji]:
+                self.reaction_cache[message_id][emoji].remove(payload.user_id)
+        
+        await self.process_reaction_change(payload, added=False)
+
+    async def should_process_reaction(self, payload):
+        """Check if we should process this reaction event"""
+        if payload.guild_id not in self.main_guilds:
+            return False
+        if payload.user_id == self.bot.user.id:
+            return False
+            
+        # Find the vote
+        vote_info = next((v for v in self.vote_data.values() 
+                         if v.get("message_id") == payload.message_id), None)
+        
+        if not vote_info or vote_info.get("completed", True):
+            return False
+            
+        return str(payload.emoji) in ["✅", "❌"]
+
+    async def process_reaction_change(self, payload, added):
+        """Process reaction changes efficiently"""
+        emoji = str(payload.emoji)
+        opposite = "❌" if emoji == "✅" else "✅"
+        message_id = payload.message_id
+        
+        # Find the vote
+        user_id_str, vote_info = next(((k, v) for k, v in self.vote_data.items() 
+                                     if v.get("message_id") == message_id), (None, None))
+        if not vote_info:
+            return
+            
+        # Update vote counts
+        if added:
+            if payload.user_id in vote_info["votes"][opposite]:
+                vote_info["votes"][opposite].remove(payload.user_id)
+            if payload.user_id not in vote_info["votes"][emoji]:
+                vote_info["votes"][emoji].append(payload.user_id)
+        else:
+            if payload.user_id in vote_info["votes"][emoji]:
+                vote_info["votes"][emoji].remove(payload.user_id)
+        
+        self.save_data()
+        
+        # Get channel and message from cache if possible
+        channel = self.bot.get_channel(payload.channel_id)
+        if not channel:
+            return
+            
+        # Update embed
+        await self.queue_message_edit(message_id, payload.channel_id, 
+                                   await self.create_vote_embed(vote_info))
+        
+        # Check completion
+        total_votes = len(vote_info["votes"]["✅"]) + len(vote_info["votes"]["❌"])
+        if total_votes >= self.required_votes:
+            message = await self.safe_fetch_message(channel, message_id)
+            if message:
+                await self.complete_vote(user_id_str, message)
+
+    async def create_vote_embed(self, vote_info):
+        """Create an embed from vote info (reused from your original code)"""
+        user = self.bot.get_user(vote_info["user_id"])
+        user_name = user.display_name if user else f"User {vote_info['user_id']}"
+        
+        yes_votes = len(vote_info["votes"]["✅"])
+        no_votes = len(vote_info["votes"]["❌"])
+        
+        embed = discord.Embed(
+            title=f"Vote Ban: {user_name}",
+            description=(
+                f"**Reason:** {vote_info['reason']}\n\n"
+                f"Vote ✅ to ban ({yes_votes}), ❌ to keep ({no_votes})\n"
+                f"{self.required_votes} votes needed to decide"
+            ),
+            color=discord.Colour.random(),
+            timestamp=datetime.now()
+        )
+        
+        if user and user.avatar:
+            embed.set_thumbnail(url=user.avatar.url)
+        
+        # Add advocates if any
+        advocate_text = []
+        for advocate_id, advocate_data in vote_info.get("advocates", {}).items():
+            try:
+                timestamp = int(datetime.fromisoformat(advocate_data['timestamp']).timestamp())
+                advocate_text.append(
+                    f"• **{advocate_data['username']}** - \"{advocate_data['reason']}\" "
+                    f"(<t:{timestamp}:R>)"
+                )
+            except (ValueError, KeyError):
+                advocate_text.append(f"• **{advocate_data.get('username', 'Unknown')}** - \"{advocate_data.get('reason', 'No reason')}\"")
+
+        if advocate_text:
+            embed.add_field(name="Advocates", value="\n".join(advocate_text[:10]), inline=False)
+        
+        return embed
         
     def load_data(self):
         try:
@@ -380,102 +584,6 @@ class VoteBans(commands.Cog):
             embed.add_field(name="Advocates", value="\n".join(advocate_text[:10]), inline=False)
         
         await self.queue_message_edit(message.id, message.channel.id, embed)
-
-    @commands.Cog.listener()
-    async def on_raw_reaction_add(self, payload):
-        if payload.guild_id not in self.main_guilds:
-            return
-            
-        if payload.user_id == self.bot.user.id:
-            return
-
-        # Find vote by message_id
-        vote_info = None
-        user_id_str = None
-        for uid, data in self.vote_data.items():
-            if data.get("message_id") == payload.message_id:
-                vote_info = data
-                user_id_str = uid
-                break
-
-        if not vote_info or vote_info.get("completed", True):
-            return
-
-        emoji = str(payload.emoji)
-        if emoji not in ["✅", "❌"]:
-            return
-
-        guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-
-        member = guild.get_member(payload.user_id)
-        if not member or await self.is_staff(member):
-            return
-
-        channel = self.bot.get_channel(payload.channel_id)
-        if not channel:
-            return
-
-        message = await self.safe_fetch_message(channel, payload.message_id)
-        if not message:
-            return
-
-        # Remove user from opposite vote and add to current
-        opposite = "❌" if emoji == "✅" else "✅"
-        if payload.user_id in vote_info["votes"][opposite]:
-            vote_info["votes"][opposite].remove(payload.user_id)
-            try:
-                await message.remove_reaction(opposite, member)
-            except discord.HTTPException:
-                pass
-
-        if payload.user_id not in vote_info["votes"][emoji]:
-            vote_info["votes"][emoji].append(payload.user_id)
-
-        self.save_data()
-
-        # Update embed
-        await self.update_vote_embed(vote_info, message)
-
-        # Complete vote if needed
-        total_votes = len(vote_info["votes"]["✅"]) + len(vote_info["votes"]["❌"])
-        if total_votes >= self.required_votes:
-            await self.complete_vote(user_id_str, message)
-
-    @commands.Cog.listener()
-    async def on_raw_reaction_remove(self, payload):
-        if payload.guild_id not in self.main_guilds:
-            return
-            
-        if payload.user_id == self.bot.user.id:
-            return
-
-        # Find vote by message_id
-        vote_info = None
-        for uid, data in self.vote_data.items():
-            if data.get("message_id") == payload.message_id:
-                vote_info = data
-                break
-
-        if not vote_info or vote_info.get("completed", True):
-            return
-
-        emoji = str(payload.emoji)
-        if emoji not in ["✅", "❌"]:
-            return
-
-        # Remove user from vote list if they exist
-        if payload.user_id in vote_info["votes"][emoji]:
-            vote_info["votes"][emoji].remove(payload.user_id)
-            self.save_data()
-
-            # Update embed
-            channel = self.bot.get_channel(payload.channel_id)
-            if channel:
-                message = await self.safe_fetch_message(channel, payload.message_id)
-                if message:
-                    await self.update_vote_embed(vote_info, message)
 
     async def complete_vote(self, user_id_str, message):
         """Complete a vote and apply the result"""
