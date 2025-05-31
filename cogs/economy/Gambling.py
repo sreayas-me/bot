@@ -414,50 +414,70 @@ class Gambling(commands.Cog):
             if ctx.author.id in self.active_games:
                 self.active_games.remove(ctx.author.id)
             await ctx.reply("❌ An error occurred while starting the game.")
-            
+
     async def _run_crash_game(self, ctx, view, bet: int, current_balance: int):
-        """Run the crash game sequence"""
-        multiplier = 1.0
-        increment = 0.1
+        """Run the crash game sequence with randomized multipliers"""
+        # Initialize with random values
+        multiplier = random.uniform(0.95, 1.5)
+        increment = random.uniform(0.05, 1.0)
+        crash_point = None
+        crashed = False
         
         # 1 in 1000 chance for a big multiplier
         big_multiplier = random.random() < 0.001
+        
+        # Calculate crash point
+        if big_multiplier:
+            crash_point = random.uniform(100.0, 1000.0)
+        else:
+            # Base crash point between 1.1-2.0, modified by initial multiplier
+            base_crash = random.uniform(1.1, 2.0)
+            crash_point = max(1.1, base_crash * (1 + (multiplier - 1)))  # Scale with starting multiplier
         
         while True:
             # Check if player cashed out
             if view.cashed_out:
                 winnings = int(bet * view.cashout_multiplier)
                 await db.update_wallet(ctx.author.id, winnings, ctx.guild.id)
+                
+                # Show what would have happened
+                outcome_text = f"💰 Cashed out at {view.cashout_multiplier:.2f}x!"
+                if not crashed:
+                    outcome_text += f"\n\n💡 The game crashed at **{crash_point:.2f}x**"
+                    if view.cashout_multiplier >= crash_point:
+                        outcome_text += " - You got out just in time! 🎉"
+                    else:
+                        outcome_text += f" - You could have earned {crash_point/view.cashout_multiplier:.1f}x more!"
+                
                 embed = self._crash_embed(
                     view.cashout_multiplier,
                     bet,
                     current_balance + winnings,
                     True,
-                    f"Cashed out at {view.cashout_multiplier:.2f}x!"
+                    outcome_text
                 )
                 self.active_games.remove(ctx.author.id)
                 return await view.message.edit(embed=embed, view=None)
                 
-            # Calculate crash point (with 1/1000 chance for big multiplier)
-            crash_point = random.uniform(1.1, 2.0)
-            if big_multiplier:
-                crash_point = random.uniform(100.0, 1000.0)
-                
-            if multiplier >= crash_point:
+            # Check if crashed
+            if multiplier >= crash_point and not crashed:
+                crashed = True
                 # Crashed!
                 embed = self._crash_embed(
-                    multiplier,
+                    crash_point,
                     bet,
                     current_balance,
                     True,
-                    f"Crashed at {multiplier:.2f}x!"
+                    f"💥 Crashed at {crash_point:.2f}x!"
                 )
                 self.active_games.remove(ctx.author.id)
                 return await view.message.edit(embed=embed, view=None)
                 
-            # Update multiplier
-            multiplier += increment
-            increment = max(0.01, increment * 0.99)  # Gradually slow down
+            # Update multiplier if not crashed yet
+            if not crashed:
+                multiplier += increment
+                # Randomize increment change
+                increment = max(0.01, increment * random.uniform(0.8, 1.2))
             
             # Update the view's current multiplier
             view.current_multiplier = multiplier
@@ -470,8 +490,8 @@ class Gambling(commands.Cog):
                 self.active_games.remove(ctx.author.id)
                 return
                 
-            # Wait a bit
-            await asyncio.sleep(0.5)
+            # Random delay between updates (0.3-0.7 seconds)
+            await asyncio.sleep(random.uniform(0.3, 0.7))
 
     def _crash_view(self, user_id: int, bet: int, current_balance: int):
         """Create the crash game view with cashout button"""
