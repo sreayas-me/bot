@@ -233,7 +233,7 @@ class Economy(commands.Cog):
         await db.update_wallet(ctx.author.id, stolen, ctx.guild.id)
         await ctx.reply(f"You stole **{stolen}** {self.currency} from {victim.mention}!")
 
-    @commands.command(aliases=['lb'])
+    @commands.command(aliases=['lb', 'glb'])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def leaderboard(self, ctx, scope: str = "server"):
         """View the richest users"""

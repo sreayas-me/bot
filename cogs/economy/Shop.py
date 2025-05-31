@@ -2,6 +2,7 @@ from discord.ext import commands
 from cogs.logging.logger import CogLogger
 from utils.db import async_db as db
 from typing import Dict, List
+from collections import Counter
 import discord
 import random
 import asyncio
@@ -150,6 +151,176 @@ class Shop(commands.Cog):
                 "description": "Increase bank limit by 5000"
             }
         }
+        
+        # Fishing shop items
+        self.FISHING_ITEMS = {
+            "beginner_rod": {
+                "name": "Beginner Rod",
+                "price": 0,
+                "description": "Basic fishing rod for beginners",
+                "type": "rod",
+                "multiplier": 1.0,
+                "id": "beginner_rod"
+            },
+            "beginner_bait": {
+                "name": "Beginner Bait",
+                "price": 0,
+                "description": "Basic bait for catching fish (Pack of 10)",
+                "type": "bait",
+                "catch_rates": {"normal": 1.0, "rare": 0.1},
+                "amount": 10,
+                "id": "beginner_bait"
+            },
+            "pro_bait": {
+                "name": "Pro Bait",
+                "price": 50,
+                "description": "Better chances for rare fish (Pack of 10)",
+                "type": "bait",
+                "catch_rates": {"normal": 1.2, "rare": 0.3, "event": 0.1},
+                "amount": 10,
+                "id": "pro_bait"
+            },
+            "advanced_rod": {
+                "name": "Advanced Rod",
+                "price": 500,
+                "description": "Better fishing rod with 1.5x multiplier",
+                "type": "rod",
+                "multiplier": 1.5,
+                "id": "advanced_rod"
+            }
+        }
+
+    @commands.command(aliases=['shop'])
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def shop_menu(self, ctx, category: str = None):
+        """View shop items by category"""
+        if not category:
+            await self._show_shop_menu(ctx)
+            return
+            
+        if category.lower() == "fishing":
+            await self._show_fishing_shop(ctx)
+        elif category.lower() == "bait":
+            await self._show_bait_shop(ctx)
+        elif category.lower() in ["items", "general"]:
+            await self._show_general_shop(ctx)
+        else:
+            await ctx.reply(f"❌ Unknown shop category: `{category}`\nAvailable: `fishing`, `bait`, `items`")
+
+    async def _show_fishing_shop(self, ctx):
+        """Show the fishing shop with rods and bait"""
+        user_fishing_items = await db.get_fishing_items(ctx.author.id)
+        user_balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+        
+        embed = discord.Embed(
+            title="🎣 Fishing Shop",
+            description=f"Your Balance: **{user_balance}** {self.currency}\n\n",
+            color=0x1e90ff
+        )
+        
+        # Show rods
+        rod_text = ""
+        for rod_id, rod in self.FISHING_ITEMS.items():
+            if rod["type"] != "rod":
+                continue
+                
+            # Check if user already has this rod
+            has_rod = any(r["id"] == rod_id for r in user_fishing_items.get("rods", []))
+            
+            if rod["price"] == 0 and has_rod:
+                rod_text += f"~~**{rod['name']}**~~ - Already owned\n"
+            else:
+                price_text = "FREE" if rod["price"] == 0 else f"{rod['price']} {self.currency}"
+                rod_text += f"**{rod['name']}** - {price_text}\n"
+                rod_text += f"• {rod['description']}\n"
+                rod_text += f"• Multiplier: {rod['multiplier']}x\n"
+                rod_text += f"• `{ctx.prefix}buy {rod_id}`\n\n"
+        
+        embed.add_field(name="🎣 Fishing Rods", value=rod_text or "No rods available", inline=False)
+        
+        # Show bait
+        bait_text = ""
+        for bait_id, bait in self.FISHING_ITEMS.items():
+            if bait["type"] != "bait":
+                continue
+                
+            # For free bait, check if user has any bait at all
+            if bait["price"] == 0:
+                has_any_bait = len(user_fishing_items.get("bait", [])) > 0
+                if has_any_bait:
+                    bait_text += f"~~**{bait['name']}**~~ - You already have bait\n"
+                    continue
+            
+            price_text = "FREE" if bait["price"] == 0 else f"{bait['price']} {self.currency}"
+            bait_text += f"**{bait['name']}** - {price_text}\n"
+            bait_text += f"• {bait['description']}\n"
+            bait_text += f"• `{ctx.prefix}buy {bait_id}`\n\n"
+        
+        embed.add_field(name="🪱 Bait", value=bait_text or "No bait available", inline=False)
+        
+        embed.set_footer(text=f"Use {ctx.prefix}buy <item_id> to purchase items")
+        await ctx.reply(embed=embed)
+
+    async def _show_bait_shop(self, ctx):
+        """Show only bait items"""
+        user_fishing_items = await db.get_fishing_items(ctx.author.id)
+        user_balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+        
+        embed = discord.Embed(
+            title="🪱 Bait Shop",
+            description=f"Your Balance: **{user_balance}** {self.currency}\n\n",
+            color=0x8b4513
+        )
+        
+        bait_text = ""
+        for bait_id, bait in self.FISHING_ITEMS.items():
+            if bait["type"] != "bait":
+                continue
+                
+            # For free bait, check if user has any bait at all
+            if bait["price"] == 0:
+                has_any_bait = len(user_fishing_items.get("bait", [])) > 0
+                if has_any_bait:
+                    bait_text += f"~~**{bait['name']}**~~ - You already have bait\n\n"
+                    continue
+            
+            price_text = "FREE" if bait["price"] == 0 else f"{bait['price']} {self.currency}"
+            bait_text += f"**{bait['name']}** - {price_text}\n"
+            bait_text += f"• {bait['description']}\n"
+            bait_text += f"• Amount: {bait.get('amount', 1)} pieces\n"
+            
+            # Show catch rates
+            catch_rates = bait.get('catch_rates', {})
+            if catch_rates:
+                bait_text += f"• Catch rates: "
+                rates = []
+                for fish_type, rate in catch_rates.items():
+                    rates.append(f"{fish_type.title()}: {rate}x")
+                bait_text += ", ".join(rates) + "\n"
+            
+            bait_text += f"• `{ctx.prefix}buy {bait_id}`\n\n"
+        
+        embed.add_field(name="Available Bait", value=bait_text or "No bait available", inline=False)
+        await ctx.reply(embed=embed)
+
+    async def _show_general_shop(self, ctx):
+        """Show general shop items"""
+        user_balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+        
+        embed = discord.Embed(
+            title="🎁 General Shop",
+            description=f"Your Balance: **{user_balance}** {self.currency}\n\n",
+            color=0x00ff00
+        )
+        
+        for item_id, item in self.SHOP_ITEMS.items():
+            embed.add_field(
+                name=f"{item['name']} - {item['price']} {self.currency}",
+                value=f"{item['description']}\n`{ctx.prefix}buy {item_id}`",
+                inline=False
+            )
+        
+        await ctx.reply(embed=embed)
 
     @commands.command(aliases=['gshop'])
     @commands.cooldown(1, 3, commands.BucketType.user)
@@ -264,27 +435,18 @@ class Shop(commands.Cog):
         )
         
         categories = {
+            "fishing": "🎣 Fishing Gear (Rods & Bait)",
+            "bait": "🪱 Bait Only", 
             "items": "🎁 General Items",
-            "fishing": "🎣 Fishing Gear", 
-            "potions": "🧪 Potions & Buffs",
             "upgrades": "⬆️ Upgrades"
         }
         
         for category, display_name in categories.items():
-            try:
-                items = await db.get_shop_items(category, ctx.guild.id)
-                item_count = len(items)
-                embed.add_field(
-                    name=display_name,
-                    value=f"`!shop {category}` ({item_count} items)",
-                    inline=True
-                )
-            except:
-                embed.add_field(
-                    name=display_name,
-                    value=f"`{ctx.prefix}shop {category}` (??? items)",
-                    inline=True
-                )
+            embed.add_field(
+                name=display_name,
+                value=f"`{ctx.prefix}shop {category}`",
+                inline=True
+            )
         
         embed.add_field(
             name="💡 Quick Buy",
@@ -301,10 +463,10 @@ class Shop(commands.Cog):
         )
         
         examples = [
-            (f"`{ctx.prefix}buy vip`", "Buy 1 VIP role"),
-            (f"`{ctx.prefix}buy basic_bait 5`", "Buy 5 basic bait"),
-            (f"`{ctx.prefix}buy vip 1 basic_bait 10`", "Buy 1 VIP role and 10 basic bait"),
-            (f"`{ctx.prefix}buy bank_upgrade 3 fishing_luck 2`", "Buy 3 bank upgrades and 2 fishing luck potions")
+            (f"`{ctx.prefix}buy beginner_rod`", "Get your free starter rod"),
+            (f"`{ctx.prefix}buy beginner_bait`", "Get your free starter bait"),
+            (f"`{ctx.prefix}buy pro_bait 5`", "Buy 5 pro bait packs"),
+            (f"`{ctx.prefix}buy vip`", "Buy VIP role"),
         ]
         
         for command, description in examples:
@@ -316,7 +478,7 @@ class Shop(commands.Cog):
         
         embed.add_field(
             name="📝 Notes",
-            value=f"• Use `{ctx.prefix}shop <category>` to see available items\n• Amounts default to 1 if not specified",
+            value=f"• Use `{ctx.prefix}shop <category>` to see available items\n• Free items are only available once\n• Amounts default to 1 if not specified",
             inline=False
         )
         
@@ -338,9 +500,14 @@ class Shop(commands.Cog):
                 await ctx.reply(f"❌ Amount too large for {item_id}. Maximum 100 per item.")
                 return
                 
-            item = await self._find_item_in_shops(item_id)
+            item = await self._find_item_in_shops(item_id, user_id)
             if not item:
                 await ctx.reply(f"❌ Item `{item_id}` not found in any shop.")
+                return
+            
+            # Check if item is no longer available (like free items already owned)
+            if item.get("unavailable"):
+                await ctx.reply(f"❌ {item['name']} is not available for purchase. {item.get('reason', '')}")
                 return
                 
             if not self._item_supports_multiple(item) and amount > 1:
@@ -353,7 +520,7 @@ class Shop(commands.Cog):
         
         wallet_balance = await db.get_wallet_balance(user_id, guild_id)
         if wallet_balance < total_cost:
-            await ctx.reply(f"❌ Insufficient funds. Need **{total_cost:,}** coins, you have **{wallet_balance:,}** coins.")
+            await ctx.reply(f"❌ Insufficient funds. Need **{total_cost:,}** {self.currency}, you have **{wallet_balance:,}** {self.currency}.")
             return
         
         if total_cost > 10000 or len(purchase_plan) > 3:
@@ -363,8 +530,8 @@ class Shop(commands.Cog):
         await self._execute_bulk_purchase(ctx, purchase_plan, total_cost)
 
     def _item_supports_multiple(self, item: dict) -> bool:
-        single_purchase_types = ["role"]
-        single_purchase_items = ["vip", "color_role"]
+        single_purchase_types = ["role", "rod"]
+        single_purchase_items = ["vip", "color_role", "beginner_rod", "advanced_rod"]
         
         if item.get("type") in single_purchase_types:
             return False
@@ -375,39 +542,52 @@ class Shop(commands.Cog):
             
         return True
 
-    async def _find_item_in_shops(self, item_id: str) -> dict:
-        beginner_items = {
-            "beginner_rod": {
-                "name": "Beginner Rod",
-                "price": 0,
-                "description": "Basic fishing rod for beginners",
-                "type": "rod",
-                "multiplier": 1.0,
-                "id": "beginner_rod"
-            },
-            "beginner_bait": {
-                "name": "Beginner Bait",
-                "price": 0,
-                "description": "Basic bait for catching fish",
-                "type": "bait",
-                "catch_rates": {"normal": 1.0, "rare": 0.1},
-                "amount": 10,
-                "id": "beginner_bait"
-            }
-        }
-        
-        if item_id in beginner_items:
-            return beginner_items[item_id]
+    async def _find_item_in_shops(self, item_id: str, user_id: int = None) -> dict:
+        # Check fishing items first
+        if item_id in self.FISHING_ITEMS:
+            item = self.FISHING_ITEMS[item_id].copy()
             
+            # For free items, check if user already has them
+            if item["price"] == 0 and user_id:
+                user_fishing_items = await db.get_fishing_items(user_id)
+                
+                if item["type"] == "rod":
+                    # Check if user already has this specific rod
+                    has_rod = any(r["id"] == item_id for r in user_fishing_items.get("rods", []))
+                    if has_rod:
+                        item["unavailable"] = True
+                        item["reason"] = "You already own this rod."
+                        return item
+                        
+                elif item["type"] == "bait":
+                    # For free bait, check if user has any bait at all
+                    if item_id == "beginner_bait":
+                        has_any_bait = len(user_fishing_items.get("bait", [])) > 0
+                        if has_any_bait:
+                            item["unavailable"] = True
+                            item["reason"] = "You already have bait."
+                            return item
+            
+            return item
+            
+        # Check general shop items
+        if item_id in self.SHOP_ITEMS:
+            return self.SHOP_ITEMS[item_id].copy()
+            
+        # Check database shop items (for future expansion)
         shop_types = ["items", "fishing", "potions", "upgrades"]
         
         for shop_type in shop_types:
-            collection = getattr(db.db, f"shop_{shop_type}", None)
-            if collection:
-                item = await collection.find_one({"id": item_id})
-                if item:
-                    item['_shop_type'] = shop_type
-                    return item
+            try:
+                collection = getattr(db.db, f"shop_{shop_type}", None)
+                if collection:
+                    item = await collection.find_one({"id": item_id})
+                    if item:
+                        item['_shop_type'] = shop_type
+                        return item
+            except:
+                continue
+                
         return None
 
     async def _confirm_purchase(self, ctx, purchase_plan: list, total_cost: int) -> bool:
@@ -418,7 +598,10 @@ class Shop(commands.Cog):
         
         items_text = []
         for item, amount, cost in purchase_plan:
-            items_text.append(f"**{amount}x** {item['name']} - {cost:,} coins")
+            if cost == 0:
+                items_text.append(f"**{amount}x** {item['name']} - FREE")
+            else:
+                items_text.append(f"**{amount}x** {item['name']} - {cost:,} {self.currency}")
         
         embed.add_field(
             name="Items to Purchase:",
@@ -426,11 +609,18 @@ class Shop(commands.Cog):
             inline=False
         )
         
-        embed.add_field(
-            name="Total Cost:",
-            value=f"**{total_cost:,}** coins",
-            inline=False
-        )
+        if total_cost == 0:
+            embed.add_field(
+                name="Total Cost:",
+                value="**FREE**",
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="Total Cost:",
+                value=f"**{total_cost:,}** {self.currency}",
+                inline=False
+            )
         
         embed.set_footer(text="React with ✅ to confirm or ❌ to cancel (30s timeout)")
         
@@ -458,9 +648,11 @@ class Shop(commands.Cog):
         user_id = ctx.author.id
         guild_id = ctx.guild.id
         
-        if not await db.update_wallet(user_id, -total_cost, guild_id):
-            await ctx.reply("❌ Failed to deduct payment. Purchase cancelled.")
-            return
+        # Only deduct money if there's a cost
+        if total_cost > 0:
+            if not await db.update_wallet(user_id, -total_cost, guild_id):
+                await ctx.reply("❌ Failed to deduct payment. Purchase cancelled.")
+                return
             
         successful_purchases = []
         failed_purchases = []
@@ -482,22 +674,16 @@ class Shop(commands.Cog):
 
     async def _purchase_single_item(self, user_id: int, item: dict, guild_id: int) -> bool:
         try:
-            shop_type = item.get('_shop_type', 'items')
-            
-            if shop_type == "fishing":
-                if item.get("type") == "rod":
-                    return await db.add_fishing_item(user_id, item, "rod")
-                elif item.get("type") == "bait":
-                    return await db.add_fishing_item(user_id, item, "bait")
-                    
-            elif shop_type == "potions":
+            if item.get("type") == "rod":
+                return await db.add_fishing_item(user_id, item, "rod")
+            elif item.get("type") == "bait":
+                return await db.add_fishing_item(user_id, item, "bait")
+            elif item.get("type") == "potion":
                 return await db.add_potion(user_id, item)
-                
-            elif shop_type == "upgrades":
-                if item.get("type") == "bank":
-                    return await db.increase_bank_limit(user_id, item.get("amount", 0), guild_id)
-                    
-            elif shop_type == "items":
+            elif item.get("type") == "bank":
+                return await db.increase_bank_limit(user_id, item.get("amount", 0), guild_id)
+            else:
+                # General item - add to inventory
                 result = await db.db.users.update_one(
                     {"_id": str(user_id)},
                     {"$push": {"inventory": item}},
@@ -505,8 +691,6 @@ class Shop(commands.Cog):
                 )
                 return result.modified_count > 0 or result.upserted_id is not None
                 
-            return False
-            
         except Exception as e:
             self.logger.error(f"Failed to purchase {item.get('name', 'unknown')}: {e}")
             return False
@@ -534,7 +718,6 @@ class Shop(commands.Cog):
             )
         
         if failed:
-            from collections import Counter
             failed_counts = Counter(failed)
             failed_text = []
             for item_name, count in failed_counts.items():
@@ -549,16 +732,23 @@ class Shop(commands.Cog):
                 inline=False
             )
         
-        embed.add_field(
-            name="💸 Total Spent:",
-            value=f"**{total_spent:,}** coins",
-            inline=True
-        )
+        if total_spent == 0:
+            embed.add_field(
+                name="💸 Total Spent:",
+                value="**FREE**",
+                inline=True
+            )
+        else:
+            embed.add_field(
+                name="💸 Total Spent:",
+                value=f"**{total_spent:,}** {self.currency}",
+                inline=True
+            )
         
         new_balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
         embed.add_field(
             name="💰 Remaining Balance:",
-            value=f"**{new_balance:,}** coins",
+            value=f"**{new_balance:,}** {self.currency}",
             inline=True
         )
         
