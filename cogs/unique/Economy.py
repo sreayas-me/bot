@@ -1087,29 +1087,33 @@ class Economy(commands.Cog):
         user_id = ctx.author.id
         guild_id = ctx.guild.id
         
-        # Validate all items and calculate total cost
+        # Loop through all items and calculate total cost
         purchase_plan = []
         total_cost = 0
-        
+
         for item_id, amount in items:
             if amount <= 0:
                 await ctx.reply(f"❌ Invalid amount for {item_id}. Amount must be positive.")
                 return
                 
-            if amount > 100:  # Reasonable limit
+            if amount > 100:
                 await ctx.reply(f"❌ Amount too large for {item_id}. Maximum 100 per item.")
                 return
                 
-            # Find item in shops
             item = await self._find_item_in_shops(item_id)
             if not item:
                 await ctx.reply(f"❌ Item `{item_id}` not found in any shop.")
                 return
                 
-            # Check if item supports multiple purchases
             if not self._item_supports_multiple(item) and amount > 1:
                 await ctx.reply(f"❌ `{item['name']}` can only be purchased once at a time.")
                 return
+                
+            # Skip cost calculation for free items
+            if item['price'] > 0:
+                item_cost = item['price'] * amount
+                total_cost += item_cost
+            purchase_plan.append((item, amount, item_cost))
                 
             item_cost = item['price'] * amount
             total_cost += item_cost
@@ -1128,19 +1132,6 @@ class Economy(commands.Cog):
         
         # Execute purchases
         await self._execute_bulk_purchase(ctx, purchase_plan, total_cost)
-
-    async def _find_item_in_shops(self, item_id: str):
-        """Find item across all shop types"""
-        shop_types = ["items", "fishing", "potions", "upgrades"]
-        
-        for shop_type in shop_types:
-            collection = getattr(db.db, f"shop_{shop_type}", None)
-            if collection:
-                item = await collection.find_one({"id": item_id})
-                if item:
-                    item['_shop_type'] = shop_type
-                    return item
-        return None
 
     def _item_supports_multiple(self, item: dict) -> bool:
         """Check if item can be purchased multiple times"""
@@ -1207,11 +1198,12 @@ class Economy(commands.Cog):
         user_id = ctx.author.id
         guild_id = ctx.guild.id
         
-        # Start transaction by deducting total cost first
-        if not await db.update_wallet(user_id, -total_cost, guild_id):
-            await ctx.reply("❌ Failed to deduct payment. Purchase cancelled.")
-            return
-        
+        # Only deduct if total_cost > 0
+        if total_cost > 0:
+            if not await db.update_wallet(user_id, -total_cost, guild_id):
+                await ctx.reply("❌ Failed to deduct payment. Purchase cancelled.")
+                return
+            
         successful_purchases = []
         failed_purchases = []
         refund_amount = 0
@@ -1236,6 +1228,9 @@ class Economy(commands.Cog):
     async def _purchase_single_item(self, user_id: int, item: dict, guild_id: int) -> bool:
         """Purchase a single item (no cost deduction)"""
         try:
+            # Skip all checks if item is free
+            if item.get('price', 0) <= 0:
+                return True
             shop_type = item.get('_shop_type', 'items')
             
             if shop_type == "fishing":
@@ -1447,8 +1442,46 @@ class Economy(commands.Cog):
         # Execute purchases
         await self._execute_bulk_purchase(ctx, purchase_plan, total_cost)
 
-    async def _find_item_in_shops(self, item_id: str):
-        """Find item across all shop types"""
+    async def _find_item_in_shops(self, item_id: str, user_id: int = None) -> dict:
+        """Find item across all shop types with inventory check"""
+        # First check if it's a beginner item
+        beginner_items = {
+            "beginner_rod": {
+                "name": "Beginner Rod",
+                "price": 0,
+                "description": "Basic fishing rod for beginners",
+                "type": "rod",
+                "multiplier": 1.0,
+                "id": "beginner_rod"
+            },
+            "beginner_bait": {
+                "name": "Beginner Bait",
+                "price": 0,
+                "description": "Basic bait for catching fish",
+                "type": "bait",
+                "catch_rates": {"normal": 1.0, "rare": 0.1},
+                "amount": 10,
+                "id": "beginner_bait"
+            }
+        }
+        
+        # If it's a beginner item and user is provided, check inventory
+        if item_id in beginner_items and user_id:
+            fishing_items = await db.get_fishing_items(user_id)
+            
+            # For rod, check if they have any rod
+            if item_id == "beginner_rod" and fishing_items["rods"]:
+                beginner_items["beginner_rod"]["price"] = 50  # Make it cost if they already have a rod
+                
+            # For bait, check if they have any bait
+            if item_id == "beginner_bait" and fishing_items["bait"]:
+                beginner_items["beginner_bait"]["price"] = 10  # Make it cost if they already have bait
+        
+        # Return the modified beginner item or search other shops
+        if item_id in beginner_items:
+            return beginner_items[item_id]
+            
+        # Rest of the existing shop search logic...
         shop_types = ["items", "fishing", "potions", "upgrades"]
         
         for shop_type in shop_types:
