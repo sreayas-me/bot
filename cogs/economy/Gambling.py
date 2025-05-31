@@ -980,6 +980,19 @@ class Gambling(commands.Cog):
                 description=f"{ctx.author.mention}, please specify a channel: `!bomb #channel`"
             )
             return await ctx.send(embed=embed)
+        if not isinstance(channel, discord.TextChannel):
+            embed = discord.Embed(
+                color=0xFF0000,
+                description=f"{ctx.author.mention}, you must specify a valid text channel!"
+            )
+            return await ctx.send(embed=embed)
+        if channel.permissions_for(ctx.guild.me).send_messages is False:
+            embed = discord.Embed(
+                color=0xFF0000,
+                description=f"{ctx.author.mention}, I don't have permission to send messages in {channel.mention}!"
+            )
+            return await ctx.send(embed=embed)
+        
         
         # Check balance
         cost = 1000
