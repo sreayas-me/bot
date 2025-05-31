@@ -386,5 +386,174 @@ class Economy(commands.Cog):
                 color=0xff0000
             ))
 
+    async def calculate_daily_interest(self, user_id: int, guild_id: int = None) -> float:
+        """Calculate and apply daily interest"""
+        wallet = await db.get_wallet_balance(user_id, guild_id)
+        interest_level = await db.get_interest_level(user_id)
+        
+        base_rate = 0.00003
+        level_bonus = interest_level * 0.000005 + ((random.randint(0, 100) / 1000000) * interest_level)  # Random bonus between 0 and 0.0001%
+        total_rate = base_rate + level_bonus
+        
+        interest = wallet * total_rate
+        if interest < 1:  # Minimum 1 coin
+            interest = 1
+        
+        # Cap at 1% of wallet per day (optional)
+        max_interest = wallet * 0.01
+        if interest > max_interest:
+            interest = max_interest
+        
+        if await db.update_wallet(user_id, int(interest), guild_id):
+            return interest
+        return 0
+
+    @commands.command(aliases=['interest', 'i'])
+    @commands.cooldown(1, 86400, commands.BucketType.user)
+    async def claim_interest(self, ctx):
+        """Claim your daily interest"""
+        interest = await self.calculate_daily_interest(ctx.author.id, ctx.guild.id)
+        if interest > 0:
+            await ctx.reply(f"💰 You earned **{interest:,}** {self.currency} in daily interest!")
+        else:
+            await ctx.reply("❌ Failed to claim interest. Try again later.")
+
+    @commands.command(aliases=['upgrade_interest', 'iu'])
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def interest_upgrade(self, ctx):
+        """Upgrade your daily interest rate"""
+        
+        async def create_upgrade_embed(user_id):
+            """Create the upgrade embed with current user data"""
+            current_level = await db.get_interest_level(user_id)
+            if current_level >= 30:
+                embed = discord.Embed(
+                    title="Interest Rate Upgrade",
+                    description="You've reached the maximum interest level!",
+                    color=discord.Color.gold()
+                )
+                return embed, None, True  # embed, view, max_reached
+            
+            # Calculate upgrade cost
+            base_cost = 1000
+            cost = base_cost * (current_level + 1)
+            
+            # For levels 20+, require an item
+            item_required = current_level >= 20
+            
+            embed = discord.Embed(
+                title="Interest Rate Upgrade",
+                description=(
+                    f"Current interest level: **{current_level}**\n"
+                    f"Next level cost: **{cost:,}** {self.currency}\n"
+                    f"Item required: {'Yes' if item_required else 'No'}\n\n"
+                    f"Your current daily interest rate: **{0.003 + (current_level * 0.05):.3f}%**\n"
+                    f"Next level rate: **{0.003 + ((current_level + 1) * 0.05):.3f}%**"
+                ),
+                color=discord.Color.green()
+            )
+            
+            if item_required:
+                embed.add_field(
+                    name="Special Item Required",
+                    value="You need an **Interest Token** to upgrade beyond level 20!",
+                    inline=False
+                )
+            
+            # Create view with buttons
+            view = discord.ui.View()
+            
+            confirm_button = discord.ui.Button(label="Upgrade", style=discord.ButtonStyle.green)
+            
+            async def confirm_callback(interaction):
+                if interaction.user != ctx.author:
+                    return await interaction.response.send_message("This isn't your upgrade!", ephemeral=True)
+                
+                # Get fresh data for the upgrade attempt
+                fresh_level = await db.get_interest_level(ctx.author.id)
+                fresh_cost = base_cost * (fresh_level + 1)
+                fresh_item_required = fresh_level >= 20
+                
+                success, message = await db.upgrade_interest(ctx.author.id, fresh_cost, fresh_item_required)
+                
+                if success:
+                    # Create new embed with updated data
+                    new_embed, new_view, max_reached = await create_upgrade_embed(ctx.author.id)
+                    if max_reached:
+                        await interaction.response.edit_message(embed=new_embed, view=None)
+                    else:
+                        await interaction.response.edit_message(embed=new_embed, view=new_view)
+                else:
+                    # Show error message briefly, then restore original embed
+                    error_embed = discord.Embed(
+                        description=f"❌ {message}",
+                        color=discord.Color.red()
+                    )
+                    await interaction.response.edit_message(embed=error_embed, view=None)
+                    
+                    # Wait 3 seconds then restore the upgrade embed
+                    await asyncio.sleep(3)
+                    original_embed, original_view, _ = await create_upgrade_embed(ctx.author.id)
+                    await interaction.edit_original_response(embed=original_embed, view=original_view)
+            
+            confirm_button.callback = confirm_callback
+            view.add_item(confirm_button)
+            
+            cancel_button = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.red)
+            
+            async def cancel_callback(interaction):
+                if interaction.user != ctx.author:
+                    return await interaction.response.send_message("This isn't your upgrade!", ephemeral=True)
+                await interaction.response.edit_message(content="Upgrade cancelled.", embed=None, view=None)
+            
+            cancel_button.callback = cancel_callback
+            view.add_item(cancel_button)
+            
+            return embed, view, False
+        
+        # Create initial embed and view
+        embed, view, max_reached = await create_upgrade_embed(ctx.author.id)
+        
+        if max_reached:
+            await ctx.reply(embed=embed)
+        else:
+            await ctx.reply(embed=embed, view=view)
+    @commands.command(aliases=['interest_info', 'ii'])
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def interest_status(self, ctx):
+        """Check your current interest rate and level"""
+        wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+        level = await db.get_interest_level(ctx.author.id)
+        current_rate = 0.003 + (level * 0.05)
+        next_rate = 0.003 + ((level + 1) * 0.05) if level < 30 else current_rate
+        
+        # Calculate what they would earn today
+        daily_interest = wallet * (current_rate / 100)
+        if daily_interest < 1:
+            daily_interest = 1
+        
+        embed = discord.Embed(
+            title="Interest Account Status",
+            description=(
+                f"**Current Level:** {level}/30\n"
+                f"**Daily Interest Rate:** {current_rate:.3f}%\n"
+                f"**Estimated Daily Earnings:** {int(daily_interest):,} {self.currency}\n"
+                f"**Next Level Rate:** {next_rate:.3f}%"
+            ),
+            color=discord.Color.blue()
+        )
+        
+        if level < 30:
+            base_cost = 1000
+            cost = base_cost * (level + 1)
+            embed.add_field(
+                name="Next Upgrade",
+                value=f"Cost: **{cost:,}** {self.currency}\n" + 
+                    ("*Requires Interest Token*" if level >= 20 else ""),
+                inline=False
+            )
+        
+        await ctx.reply(embed=embed)
+
 async def setup(bot):
     await bot.add_cog(Economy(bot))
