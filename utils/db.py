@@ -652,14 +652,6 @@ class AsyncDatabase:
         if await self.db.shop_upgrades.count_documents({}) == 0:
             await self.db.shop_upgrades.insert_many([
                 {
-                    "id": "bank_upgrade",
-                    "name": "Bank Upgrade",
-                    "price": 2500,
-                    "type": "bank",
-                    "amount": 5000,
-                    "description": "Increase bank limit by 5000"
-                },
-                {
                     "id": "rod_upgrade",
                     "name": "Rod Enhancement",
                     "price": 10000,

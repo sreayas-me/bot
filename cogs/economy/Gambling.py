@@ -416,53 +416,19 @@ class Gambling(commands.Cog):
             await ctx.reply("❌ An error occurred while starting the game.")
 
     async def _run_crash_game(self, ctx, view, bet: int, current_balance: int):
-        """Run the crash game sequence with randomized multipliers"""
-        # Initialize with random values
-        multiplier = 1
-        increment = 0.05
-        crash_point = None
-        crashed = False
+        """Run the crash game sequence with exact crash points"""
+        multiplier = 1.0
+        increment = 0.1
+        crash_point = random.uniform(1.1, 2.0)  # Determine crash point first
         
-        # 1 in 1000 chance for a big multiplier
-        big_multiplier = random.random() < 0.001
-        
-        # Calculate crash point
-        if big_multiplier:
+        # 1 in 1000 chance for big multiplier
+        if random.random() < 0.001:
             crash_point = random.uniform(100.0, 1000.0)
-        else:
-            # Base crash point between 1.1-2.0, modified by initial multiplier
-            base_crash = random.uniform(1.1, 2.0)
-            crash_point = max(1.1, base_crash * (1 + (multiplier - 1)))  # Scale with starting multiplier
         
         while True:
-            # Check if player cashed out
-            if view.cashed_out:
-                winnings = int(bet * view.cashout_multiplier)
-                await db.update_wallet(ctx.author.id, winnings, ctx.guild.id)
-                
-                # Show what would have happened
-                outcome_text = f"💰 Cashed out at {view.cashout_multiplier:.2f}x!"
-                if not crashed:
-                    outcome_text += f"\n\n💡 The game crashed at **{crash_point:.2f}x**"
-                    if view.cashout_multiplier >= crash_point:
-                        outcome_text += " - You got out just in time! 🎉"
-                    else:
-                        outcome_text += f" - You could have earned {crash_point/view.cashout_multiplier:.1f}x more!"
-                
-                embed = self._crash_embed(
-                    view.cashout_multiplier,
-                    bet,
-                    current_balance + winnings,
-                    True,
-                    outcome_text
-                )
-                self.active_games.remove(ctx.author.id)
-                return await view.message.edit(embed=embed, view=None)
-                
-            # Check if crashed
-            if multiplier >= crash_point and not crashed:
-                crashed = True
-                # Crashed!
+            # First check if we've reached crash point
+            if multiplier >= crash_point:
+                # Crashed exactly at crash_point
                 embed = self._crash_embed(
                     crash_point,
                     bet,
@@ -473,13 +439,29 @@ class Gambling(commands.Cog):
                 self.active_games.remove(ctx.author.id)
                 return await view.message.edit(embed=embed, view=None)
                 
-            # Update multiplier if not crashed yet
-            if not crashed:
-                multiplier += increment
-                # Randomize increment change
-                increment = max(0.01, increment * random.uniform(0.8, 1.2))
-            
-            # Update the view's current multiplier
+            # Then check for cashout (only possible if we haven't crashed yet)
+            if view.cashed_out:
+                winnings = int(bet * view.cashout_multiplier)
+                await db.update_wallet(ctx.author.id, winnings, ctx.guild.id)
+                
+                # Calculate how close they were to crashing
+                percent_to_crash = (view.cashout_multiplier / crash_point) * 100
+                closeness = f"{percent_to_crash:.0f}% to crash point"
+                
+                embed = self._crash_embed(
+                    view.cashout_multiplier,
+                    bet,
+                    current_balance + winnings,
+                    True,
+                    f"💰 Cashed out at {view.cashout_multiplier:.2f}x!\n\n"
+                    f"💡 Game would have crashed at {crash_point:.2f}x ({closeness})"
+                )
+                self.active_games.remove(ctx.author.id)
+                return await view.message.edit(embed=embed, view=None)
+                
+            # Update multiplier (but never beyond crash_point)
+            multiplier = min(multiplier + increment, crash_point)
+            increment = max(0.01, increment * 0.99)
             view.current_multiplier = multiplier
             
             # Update display
@@ -490,8 +472,7 @@ class Gambling(commands.Cog):
                 self.active_games.remove(ctx.author.id)
                 return
                 
-            # Random delay between updates (0.3-0.7 seconds)
-            await asyncio.sleep(random.uniform(0.3, 0.7))
+            await asyncio.sleep(0.5)
 
     def _crash_view(self, user_id: int, bet: int, current_balance: int):
         """Create the crash game view with cashout button"""
@@ -988,6 +969,117 @@ class Gambling(commands.Cog):
         except Exception as e:
             self.logger.error(f"Roulette error: {e}")
             await ctx.reply("❌ An error occurred while processing your bet.")
+
+    @commands.command(aliases=['bomb_activate'])
+    @commands.cooldown(1, 300, commands.BucketType.guild)
+    async def bomb(self, ctx, channel: discord.TextChannel = None):
+        """💣 Start a money bomb in a channel (Costs 1,000 coins)"""
+        if channel is None:
+            embed = discord.Embed(
+                color=0xFF0000,
+                description=f"{ctx.author.mention}, please specify a channel: `!bomb #channel`"
+            )
+            return await ctx.send(embed=embed)
+        
+        # Check balance
+        cost = 1000
+        wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+        if wallet < cost:
+            embed = discord.Embed(
+                color=0xFF0000,
+                description=f"💸 {ctx.author.mention} You need **1,000** {self.currency} to plant a bomb!"
+            )
+            return await ctx.send(embed=embed)
+        
+        # Deduct bomb cost
+        await db.update_wallet(ctx.author.id, -cost, ctx.guild.id)
+        
+        # Bomb activation embed
+        bomb_embed = discord.Embed(
+            title="💣 **MONEY BOMB ACTIVATED** 💣",
+            color=0xFF5733,
+            description=(
+                f"Planted by {ctx.author.mention}\n\n"
+                "🚨 **ANY MESSAGE SENT IN THIS CHANNEL** 🚨\n"
+                "⏳ **FOR THE NEXT 60 SECONDS** ⏳\n"
+                "🎲 **HAS 50% CHANCE TO EXPLODE** 💥\n\n"
+                f"💰 All stolen money goes to {ctx.author.mention}'s bank!"
+            )
+        )
+        bomb_embed.set_footer(text="The bomb timer has started!")
+        bomb_msg = await channel.send(embed=bomb_embed)
+        
+        # Game tracking
+        victims = {}
+        bomber_bank = 0
+        end_time = datetime.now() + timedelta(seconds=60)
+        
+        def is_bomb_active():
+            return datetime.now() < end_time
+        
+        def is_valid_message(m):
+            return (
+                m.channel == channel and
+                not m.author.bot and
+                m.author != ctx.author and
+                is_bomb_active()
+            )
+        
+        # Game loop
+        try:
+            while is_bomb_active():
+                msg = await self.bot.wait_for('message', check=is_valid_message, timeout=1.0)
+                
+                if random.random() < 0.5:
+                    amount_lost = random.randint(40, 75)
+                    victims[msg.author.id] = victims.get(msg.author.id, 0) + amount_lost
+                    bomber_bank += amount_lost
+                    
+                    # Visual explosion feedback
+                    await msg.add_reaction('💥')
+                    await msg.add_reaction('💸')
+        except asyncio.TimeoutError:
+            pass
+        
+        # Build results embed
+        result_embed = discord.Embed(
+            title="💥 **BOMB RESULTS** 💥",
+            color=0xFFA500
+        )
+        
+        if victims:
+            # Format victim list
+            victim_list = []
+            for victim_id, amount in victims.items():
+                victim = self.bot.get_user(victim_id)
+                if victim:
+                    victim_list.append(f"• {victim.mention} ─ **{amount}** {self.currency}")
+            
+            # Add fields to embed
+            result_embed.add_field(
+                name=f"💰 {ctx.author.mention}'s Earnings",
+                value=f"**{bomber_bank}** {self.currency}",
+                inline=False
+            )
+            result_embed.add_field(
+                name="🔥 Victims",
+                value="\n".join(victim_list) if victim_list else "No victims!",
+                inline=False
+            )
+            
+            # Add stolen money to bomber's bank
+            if bomber_bank > 0:
+                await db.update_bank(ctx.author.id, bomber_bank, ctx.guild.id)
+        else:
+            result_embed.description = "💨 The bomb exploded with no victims!\n" \
+                                    f"{ctx.author.mention} gets nothing but shame!"
+        
+        # Add timer info
+        time_left = max(0, (end_time - datetime.now()).total_seconds())
+        result_embed.set_footer(text=f"Bomb duration: 60s | {len(victims)} victims caught")
+        
+        # Send results
+        await channel.send(embed=result_embed)
 
     async def _parse_bet(self, bet: str, wallet: int) -> Optional[int]:
         """Parse a bet string into an amount"""
