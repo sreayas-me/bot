@@ -207,11 +207,6 @@ class Shop(commands.Cog):
                 "name": "Custom Color",
                 "price": 5000,
                 "description": "Create a custom colored role"
-            },
-            "bank_upgrade": {
-                "name": "Bank Upgrade",
-                "price": 2500,
-                "description": "Increase bank limit by 5000"
             }
         }
         

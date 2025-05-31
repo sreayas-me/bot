@@ -555,86 +555,90 @@ class Economy(commands.Cog):
         await ctx.reply(embed=embed, view=view if not max_reached else None)
 
     @commands.command(aliases=['upgrade_bank', 'bu'])
+    @commands.cooldown(1, 3, commands.BucketType.user)
     async def bankupgrade(self, ctx):
         """Upgrade your bank capacity (price scales with current limit)"""
-        user_id = ctx.author.id
-        guild_id = ctx.guild.id
         
-        # Get current bank stats
-        current_limit = await db.get_bank_limit(user_id, guild_id)
-        current_balance = await db.get_bank_balance(user_id, guild_id)
-        
-        # Dynamic pricing formula (example: 10% of current limit + base 1000)
-        base_cost = 1000
-        upgrade_cost = int(current_limit * 0.1) + base_cost
-        
-        # Get user's wallet balance
-        wallet = await db.get_wallet_balance(user_id, guild_id)
-        
-        # Create confirmation embed
-        embed = discord.Embed(
-            title="🏦 Bank Upgrade",
-            color=0x2ecc71,
-            description=(
-                f"Current Bank Limit: **{current_limit:,}** {self.currency}\n"
-                f"Upgrade Cost: **{upgrade_cost:,}** {self.currency}\n"
-                f"New Limit: **{current_limit + 5000:,}** {self.currency}\n\n"
-                f"Your Wallet: **{wallet:,}** {self.currency}"
-            )
-        )
-        
-        # Add upgrade button
-        view = discord.ui.View()
-        
-        async def upgrade_callback(interaction):
-            if interaction.user != ctx.author:
-                return await interaction.response.send_message("This isn't your bank upgrade!", ephemeral=True)
+        async def create_upgrade_embed(user_id, guild_id):
+            # Get current bank stats
+            current_limit = await db.get_bank_limit(user_id, guild_id)
+            current_balance = await db.get_bank_balance(user_id, guild_id)
             
-            # Re-check balance in case it changed
-            wallet = await db.get_wallet_balance(user_id, guild_id)
-            if wallet < upgrade_cost:
-                return await interaction.response.edit_message(
-                    content=None,
-                    embed=discord.Embed(
-                        description="❌ You don't have enough money to upgrade your bank!",
-                        color=discord.Color.red()
-                    ),
-                    view=None
-                )
+            # Dynamic pricing formula (example: 10% of current limit + base 1000)
+            base_cost = 1000
+            upgrade_cost = int(current_limit * 0.1) + base_cost
+            new_limit = current_limit + 5000  # Fixed increase per upgrade
             
-            # Process upgrade
-            await db.update_wallet(user_id, -upgrade_cost, guild_id)
-            await db.update_bank_limit(user_id, 5000, guild_id)  # Increase by 5000
+            # Check if user can afford it
+            can_afford = current_balance >= upgrade_cost
             
-            # Get updated stats
-            new_limit = await db.get_bank_limit(user_id, guild_id)
-            
-            # Success message
-            success_embed = discord.Embed(
-                title="✅ Bank Upgraded!",
-                color=0x00ff00,
+            # Create embed
+            embed = discord.Embed(
+                title="🏦 Bank Upgrade",
+                color=0x2ecc71 if can_afford else 0xe74c3c,
                 description=(
-                    f"New Bank Limit: **{new_limit:,}** {self.currency}\n"
-                    f"Next Upgrade Cost: **{int(new_limit * 0.1) + base_cost:,}** {self.currency}"
+                    f"Current Bank Limit: **{current_limit:,}** {self.currency}\n"
+                    f"Current Bank Balance: **{current_balance:,}** {self.currency}\n\n"
+                    f"Upgrade Cost: **{upgrade_cost:,}** {self.currency}\n"
+                    f"New Limit: **{new_limit:,}** {self.currency}\n"
+                    f"*Money will be taken directly from your bank*"
                 )
             )
-            await interaction.response.edit_message(embed=success_embed, view=None)
+            
+            if not can_afford:
+                embed.add_field(
+                    name="Insufficient Funds",
+                    value=f"You need **{upgrade_cost - current_balance:,}** more {self.currency} in your bank to upgrade!",
+                    inline=False
+                )
+            
+            # Create view with buttons
+            view = discord.ui.View()
+            
+            if can_afford:
+                confirm_button = discord.ui.Button(label="Upgrade", style=discord.ButtonStyle.green)
+                
+                async def confirm_callback(interaction):
+                    if interaction.user != ctx.author:
+                        return await interaction.response.send_message("This isn't your upgrade!", ephemeral=True)
+                    
+                    # Verify balance again in case it changed
+                    fresh_balance = await db.get_bank_balance(user_id, guild_id)
+                    fresh_limit = await db.get_bank_limit(user_id, guild_id)
+                    fresh_cost = int(fresh_limit * 0.1) + base_cost
+                    
+                    if fresh_balance < fresh_cost:
+                        error_embed = discord.Embed(
+                            description="❌ Your bank balance changed and you can no longer afford this upgrade!",
+                            color=discord.Color.red()
+                        )
+                        return await interaction.response.edit_message(embed=error_embed, view=None)
+                    
+                    # Process the upgrade
+                    await db.update_bank(user_id, -fresh_cost, guild_id)
+                    await db.update_bank_limit(user_id, 5000, guild_id)  # Increase by 5000
+                    
+                    # Show new upgrade options
+                    new_embed, new_view = await create_upgrade_embed(user_id, guild_id)
+                    await interaction.response.edit_message(embed=new_embed, view=new_view)
+                
+                confirm_button.callback = confirm_callback
+                view.add_item(confirm_button)
+            
+            cancel_button = discord.ui.Button(label="Close", style=discord.ButtonStyle.red)
+            
+            async def cancel_callback(interaction):
+                if interaction.user != ctx.author:
+                    return await interaction.response.send_message("This isn't your upgrade!", ephemeral=True)
+                await interaction.response.edit_message(content="Bank upgrade closed.", embed=None, view=None)
+            
+            cancel_button.callback = cancel_callback
+            view.add_item(cancel_button)
+            
+            return embed, view
         
-        upgrade_button = discord.ui.Button(label=f"Upgrade ({upgrade_cost:,})", style=discord.ButtonStyle.green)
-        upgrade_button.callback = upgrade_callback
-        view.add_item(upgrade_button)
-        
-        cancel_button = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.red)
-        
-        async def cancel_callback(interaction):
-            if interaction.user != ctx.author:
-                return await interaction.response.send_message("This isn't your bank upgrade!", ephemeral=True)
-            await interaction.response.edit_message(content="Upgrade cancelled.", embed=None, view=None)
-        
-        cancel_button.callback = cancel_callback
-        view.add_item(cancel_button)
-        
-        await ctx.send(embed=embed, view=view)
+        embed, view = await create_upgrade_embed(ctx.author.id, ctx.guild.id)
+        await ctx.reply(embed=embed, view=view)
 
 async def setup(bot):
     await bot.add_cog(Economy(bot))
