@@ -972,126 +972,159 @@ class Gambling(commands.Cog):
 
     @commands.command(aliases=['bomb_activate'])
     @commands.cooldown(1, 300, commands.BucketType.guild)
-    async def bomb(self, ctx, channel: discord.TextChannel = None):
-        """💣 Start a money bomb in a channel (Costs 1,000 coins)"""
+    async def bomb(self, ctx, channel: discord.TextChannel = None, amount: int = 1000):
+        """💣 Start a money bomb (Duration scales with investment)
+        
+        Parameters:
+        channel: Target channel (#mention)
+        amount: Investment (1000-1M coins, default: 1000)
+        """
+        # Validation checks
         if channel is None:
             embed = discord.Embed(
                 color=0xFF0000,
-                description=f"{ctx.author.mention}, please specify a channel: `!bomb #channel`"
+                description=f"{ctx.author.mention}, please specify a channel: `!bomb #channel [amount]`"
             )
             return await ctx.send(embed=embed)
+        
         if not isinstance(channel, discord.TextChannel):
             embed = discord.Embed(
                 color=0xFF0000,
                 description=f"{ctx.author.mention}, you must specify a valid text channel!"
             )
             return await ctx.send(embed=embed)
-        if channel.permissions_for(ctx.guild.me).send_messages is False:
+        
+        if not channel.permissions_for(ctx.guild.me).send_messages:
             embed = discord.Embed(
                 color=0xFF0000,
                 description=f"{ctx.author.mention}, I don't have permission to send messages in {channel.mention}!"
             )
             return await ctx.send(embed=embed)
         
-        
-        # Check balance
-        cost = 1000
+        # Amount validation
+        amount = max(1000, min(1000000, amount))  # Clamp between 1k-1M
         wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
-        if wallet < cost:
+        
+        if wallet < amount:
             embed = discord.Embed(
                 color=0xFF0000,
-                description=f"💸 {ctx.author.mention} You need **1,000** {self.currency} to plant a bomb!"
+                description=f"💸 {ctx.author.mention} You need **{amount:,}** {self.currency} (You have: {wallet:,})"
             )
             return await ctx.send(embed=embed)
         
+        # Calculate duration (linear scaling, max 10min at 1M)
+        base_duration = 60  # 1 minute at 1k coins
+        max_duration = 600  # 10 minutes at 1M coins
+        duration = min(max_duration, base_duration * (amount / 1000))
+        
         # Deduct bomb cost
-        await db.update_wallet(ctx.author.id, -cost, ctx.guild.id)
+        await db.update_wallet(ctx.author.id, -amount, ctx.guild.id)
         
         # Bomb activation embed
         bomb_embed = discord.Embed(
-            title="💣 **MONEY BOMB ACTIVATED** 💣",
+            title="💣 **DYNAMIC MONEY BOMB** 💣",
             color=0xFF5733,
             description=(
-                f"Planted by {ctx.author.mention}\n\n"
-                "🚨 **ANY MESSAGE SENT IN THIS CHANNEL** 🚨\n"
-                "⏳ **FOR THE NEXT 60 SECONDS** ⏳\n"
-                "🎲 **HAS 50% CHANCE TO EXPLODE** 💥\n\n"
-                f"💰 All stolen money goes to {ctx.author.mention}'s bank!"
+                f"**Investor:** {ctx.author.mention}\n"
+                f"**Investment:** {amount:,} {self.currency}\n"
+                f"**Duration:** {int(duration)} seconds\n\n"
+                "🚨 **ANY MESSAGE HAS 50% CHANCE TO EXPLODE** 💥\n"
+                f"💰 **Potential Payout:** Up to {amount*2:,} {self.currency}"
             )
         )
-        bomb_embed.set_footer(text="The bomb timer has started!")
         bomb_msg = await channel.send(embed=bomb_embed)
         
         # Game tracking
         victims = {}
+        first_time_victims = set()
         bomber_bank = 0
-        end_time = datetime.now() + timedelta(seconds=60)
+        end_time = datetime.now() + timedelta(seconds=duration)
         
         def is_bomb_active():
             return datetime.now() < end_time
         
-        def is_valid_message(m):
-            return (
-                m.channel == channel and
-                not m.author.bot and
-                m.author != ctx.author and
-                is_bomb_active()
-            )
+        # Real-time duration updater
+        async def update_timer():
+            while is_bomb_active():
+                time_left = max(0, (end_time - datetime.now()).total_seconds())
+                if time_left % 30 == 0 or time_left <= 10:  # Update every 30s or last 10s
+                    await bomb_msg.edit(embed=bomb_embed.set_footer(
+                        text=f"⏰ Time remaining: {int(time_left)} seconds | Current victims: {len(victims)}"
+                    ))
+                await asyncio.sleep(1)
         
-        # Game loop
+        timer_task = self.bot.loop.create_task(update_timer())
+        
+        # Main game loop
         try:
             while is_bomb_active():
-                msg = await self.bot.wait_for('message', check=is_valid_message, timeout=1.0)
-                
-                if random.random() < 0.5:
-                    amount_lost = random.randint(40, 75)
-                    victims[msg.author.id] = victims.get(msg.author.id, 0) + amount_lost
-                    bomber_bank += amount_lost
+                try:
+                    msg = await self.bot.wait_for(
+                        'message',
+                        check=lambda m: (
+                            m.channel == channel and
+                            not m.author.bot and
+                            m.author != ctx.author and
+                            is_bomb_active()
+                        ),
+                        timeout=0.5
+                    )
                     
-                    # Visual explosion feedback
-                    await msg.add_reaction('💥')
-                    await msg.add_reaction('💸')
-        except asyncio.TimeoutError:
-            pass
+                    if random.random() < 0.5:
+                        # Scale loss with investment (40-75 at 1k, up to 400-750 at 1M)
+                        loss_multiplier = min(10, amount / 1000)
+                        amount_lost = random.randint(
+                            int(40 * loss_multiplier),
+                            int(75 * loss_multiplier)
+                        )
+                        victims[msg.author.id] = victims.get(msg.author.id, 0) + amount_lost
+                        bomber_bank += amount_lost
+                        
+                        if msg.author.id not in first_time_victims:
+                            first_time_victims.add(msg.author.id)
+                            await msg.add_reaction('💥')
+                            await msg.add_reaction('💸')
+                            
+                except asyncio.TimeoutError:
+                    continue
+                    
+        finally:
+            timer_task.cancel()
         
-        # Build results embed
+        # Payout calculation (up to 2x investment)
+        payout = min(amount*2, bomber_bank)
+        await db.update_bank(ctx.author.id, payout, ctx.guild.id)
+        
+        # Results embed
         result_embed = discord.Embed(
-            title="💥 **BOMB RESULTS** 💥",
-            color=0xFFA500
+            title=f"💥 **BOMB COMPLETED** 💥",
+            color=0xFFA500,
+            description=(
+                f"**Investment:** {amount:,} {self.currency}\n"
+                f"**Duration:** {int(duration)} seconds\n"
+                f"**Total Payout:** {payout:,} {self.currency}\n"
+                f"**ROI:** {((payout/amount)*100)-100:.1f}%\n\n"
+                f"**Next Upgrade:** {int(amount*1.5):,} {self.currency} = {min(720, int(duration*1.5))} seconds"
+            )
         )
         
         if victims:
-            # Format victim list
-            victim_list = []
-            for victim_id, amount in victims.items():
-                victim = self.bot.get_user(victim_id)
-                if victim:
-                    victim_list.append(f"• {victim.mention} ─ **{amount}** {self.currency}")
-            
-            # Add fields to embed
+            top_victims = sorted(victims.items(), key=lambda x: x[1], reverse=True)[:5]
             result_embed.add_field(
-                name=f"💰 {ctx.author.mention}'s Earnings",
-                value=f"**{bomber_bank}** {self.currency}",
+                name="🔥 Top Victims",
+                value="\n".join(
+                    f"{self.bot.get_user(vid).mention} ─ **{amt:,}** {self.currency}"
+                    for vid, amt in top_victims
+                ),
                 inline=False
             )
-            result_embed.add_field(
-                name="🔥 Victims",
-                value="\n".join(victim_list) if victim_list else "No victims!",
-                inline=False
-            )
-            
-            # Add stolen money to bomber's bank
-            if bomber_bank > 0:
-                await db.update_bank(ctx.author.id, bomber_bank, ctx.guild.id)
         else:
-            result_embed.description = "💨 The bomb exploded with no victims!\n" \
-                                    f"{ctx.author.mention} gets nothing but shame!"
+            result_embed.add_field(
+                name="Result",
+                value="💨 No victims were caught!",
+                inline=False
+            )
         
-        # Add timer info
-        time_left = max(0, (end_time - datetime.now()).total_seconds())
-        result_embed.set_footer(text=f"Bomb duration: 60s | {len(victims)} victims caught")
-        
-        # Send results
         await channel.send(embed=result_embed)
 
     async def _parse_bet(self, bet: str, wallet: int) -> Optional[int]:
