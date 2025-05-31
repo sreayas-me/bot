@@ -224,11 +224,12 @@ class Economy(commands.Cog):
         
         chance = random.random()
         if chance < 0.6:  # 60% chance to fail
-            fine = random.randint(50, 200)
+            fine = int((random.random() * 0.3 + 0.1) * victim_bal)
+
             await db.update_wallet(ctx.author.id, -fine, ctx.guild.id)
             return await ctx.reply(f"You got caught and paid **{fine}** {self.currency} in fines!")
         
-        stolen = random.randint(50, min(victim_bal, 500))
+        stolen = int(victim_bal * random.uniform(0.1, 0.5))
         await db.update_wallet(victim.id, -stolen, ctx.guild.id)
         await db.update_wallet(ctx.author.id, stolen, ctx.guild.id)
         await ctx.reply(f"You stole **{stolen}** {self.currency} from {victim.mention}!")

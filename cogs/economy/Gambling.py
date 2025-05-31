@@ -418,8 +418,8 @@ class Gambling(commands.Cog):
     async def _run_crash_game(self, ctx, view, bet: int, current_balance: int):
         """Run the crash game sequence with randomized multipliers"""
         # Initialize with random values
-        multiplier = random.uniform(0.95, 1.5)
-        increment = random.uniform(0.05, 1.0)
+        multiplier = 1
+        increment = 0.05
         crash_point = None
         crashed = False
         
