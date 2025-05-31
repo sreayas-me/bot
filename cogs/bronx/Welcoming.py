@@ -40,12 +40,16 @@ class Welcoming(commands.Cog):
         if member.guild.id not in self.main_guilds:
             return
 
+        with open('data/config.json', 'r') as f:
+            config = json.load(f)
+            welcome_channel = config.get('welcome_channel', 1378156495144751147)
+
         logger.info(f"[+] Member joined: {member} in guild {member.guild.id}")
 
         greetings = ["hi", "yo", "hola", "bonjour", "hhhjhhhiiiiii", "haiiiiii :3", "haaaaaaaiiiiiii", "hello", "hhiihihihiihihi"]
         emoji = random.choice(member.guild.emojis) if member.guild.emojis else ""
         if member.guild.id == 1259717095382319215:
-            channel = member.guild.get_channel(1368768246475391037)
+            channel = member.guild.get_channel(welcome_channel)
             if channel:
                 await channel.send(f"{member.mention} {random.choice(greetings)} {emoji}")
             embed = welcome_embed(member)
@@ -57,6 +61,29 @@ class Welcoming(commands.Cog):
                 await db.store_stats(member.guild.id, "gained")
             except Exception as e:
                 logger.error(f"Failed to store join stats: {e}")
+
+    @commands.command(alias=['swc', 'welcomechannel'])
+    @commands.has_permissions(administrator=True)
+    async def setwelcomechannel(self, ctx, channel: discord.TextChannel):
+        """Set the welcome channel for the server."""
+        if ctx.guild.id not in self.main_guilds:
+            return await ctx.send("This command can only be used in main guilds.")
+
+        with open('data/config.json', 'r') as f:
+            config = json.load(f)
+        
+        config['welcome_channel'] = channel.id
+        
+        with open('data/config.json', 'w') as f:
+            json.dump(config, f, indent=4)
+
+        await ctx.send(f"Welcome channel set to {channel.mention}.")
+    @setwelcomechannel.error
+    async def setwelcomechannel_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send("You do not have permission to use this command.")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.send("Invalid channel specified. Please mention a valid text channel.")
 
     @commands.command()
     async def welcometest(self, ctx):
