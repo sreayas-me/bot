@@ -224,11 +224,12 @@ class Economy(commands.Cog):
         
         chance = random.random()
         if chance < 0.6:  # 60% chance to fail
-            fine = random.randint(50, 200)
+            fine = int((random.random() * 0.3 + 0.1) * victim_bal)
+
             await db.update_wallet(ctx.author.id, -fine, ctx.guild.id)
             return await ctx.reply(f"You got caught and paid **{fine}** {self.currency} in fines!")
         
-        stolen = random.randint(50, min(victim_bal, 500))
+        stolen = int(victim_bal * random.uniform(0.1, 0.5))
         await db.update_wallet(victim.id, -stolen, ctx.guild.id)
         await db.update_wallet(ctx.author.id, stolen, ctx.guild.id)
         await ctx.reply(f"You stole **{stolen}** {self.currency} from {victim.mention}!")
@@ -432,7 +433,7 @@ class Economy(commands.Cog):
         
         # Calculate current rate in percentage
         current_rate_percent = (0.03 + (level * 0.05))  # 0.03% base + 0.05% per level
-        next_rate_percent = (0.03 + ((level + 1) * 0.05)) if level < 30 else current_rate_percent
+        next_rate_percent = (0.03 + ((level + 1) * 0.05)) if level < 60 else current_rate_percent
         
         # Calculate estimated earnings (without random bonus for display)
         estimated_interest = total_balance * (current_rate_percent / 100)
@@ -441,7 +442,7 @@ class Economy(commands.Cog):
         embed = discord.Embed(
             title="Interest Account Status",
             description=(
-                f"**Current Level:** {level}/30\n"
+                f"**Current Level:** {level}/60\n"
                 f"**Daily Interest Rate:** {current_rate_percent:.2f}%\n"
                 f"**Wallet Balance:** {wallet:,} {self.currency}\n"
                 f"**Bank Balance:** {bank:,} {self.currency}\n"
@@ -452,7 +453,7 @@ class Economy(commands.Cog):
             color=discord.Color.blue()
         )
         
-        if level < 30:
+        if level < 60:
             base_cost = 1000
             cost = base_cost * (level + 1)
             embed.add_field(
@@ -471,7 +472,7 @@ class Economy(commands.Cog):
         
         async def create_upgrade_embed(user_id):
             current_level = await db.get_interest_level(user_id)
-            if current_level >= 30:
+            if current_level >= 60:
                 embed = discord.Embed(
                     title="Interest Rate Upgrade",
                     description="You've reached the maximum interest level!",
@@ -552,6 +553,88 @@ class Economy(commands.Cog):
         
         embed, view, max_reached = await create_upgrade_embed(ctx.author.id)
         await ctx.reply(embed=embed, view=view if not max_reached else None)
+
+    @commands.command(aliases=['upgrade_bank', 'bu'])
+    async def bankupgrade(self, ctx):
+        """Upgrade your bank capacity (price scales with current limit)"""
+        user_id = ctx.author.id
+        guild_id = ctx.guild.id
+        
+        # Get current bank stats
+        current_limit = await db.get_bank_limit(user_id, guild_id)
+        current_balance = await db.get_bank_balance(user_id, guild_id)
+        
+        # Dynamic pricing formula (example: 10% of current limit + base 1000)
+        base_cost = 1000
+        upgrade_cost = int(current_limit * 0.1) + base_cost
+        
+        # Get user's wallet balance
+        wallet = await db.get_wallet_balance(user_id, guild_id)
+        
+        # Create confirmation embed
+        embed = discord.Embed(
+            title="🏦 Bank Upgrade",
+            color=0x2ecc71,
+            description=(
+                f"Current Bank Limit: **{current_limit:,}** {self.currency}\n"
+                f"Upgrade Cost: **{upgrade_cost:,}** {self.currency}\n"
+                f"New Limit: **{current_limit + 5000:,}** {self.currency}\n\n"
+                f"Your Wallet: **{wallet:,}** {self.currency}"
+            )
+        )
+        
+        # Add upgrade button
+        view = discord.ui.View()
+        
+        async def upgrade_callback(interaction):
+            if interaction.user != ctx.author:
+                return await interaction.response.send_message("This isn't your bank upgrade!", ephemeral=True)
+            
+            # Re-check balance in case it changed
+            wallet = await db.get_wallet_balance(user_id, guild_id)
+            if wallet < upgrade_cost:
+                return await interaction.response.edit_message(
+                    content=None,
+                    embed=discord.Embed(
+                        description="❌ You don't have enough money to upgrade your bank!",
+                        color=discord.Color.red()
+                    ),
+                    view=None
+                )
+            
+            # Process upgrade
+            await db.update_wallet(user_id, -upgrade_cost, guild_id)
+            await db.update_bank_limit(user_id, 5000, guild_id)  # Increase by 5000
+            
+            # Get updated stats
+            new_limit = await db.get_bank_limit(user_id, guild_id)
+            
+            # Success message
+            success_embed = discord.Embed(
+                title="✅ Bank Upgraded!",
+                color=0x00ff00,
+                description=(
+                    f"New Bank Limit: **{new_limit:,}** {self.currency}\n"
+                    f"Next Upgrade Cost: **{int(new_limit * 0.1) + base_cost:,}** {self.currency}"
+                )
+            )
+            await interaction.response.edit_message(embed=success_embed, view=None)
+        
+        upgrade_button = discord.ui.Button(label=f"Upgrade ({upgrade_cost:,})", style=discord.ButtonStyle.green)
+        upgrade_button.callback = upgrade_callback
+        view.add_item(upgrade_button)
+        
+        cancel_button = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.red)
+        
+        async def cancel_callback(interaction):
+            if interaction.user != ctx.author:
+                return await interaction.response.send_message("This isn't your bank upgrade!", ephemeral=True)
+            await interaction.response.edit_message(content="Upgrade cancelled.", embed=None, view=None)
+        
+        cancel_button.callback = cancel_callback
+        view.add_item(cancel_button)
+        
+        await ctx.send(embed=embed, view=view)
 
 async def setup(bot):
     await bot.add_cog(Economy(bot))
