@@ -31,8 +31,8 @@ class Fishing(commands.Cog):
             }
         }
 
-    @commands.command(name="fish", aliases=["fishing"])
-    @commands.cooldown(1, 30, commands.BucketType.user)
+    @commands.command(name="fish", aliases=["fishing", 'fs'])
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def fish(self, ctx):
         """Go fishing! Requires a rod and bait."""
         fishing_items = await db.get_fishing_items(ctx.author.id)
@@ -110,7 +110,7 @@ class Fishing(commands.Cog):
         else:
             await ctx.reply("❌ Failed to store your catch!")
 
-    @commands.command(name="fish_inv", aliases=["finv"])
+    @commands.command(name="fishinv", aliases=["finv", 'fi'])
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def fish_inventory(self, ctx):
         """View your fishing inventory"""
@@ -174,16 +174,59 @@ class Fishing(commands.Cog):
                 description="You haven't caught any fish yet!\nUse `.fish` to start fishing.",
                 color=discord.Color.blue()
             ))
-            
-        view = discord.ui.View()
-        if len(pages) > 1:
-            view.add_item(discord.ui.Button(label="Next Page", style=discord.ButtonStyle.primary))
         
+        class PaginationView(discord.ui.View):
+            def __init__(self, pages, author, timeout=60):
+                super().__init__(timeout=timeout)
+                self.pages = pages
+                self.author = author
+                self.current_page = 0
+                
+            async def update_message(self, interaction):
+                self.current_page %= len(self.pages)  # Wrap around
+                page = self.pages[self.current_page]
+                self.update_buttons()
+                await interaction.response.edit_message(embed=page, view=self)
+                
+            def update_buttons(self):
+                self.clear_items()
+                if len(self.pages) > 1:
+                    prev_button = discord.ui.Button(label="◀ Previous", style=discord.ButtonStyle.primary)
+                    prev_button.callback = self.previous_page
+                    self.add_item(prev_button)
+                    
+                    page_button = discord.ui.Button(label=f"Page {self.current_page + 1}/{len(self.pages)}", disabled=True)
+                    self.add_item(page_button)
+                    
+                    next_button = discord.ui.Button(label="Next ▶", style=discord.ButtonStyle.primary)
+                    next_button.callback = self.next_page
+                    self.add_item(next_button)
+                
+            @discord.ui.button(label="Close", style=discord.ButtonStyle.danger)
+            async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+                await interaction.response.defer()
+                await interaction.message.delete()
+                
+            async def previous_page(self, interaction: discord.Interaction):
+                self.current_page -= 1
+                await self.update_message(interaction)
+                
+            async def next_page(self, interaction: discord.Interaction):
+                self.current_page += 1
+                await self.update_message(interaction)
+                
+            async def interaction_check(self, interaction: discord.Interaction) -> bool:
+                if interaction.user != self.author:
+                    await interaction.response.send_message("This isn't your inventory!", ephemeral=True)
+                    return False
+                return True
+        
+        view = PaginationView(pages, ctx.author)
         await ctx.reply(embed=pages[0], view=view)
 
-    @commands.command(name="sell_fish", aliases=["sellf"])
+    @commands.command(name="sellfish", aliases=["sellf", 'sell_fish', 'sf'])
     @commands.cooldown(1, 3, commands.BucketType.user)
-    async def sell_fish(self, ctx, fish_id: str = "all"):
+    async def sellfish(self, ctx, fish_id: str = "all"):
         """Sell fish from your inventory"""
         fish = await db.get_fish(ctx.author.id)
         if not fish:

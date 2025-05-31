@@ -1,11 +1,14 @@
 from discord.ext import commands
 from cogs.logging.logger import CogLogger
 from utils.db import async_db as db
-from typing import Dict, List
+from typing import Dict, List, Optional
 from collections import Counter
 import discord
 import random
 import asyncio
+import hashlib
+from datetime import datetime, timedelta
+import math
 
 class EconomyShopView(discord.ui.View):
     def __init__(self, pages, author, timeout=180):
@@ -129,6 +132,66 @@ class EconomyShopView(discord.ui.View):
             except (discord.NotFound, discord.HTTPException):
                 pass
 
+class ShopStats:
+    def __init__(self, shop_cog):
+        self.shop = shop_cog
+        
+    async def get_popular_items(self, limit=5):
+        """Get most purchased items from database"""
+        try:
+            pipeline = [
+                {"$group": {"_id": "$item_id", "count": {"$sum": 1}}},
+                {"$sort": {"count": -1}},
+                {"$limit": limit}
+            ]
+            return await db.db.purchases.aggregate(pipeline).to_list(length=limit)
+        except:
+            return []
+    
+    def get_item_name(self, item_id):
+        """Get item name from item ID"""
+        all_items = {**self.shop.SHOP_ITEMS, **self.shop.FISHING_ITEMS, **self.shop.UPGRADE_ITEMS}
+        return all_items.get(item_id, {}).get('name', item_id.replace('_', ' ').title())
+    
+    async def show_shop_stats(self, ctx):
+        """Display shop statistics"""
+        embed = discord.Embed(title="📊 Shop Statistics", color=0x9b59b6)
+        
+        # Most popular items
+        popular = await self.get_popular_items()
+        if popular:
+            popular_text = []
+            for i, item in enumerate(popular, 1):
+                item_name = self.get_item_name(item['_id'])
+                popular_text.append(f"{i}. {item_name} ({item['count']} purchases)")
+            
+            embed.add_field(
+                name="🏆 Most Popular Items",
+                value="\n".join(popular_text),
+                inline=False
+            )
+        
+        # Total transactions today
+        try:
+            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_purchases = await db.db.purchases.count_documents({
+                "timestamp": {"$gte": today_start}
+            })
+            
+            embed.add_field(
+                name="📈 Today's Activity",
+                value=f"{today_purchases} purchases made today",
+                inline=True
+            )
+        except:
+            embed.add_field(
+                name="📈 Today's Activity",
+                value="Statistics unavailable",
+                inline=True
+            )
+        
+        await ctx.reply(embed=embed)
+
 class Shop(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -189,6 +252,38 @@ class Shop(commands.Cog):
                 "id": "advanced_rod"
             }
         }
+
+        # Seasonal events
+        self.SEASONAL_EVENTS = {
+            "halloween": {
+                "active_months": [10],  # October
+                "items": {
+                    "spooky_rod": {
+                        "name": "🎃 Spooky Rod",
+                        "price": 666,
+                        "description": "A haunted fishing rod with ghostly powers",
+                        "type": "rod",
+                        "multiplier": 2.0,
+                        "special_effect": "ghost_catch",
+                        "limited": True
+                    }
+                }
+            }
+        }
+
+        # Initialize shop stats
+        self.stats = ShopStats(self)
+
+    def get_current_seasonal_items(self):
+        """Get items that are currently available due to seasonal events"""
+        current_month = datetime.now().month
+        seasonal_items = {}
+        
+        for event_name, event_data in self.SEASONAL_EVENTS.items():
+            if current_month in event_data["active_months"]:
+                seasonal_items.update(event_data["items"])
+        
+        return seasonal_items
 
     @commands.command(aliases=['shop'])
     @commands.cooldown(1, 3, commands.BucketType.user)
@@ -435,19 +530,39 @@ class Shop(commands.Cog):
         )
         
         categories = {
-            "fishing": "🎣 Fishing Gear (Rods & Bait)",
+            "fishing": "🎣 Fishing Gear",
             "bait": "🪱 Bait Only", 
             "items": "🎁 General Items",
             "upgrades": "⬆️ Upgrades"
         }
         
-        for category, display_name in categories.items():
+        # Convert to list of tuples to maintain order
+        category_list = list(categories.items())
+        
+        # Add fields in pairs
+        for i in range(0, len(category_list), 2):
+            # Get current pair of items
+            items = category_list[i:i+2]
+            
+            # Add first item of pair
             embed.add_field(
-                name=display_name,
-                value=f"`{ctx.prefix}shop {category}`",
+                name=items[0][1],
+                value=f"`{ctx.prefix}shop {items[0][0]}`",
                 inline=True
             )
+            
+            # Add second item if exists, otherwise add empty field
+            if len(items) > 1:
+                embed.add_field(
+                    name=items[1][1],
+                    value=f"`{ctx.prefix}shop {items[1][0]}`",
+                    inline=True
+                )
+            else:
+                # Add empty field to maintain alignment if odd number
+                embed.add_field(name="\u200b", value="\u200b", inline=True)
         
+        # Quick Buy (always on new line)
         embed.add_field(
             name="💡 Quick Buy",
             value=f"`{ctx.prefix}buy <item_id> [amount]`\n`{ctx.prefix}buy help` for more options",
@@ -514,7 +629,14 @@ class Shop(commands.Cog):
                 await ctx.reply(f"❌ `{item['name']}` can only be purchased once at a time.")
                 return
                 
-            item_cost = item['price'] * amount
+            # Apply bulk discount if applicable
+            base_price = item['price']
+            if amount >= 10:
+                discount = min(0.2, 0.05 * math.floor(amount / 5))  # 5% per 5 items, max 20%
+                item_cost = int(base_price * amount * (1 - discount))
+            else:
+                item_cost = base_price * amount
+                
             total_cost += item_cost
             purchase_plan.append((item, amount, item_cost))
         
@@ -573,6 +695,11 @@ class Shop(commands.Cog):
         # Check general shop items
         if item_id in self.SHOP_ITEMS:
             return self.SHOP_ITEMS[item_id].copy()
+            
+        # Check seasonal items
+        seasonal_items = self.get_current_seasonal_items()
+        if item_id in seasonal_items:
+            return seasonal_items[item_id].copy()
             
         # Check database shop items (for future expansion)
         shop_types = ["items", "fishing", "potions", "upgrades"]
@@ -832,6 +959,241 @@ class Shop(commands.Cog):
             
         else:
             await ctx.reply("❌ This item cannot be used!")
+
+    @commands.command(name="search", aliases=["find", "shopsearch"])
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    async def search_shop(self, ctx, *, query: str):
+        """Search for items across all shop categories"""
+        if len(query) < 2:
+            return await ctx.reply("❌ Search query must be at least 2 characters long.")
+        
+        results = []
+        
+        # Search in all shop dictionaries
+        all_items = {**self.SHOP_ITEMS, **self.FISHING_ITEMS, **self.UPGRADE_ITEMS}
+        
+        for item_id, item in all_items.items():
+            if (query.lower() in item['name'].lower() or 
+                query.lower() in item['description'].lower() or
+                query.lower() in item_id.lower()):
+                results.append((item_id, item))
+        
+        if not results:
+            return await ctx.reply(f"❌ No items found matching '{query}'")
+        
+        embed = discord.Embed(
+            title=f"🔍 Search Results for '{query}'",
+            color=0x3498db
+        )
+        
+        for item_id, item in results[:10]:  # Limit to 10 results
+            price_text = "FREE" if item['price'] == 0 else f"{item['price']} {self.currency}"
+            
+            # Add category indicator
+            category = "🎣" if item.get('type') in ['rod', 'bait'] else "⬆️" if item_id in self.UPGRADE_ITEMS else "🎁"
+            
+            embed.add_field(
+                name=f"{category} {item['name']} - {price_text}",
+                value=f"{item['description']}\n`{ctx.prefix}buy {item_id}`",
+                inline=False
+            )
+        
+        if len(results) > 10:
+            embed.set_footer(text=f"Showing first 10 of {len(results)} results")
+        
+        await ctx.reply(embed=embed)
+
+    @commands.command(name="daily-deals", aliases=["deals", "dailydeals"])
+    @commands.cooldown(1, 10, commands.BucketType.user)
+    async def daily_deals(self, ctx):
+        """Show today's special deals"""
+        # Rotate deals based on date
+        today = datetime.now().strftime("%Y-%m-%d")
+        seed = int(hashlib.md5(today.encode()).hexdigest()[:8], 16)
+        random.seed(seed)
+        
+        # Select random items for daily deals from all categories
+        all_items = list(self.SHOP_ITEMS.items()) + list(self.FISHING_ITEMS.items()) + list(self.UPGRADE_ITEMS.items())
+        # Filter out free items
+        paid_items = [(k, v) for k, v in all_items if v['price'] > 0]
+        
+        if not paid_items:
+            return await ctx.reply("❌ No items available for daily deals.")
+        
+        deal_items = random.sample(paid_items, min(3, len(paid_items)))
+        
+        embed = discord.Embed(
+            title="🔥 Today's Daily Deals",
+            description="Special discounts that reset at midnight!",
+            color=0xff6b6b
+        )
+        
+        user_balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+        embed.add_field(
+            name="💰 Your Balance",
+            value=f"**{user_balance:,}** {self.currency}",
+            inline=False
+        )
+        
+        for item_id, item in deal_items:
+            discount = random.uniform(0.15, 0.4)  # 15-40% off
+            discounted_price = int(item['price'] * (1 - discount))
+            
+            # Add category indicator
+            category = "🎣" if item.get('type') in ['rod', 'bait'] else "⬆️" if item_id in self.UPGRADE_ITEMS else "🎁"
+            
+            can_afford = "✅" if user_balance >= discounted_price else "❌"
+            
+            embed.add_field(
+                name=f"{category} {item['name']} {can_afford}",
+                value=f"~~{item['price']:,}~~ **{discounted_price:,}** {self.currency}\n"
+                      f"**{int(discount*100)}% OFF!**\n"
+                      f"{item['description'][:50]}{'...' if len(item['description']) > 50 else ''}\n"
+                      f"`{ctx.prefix}buy {item_id}`",
+                inline=True
+            )
+        
+        embed.set_footer(text=f"Deals reset daily at midnight • Use {ctx.prefix}buy <item_id> to purchase")
+        await ctx.reply(embed=embed)
+
+    @commands.command(name="wishlist", aliases=["wl"])
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    async def wishlist(self, ctx, action: str = None, *, item_id: str = None):
+        """Manage your wishlist"""
+        if not action:
+            return await self.show_wishlist(ctx)
+        
+        action = action.lower()
+        if action == "add" and item_id:
+            await self.add_to_wishlist(ctx, item_id)
+        elif action == "remove" and item_id:
+            await self.remove_from_wishlist(ctx, item_id)
+        elif action == "clear":
+            await self.clear_wishlist(ctx)
+        else:
+            await ctx.reply(f"Usage: `{ctx.prefix}wishlist [add/remove/clear] [item_id]`\n"
+                          f"Or just `{ctx.prefix}wishlist` to view your list")
+
+    async def show_wishlist(self, ctx):
+        """Show user's wishlist"""
+        try:
+            wishlist = await db.db.wishlists.find_one({"user_id": str(ctx.author.id)})
+            if not wishlist or not wishlist.get('items'):
+                return await ctx.reply("📝 Your wishlist is empty! Use `{ctx.prefix}wishlist add <item_id>` to add items.")
+            
+            embed = discord.Embed(
+                title=f"📝 {ctx.author.name}'s Wishlist",
+                color=0xf39c12
+            )
+            
+            user_balance = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
+            embed.add_field(
+                name="💰 Your Balance",
+                value=f"**{user_balance:,}** {self.currency}",
+                inline=False
+            )
+            
+            affordable_count = 0
+            total_cost = 0
+            
+            for item in wishlist['items']:
+                can_afford = user_balance >= item['price']
+                if can_afford:
+                    affordable_count += 1
+                
+                total_cost += item['price']
+                
+                status = "✅ Can afford" if can_afford else "❌ Need more"
+                price_text = "FREE" if item['price'] == 0 else f"{item['price']:,} {self.currency}"
+                
+                embed.add_field(
+                    name=f"{item['name']} - {price_text}",
+                    value=f"{status}\n`{ctx.prefix}buy {item['id']}`",
+                    inline=True
+                )
+            
+            embed.add_field(
+                name="📊 Summary",
+                value=f"Total items: **{len(wishlist['items'])}**\n"
+                      f"Can afford: **{affordable_count}**\n"
+                      f"Total cost: **{total_cost:,}** {self.currency}",
+                inline=False
+            )
+            
+            await ctx.reply(embed=embed)
+            
+        except Exception as e:
+            self.logger.error(f"Wishlist display error: {e}")
+            await ctx.reply("❌ Failed to load wishlist. Please try again.")
+
+    async def add_to_wishlist(self, ctx, item_id: str):
+        """Add item to user's wishlist"""
+        item = await self._find_item_in_shops(item_id, ctx.author.id)
+        if not item:
+            return await ctx.reply(f"❌ Item `{item_id}` not found in any shop.")
+        
+        if item.get("unavailable"):
+            return await ctx.reply(f"❌ {item['name']} is not available for purchase. {item.get('reason', '')}")
+        
+        wishlist_item = {
+            "id": item_id,
+            "name": item["name"],
+            "price": item["price"],
+            "added_at": datetime.utcnow()
+        }
+        
+        try:
+            result = await db.db.wishlists.update_one(
+                {"user_id": str(ctx.author.id)},
+                {"$addToSet": {"items": wishlist_item}},
+                upsert=True
+            )
+            
+            if result.modified_count > 0 or result.upserted_id:
+                await ctx.reply(f"✅ Added **{item['name']}** to your wishlist!")
+            else:
+                await ctx.reply(f"❌ **{item['name']}** is already in your wishlist!")
+        except Exception as e:
+            self.logger.error(f"Wishlist add error: {e}")
+            await ctx.reply("❌ Failed to add item to wishlist. Please try again.")
+
+    async def remove_from_wishlist(self, ctx, item_id: str):
+        """Remove item from user's wishlist"""
+        try:
+            result = await db.db.wishlists.update_one(
+                {"user_id": str(ctx.author.id)},
+                {"$pull": {"items": {"id": item_id}}}
+            )
+            
+            if result.modified_count > 0:
+                await ctx.reply(f"✅ Removed item from your wishlist!")
+            else:
+                await ctx.reply("❌ Item not found in your wishlist.")
+        except Exception as e:
+            self.logger.error(f"Wishlist remove error: {e}")
+            await ctx.reply("❌ Failed to remove item from wishlist. Please try again.")
+
+    async def clear_wishlist(self, ctx):
+        """Clear user's wishlist"""
+        try:
+            result = await db.db.wishlists.update_one(
+                {"user_id": str(ctx.author.id)},
+                {"$set": {"items": []}}
+            )
+            
+            if result.modified_count > 0:
+                await ctx.reply("✅ Cleared your wishlist!")
+            else:
+                await ctx.reply("❌ Your wishlist is already empty!")
+        except Exception as e:
+            self.logger.error(f"Wishlist clear error: {e}")
+            await ctx.reply("❌ Failed to clear wishlist. Please try again.")
+
+    @commands.command(name="shopstats", aliases=["shop-stats"])
+    @commands.cooldown(1, 10, commands.BucketType.user)
+    async def shop_statistics(self, ctx):
+        """View shop statistics and trends"""
+        await self.stats.show_shop_stats(ctx)
 
 async def setup(bot):
     await bot.add_cog(Shop(bot))
