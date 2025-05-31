@@ -5,7 +5,7 @@ import discord
 import random
 import asyncio
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class Gambling(commands.Cog):
     def __init__(self, bot):
@@ -1025,7 +1025,7 @@ class Gambling(commands.Cog):
         # Game tracking
         victims = {}
         bomber_bank = 0
-        end_time = datetime.now() + datetime.timedelta(seconds=60)
+        end_time = datetime.now() + timedelta(seconds=60)
         
         def is_bomb_active():
             return datetime.now() < end_time
