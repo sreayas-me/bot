@@ -151,7 +151,9 @@ class TradeConfirmationView(discord.ui.View):
         parts = []
         
         if items:
-            item_counts = Counter(item['name'] for item in items)
+            print(items)
+            print(item_counts := Counter((item['name']) for item in items))
+            item_counts = Counter((item['name']) for item in items)
             for item_name, count in item_counts.items():
                 if count > 1:
                     parts.append(f"**{count}x** {item_name}")
@@ -264,22 +266,68 @@ class TradeConfirmationView(discord.ui.View):
         try:
             # Remove items from initiator, add to target
             for item in self.trade_offer.initiator_items:
-                await db.remove_from_inventory(self.trade_offer.initiator_id, self.trade_offer.guild_id, item['id'])
-                await db.add_to_inventory(self.trade_offer.target_id, self.trade_offer.guild_id, item)
+                # Remove from initiator
+                if not await db.remove_from_inventory(self.trade_offer.initiator_id, 
+                                                self.trade_offer.guild_id, 
+                                                item['id']):
+                    return False
+                
+                # Add to target
+                if not await db.add_to_inventory(self.trade_offer.target_id, 
+                                            self.trade_offer.guild_id, 
+                                            item):
+                    # If adding fails, try to return item to initiator
+                    await db.add_to_inventory(self.trade_offer.initiator_id, 
+                                        self.trade_offer.guild_id, 
+                                        item)
+                    return False
             
             # Remove items from target, add to initiator
             for item in self.trade_offer.target_items:
-                await db.remove_from_inventory(self.trade_offer.target_id, self.trade_offer.guild_id, item['id'])
-                await db.add_to_inventory(self.trade_offer.initiator_id, self.trade_offer.guild_id, item)
+                # Remove from target
+                if not await db.remove_from_inventory(self.trade_offer.target_id, 
+                                                self.trade_offer.guild_id, 
+                                                item['id']):
+                    return False
+                
+                # Add to initiator
+                if not await db.add_to_inventory(self.trade_offer.initiator_id, 
+                                            self.trade_offer.guild_id, 
+                                            item):
+                    # If adding fails, try to return item to target
+                    await db.add_to_inventory(self.trade_offer.target_id, 
+                                        self.trade_offer.guild_id, 
+                                        item)
+                    return False
             
             # Exchange currency
             if self.trade_offer.initiator_currency > 0:
-                await db.update_wallet(self.trade_offer.initiator_id, -self.trade_offer.initiator_currency, self.trade_offer.guild_id)
-                await db.update_wallet(self.trade_offer.target_id, self.trade_offer.initiator_currency, self.trade_offer.guild_id)
+                if not await db.update_wallet(self.trade_offer.initiator_id, 
+                                        -self.trade_offer.initiator_currency, 
+                                        self.trade_offer.guild_id):
+                    return False
+                if not await db.update_wallet(self.trade_offer.target_id, 
+                                        self.trade_offer.initiator_currency, 
+                                        self.trade_offer.guild_id):
+                    # Refund if the second transfer fails
+                    await db.update_wallet(self.trade_offer.initiator_id, 
+                                        self.trade_offer.initiator_currency, 
+                                        self.trade_offer.guild_id)
+                    return False
             
             if self.trade_offer.target_currency > 0:
-                await db.update_wallet(self.trade_offer.target_id, -self.trade_offer.target_currency, self.trade_offer.guild_id)
-                await db.update_wallet(self.trade_offer.initiator_id, self.trade_offer.target_currency, self.trade_offer.guild_id)
+                if not await db.update_wallet(self.trade_offer.target_id, 
+                                        -self.trade_offer.target_currency, 
+                                        self.trade_offer.guild_id):
+                    return False
+                if not await db.update_wallet(self.trade_offer.initiator_id, 
+                                        self.trade_offer.target_currency, 
+                                        self.trade_offer.guild_id):
+                    # Refund if the second transfer fails
+                    await db.update_wallet(self.trade_offer.target_id, 
+                                        self.trade_offer.target_currency, 
+                                        self.trade_offer.guild_id)
+                    return False
             
             return True
         except Exception:
@@ -486,18 +534,21 @@ class Trading(commands.Cog):
         
         # Check if user has the items
         inventory = await db.get_inventory(ctx.author.id, ctx.guild.id)
-        user_items = Counter(item['id'] for item in inventory)
         
-        # Get the available quantity
-        available = user_items.get(item_id, 0)
+        # Find the specific item and its quantity
+        item_details = None
+        available_quantity = 0
+        for item in inventory:
+            if item.get('id') == item_id:
+                item_details = item
+                available_quantity = item.get('quantity', 1)
+                break
         
-        if available < amount:
-            return await ctx.reply(f"❌ You only have {available} of that item! (Requested: {amount})")
-        
-        # Find the item details
-        item_details = next((item for item in inventory if item['id'] == item_id), None)
         if not item_details:
             return await ctx.reply(f"❌ Item `{item_id}` not found in your inventory!")
+        
+        if available_quantity < amount:
+            return await ctx.reply(f"❌ You only have {available_quantity} of that item! (Requested: {amount})")
         
         # Add items to trade offer
         for _ in range(amount):

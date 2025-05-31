@@ -108,8 +108,11 @@ class BronxBot(commands.AutoShardedBot):
                     try:
                         async with session.post(url, json=stats) as resp:
                             result = await resp.text()
-                            logging.info(f"[{env.upper()}] Stats update status: {resp.status}")
-                            logging.info(f"[{env.upper()}] Response: {result}")
+                            if resp.status == 200:
+                                logging.info(f"[{env.upper()}] Stats updated successfully: {result}")
+                            else:
+                                logging.error(f"[{env.upper()}] Failed to update stats: {resp.status} - {result}")
+                                
                     except Exception as e:
                         logging.error(f"[{env.upper()}] Failed to update stats: {e}")
         except Exception as e:
@@ -164,6 +167,7 @@ COG_DATA = {
         "cogs.economy.Fishing": "success",
         "cogs.economy.Shop": "success",
         "cogs.economy.Trading": "success",
+        "cogs.economy.Gambling": "success",
     },
     "colors": {
         "error": "\033[31m",      # Red
