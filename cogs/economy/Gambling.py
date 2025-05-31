@@ -879,8 +879,52 @@ class Gambling(commands.Cog):
             # Deduct bet
             await db.update_wallet(ctx.author.id, -parsed_bet, ctx.guild.id)
             
-            # Spin the wheel
+            # Create initial embed
+            embed = discord.Embed(
+                title="🎡 Roulette - Spinning...",
+                description=f"**Your bet:** {bet_name}\n"
+                        f"**Bet amount:** {parsed_bet:,} {self.currency}\n"
+                        f"**Potential win:** {parsed_bet * multiplier:,} {self.currency}\n\n"
+                        f"The wheel is spinning...",
+                color=0xf39c12
+            )
+            message = await ctx.reply(embed=embed)
+            
+            # Animation sequence
+            spin_duration = 3  # seconds
+            spin_steps = 10
+            delay = spin_duration / spin_steps
+            
+            # Generate the final result first
             winning_number, winning_color = random.choice(self.roulette_numbers)
+            
+            # Create animation steps
+            for i in range(spin_steps):
+                # Show random numbers during spin
+                anim_number, anim_color = random.choice(self.roulette_numbers)
+                
+                # Gradually slow down the animation
+                if i > spin_steps * 0.7:  # Last 30% of spins
+                    # Start homing in on the actual result
+                    if random.random() < 0.3 + (i/spin_steps):
+                        anim_number, anim_color = winning_number, winning_color
+                
+                embed.description = (
+                    f"**Your bet:** {bet_name}\n"
+                    f"**Bet amount:** {parsed_bet:,} {self.currency}\n"
+                    f"**Potential win:** {parsed_bet * multiplier:,} {self.currency}\n\n"
+                    f"**The ball is rolling...**\n"
+                    f"Current position: {anim_number} {anim_color.title()}"
+                )
+                
+                # Make the wheel appear to slow down
+                if i == spin_steps - 1:
+                    embed.title = "🎡 Roulette - Almost there..."
+                elif i > spin_steps * 0.8:
+                    embed.title = "🎡 Roulette - Slowing down..."
+                
+                await message.edit(embed=embed)
+                await asyncio.sleep(delay)
             
             # Determine if bet won
             win = False
@@ -913,18 +957,18 @@ class Gambling(commands.Cog):
             if winnings > 0:
                 await db.update_wallet(ctx.author.id, winnings, ctx.guild.id)
                 
-            # Create result embed
+            # Create final result embed
+            result_color = 0xe74c3c if winning_color == "red" else 0x2c3e50 if winning_color == "black" else 0x2ecc71
+            
             embed = discord.Embed(
-                title="🎡 Roulette",
+                title=f"🎡 Roulette - {'Winner!' if win else 'Better luck next time!'}",
                 description=f"**The ball landed on:**\n"
-                          f"{winning_number} {winning_color.title()}\n\n"
-                          f"**Your bet:** {bet_name}\n"
-                          f"**Bet amount:** {parsed_bet:,} {self.currency}\n"
-                          f"**Multiplier:** {multiplier}x\n\n"
-                          f"{outcome}",
-                color=0xe74c3c if winning_color == "red" else 
-                     0x2c3e50 if winning_color == "black" else 
-                     0x2ecc71
+                        f"**{winning_number} {winning_color.title()}**\n\n"
+                        f"**Your bet:** {bet_name}\n"
+                        f"**Bet amount:** {parsed_bet:,} {self.currency}\n"
+                        f"**Multiplier:** {multiplier}x\n\n"
+                        f"{outcome}",
+                color=result_color
             )
             
             embed.add_field(
@@ -933,7 +977,13 @@ class Gambling(commands.Cog):
                 inline=True
             )
             
-            await ctx.reply(embed=embed)
+            # Add different emojis based on result
+            if win:
+                embed.set_thumbnail(url="https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/160/twitter/259/party-popper_1f389.png")
+            else:
+                embed.set_thumbnail(url="https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/160/twitter/259/pensive-face_1f614.png")
+            
+            await message.edit(embed=embed)
             
         except Exception as e:
             self.logger.error(f"Roulette error: {e}")
