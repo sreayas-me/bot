@@ -805,11 +805,59 @@ class Gambling(commands.Cog):
             if ctx.author.id in self.active_games:
                 self.active_games.remove(ctx.author.id)
             await ctx.reply("❌ An error occurred while setting up the game.")
-
+            
     @commands.command(aliases=['rlt'])
     @commands.cooldown(1, 5, commands.BucketType.user)
-    async def roulette(self, ctx, bet: str, choice: str):
+    async def roulette(self, ctx, bet: str = None, choice: str = None):
         """Play roulette - bet on numbers, colors, or odd/even"""
+        if bet is None or choice is None:
+            # Show help menu if no args provided
+            embed = discord.Embed(
+                title="🎡 Roulette Help",
+                description="Place bets on numbers, colors, or other options in roulette.",
+                color=0x3498db
+            )
+            
+            embed.add_field(
+                name="💰 Bet Types & Payouts",
+                value=(
+                    "`number (0-36)` - 35:1 payout\n"
+                    "`red`/`black` - 1:1 payout\n"
+                    "`green` (0) - 35:1 payout\n"
+                    "`even`/`odd` - 1:1 payout\n"
+                    "`1st12`/`2nd12`/`3rd12` - 2:1 payout\n"
+                    "`1-18`/`19-36` - 1:1 payout"
+                ),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="📝 Usage Examples",
+                value=(
+                    "`.rlt 500 red` - Bet 500 on red\n"
+                    "`.rlt all 7` - Bet everything on number 7\n"
+                    "`.rlt half odd` - Bet half your balance on odd\n"
+                    "`.rlt 1k 1st12` - Bet 1,000 on first dozen (1-12)"
+                ),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="💡 Bet Amount Options",
+                value=(
+                    "You can bet using:\n"
+                    "- Exact amounts (`500`)\n"
+                    "- `all` or `max` (your entire balance)\n"
+                    "- `half` (half your balance)\n"
+                    "- Percentages (`50%`)\n"
+                    "- Suffixes (`1k` = 1,000, `1.5m` = 1,500,000)"
+                ),
+                inline=False
+            )
+            
+            embed.set_footer(text=f"Current balance: {await db.get_wallet_balance(ctx.author.id, ctx.guild.id):,} {self.currency}")
+            return await ctx.reply(embed=embed)
+        
         try:
             # Parse bet amount
             wallet = await db.get_wallet_balance(ctx.author.id, ctx.guild.id)
@@ -828,7 +876,7 @@ class Gambling(commands.Cog):
             choice = choice.lower()
             valid_choices = {
                 "red": ("color", 1, "Red"),
-                "black": ("color", 2, "Black"),
+                "black": ("color", 1, "Black"),
                 "green": ("color", 35, "Green (0)"),
                 "even": ("even", 1, "Even"),
                 "odd": ("odd", 1, "Odd"),
@@ -1127,30 +1175,26 @@ class Gambling(commands.Cog):
         
         await channel.send(embed=result_embed)
 
-    async def _parse_bet(self, bet: str, wallet: int) -> Optional[int]:
-        """Parse a bet string into an amount"""
-        if not bet:
-            return None
-        if wallet == 0:
-            return wallet
-        bet = bet.lower()
-        
+    async def _parse_bet(self, bet_str: str, wallet: int) -> int:
+        """Parse bet amount from string (supports all, half, %, k, m suffixes)"""
         try:
-            if bet == "all":
+            bet_str = bet_str.lower().strip()
+            
+            if bet_str in ['all', 'max']:
                 return wallet
-            elif bet == "half":
+            elif bet_str in ['half', '1/2']:
                 return wallet // 2
-            elif bet.endswith("%"):
-                percent = float(bet[:-1])
-                if not 0 < percent <= 100:
+            elif bet_str.endswith('%'):
+                percent = float(bet_str[:-1])
+                if percent <= 0 or percent > 100:
                     return None
                 return int(wallet * (percent / 100))
-            elif bet.endswith("k"):
-                return int(float(bet[:-1]) * 1000)
-            elif bet.endswith("m"):
-                return int(float(bet[:-1]) * 1000000)
+            elif bet_str.endswith('k'):
+                return int(float(bet_str[:-1]) * 1000)
+            elif bet_str.endswith('m'):
+                return int(float(bet_str[:-1]) * 1000000)
             else:
-                return int(bet.replace(",", ""))
+                return int(bet_str)
         except (ValueError, AttributeError):
             return None
 
