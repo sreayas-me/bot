@@ -138,6 +138,24 @@ class AsyncDatabase:
         )
         return result.modified_count > 0 or result.upserted_id is not None
 
+    async def update_bank_limit(self, user_id: int, amount: int, guild_id: int = None) -> bool:
+        """Update user's bank storage limit"""
+        if not await self.ensure_connected():
+            return False
+            
+        # Prevent negative limits
+        current_limit = await self.get_bank_limit(user_id, guild_id)
+        new_limit = current_limit + amount
+        if new_limit < 0:
+            return False
+            
+        result = await self.db.users.update_one(
+            {"_id": str(user_id)},
+            {"$inc": {"bank_limit": amount}},
+            upsert=True
+        )
+        return result.modified_count > 0 or result.upserted_id is not None
+
     async def get_guild_settings(self, guild_id: int) -> Dict[str, Any]:
         """Get guild settings"""
         if not await self.ensure_connected():
