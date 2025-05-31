@@ -86,6 +86,29 @@ class Welcoming(commands.Cog):
             await ctx.send("Invalid channel specified. Please mention a valid text channel.")
 
     @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def setwelcomechannel(self, ctx, channel: discord.TextChannel):
+        """Set the welcome channel for the server."""
+        if ctx.guild.id not in self.main_guilds:
+            return await ctx.send("This command can only be used in main guilds.")
+
+        with open('data/config.json', 'r') as f:
+            config = json.load(f)
+        
+        config['welcome_channel'] = channel.id
+        
+        with open('data/config.json', 'w') as f:
+            json.dump(config, f, indent=4)
+
+        await ctx.send(f"Welcome channel set to {channel.mention}.")
+    @setwelcomechannel.error
+    async def setwelcomechannel_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send("You do not have permission to use this command.")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.send("Invalid channel specified. Please mention a valid text channel.")
+
+    @commands.command()
     async def welcometest(self, ctx):
         """Test the welcome embed in your DMs."""
         try:
