@@ -843,6 +843,26 @@ class AsyncDatabase:
             await self.update_wallet(user_id, cost)
             return False, f"Upgrade failed: {str(e)}"
 
+    async def clear_fish(self, user_id: int) -> bool:
+        """Clear all fish from user's collection"""
+        if not await self.ensure_connected():
+            return False
+        result = await self.db.users.update_one(
+            {"_id": str(user_id)},
+            {"$set": {"fish": []}}
+        )
+        return result.modified_count > 0
+
+    async def remove_fish(self, user_id: int, fish_id: str) -> bool:
+        """Remove a specific fish from user's collection"""
+        if not await self.ensure_connected():
+            return False
+        result = await self.db.users.update_one(
+            {"_id": str(user_id)},
+            {"$pull": {"fish": {"id": fish_id}}}
+        )
+        return result.modified_count > 0
+
 class SyncDatabase:
     """Synchronous database class for use with Flask web interface (SQLite & MongoDB)"""
     _instance = None
