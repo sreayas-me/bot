@@ -62,7 +62,7 @@ class Welcoming(commands.Cog):
             except Exception as e:
                 logger.error(f"Failed to store join stats: {e}")
 
-    @commands.command(aliases=['swc', 'welcomechannel'])
+    @commands.command(aliases=['swc', 'welcome'])
     @commands.has_permissions(administrator=True)
     async def setwelcomechannel(self, ctx, channel: discord.TextChannel):
         """Set the welcome channel for the server."""
