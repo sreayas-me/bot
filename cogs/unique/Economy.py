@@ -1481,7 +1481,6 @@ class Economy(commands.Cog):
         if item_id in beginner_items:
             return beginner_items[item_id]
             
-        # Rest of the existing shop search logic...
         shop_types = ["items", "fishing", "potions", "upgrades"]
         
         for shop_type in shop_types:

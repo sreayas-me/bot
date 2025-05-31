@@ -149,14 +149,17 @@ COG_DATA = {
         "cogs.bronx.Stats": "other", 
         "cogs.bronx.VoteBans": "other", 
         "cogs.bronx.Welcoming": "other",
-        "cogs.unique.Economy": "disabled", 
         "cogs.unique.Multiplayer": "fun", 
         "cogs.Fun": "fun",
         "cogs.Giveaway": "fun",
         "cogs.unique.SyncRoles": "success", 
         "cogs.Help": "success", 
         "cogs.ModMail": "success", 
-        "cogs.Utility": "cog"
+        "cogs.Utility": "cog",
+        # cogs.unique.economy is now split into multiple cogs
+        "cogs.economy.Economy": "success",
+        "cogs.economy.Fishing": "success",
+        "cogs.economy.Shop": "success",
     },
     "colors": {
         "error": "\033[31m",      # Red
