@@ -57,7 +57,10 @@ class Gambling(commands.Cog):
             if not parsed_bet:
                 self.active_games.remove(ctx.author.id)
                 return await ctx.reply("❌ Invalid bet amount!")
-                
+
+            if parsed_bet <= 0:
+                return await ctx.reply("❌ Bet amount must be greater than 0! \n-# *(Do you have $0 in your wallet?)*")
+
             if parsed_bet > wallet:
                 self.active_games.remove(ctx.author.id)
                 return await ctx.reply("❌ You don't have enough money for that bet!")
@@ -385,7 +388,10 @@ class Gambling(commands.Cog):
             if not parsed_bet:
                 self.active_games.remove(ctx.author.id)
                 return await ctx.reply("❌ Invalid bet amount!")
-                
+
+            if parsed_bet <= 0:
+                return await ctx.reply("❌ Bet amount must be greater than 0! \n-# *(Do you have $0 in your wallet?)*")
+
             if parsed_bet > wallet:
                 self.active_games.remove(ctx.author.id)
                 return await ctx.reply("❌ You don't have enough money for that bet!")
@@ -408,7 +414,7 @@ class Gambling(commands.Cog):
             if ctx.author.id in self.active_games:
                 self.active_games.remove(ctx.author.id)
             await ctx.reply("❌ An error occurred while starting the game.")
-
+            
     async def _run_crash_game(self, ctx, view, bet: int, current_balance: int):
         """Run the crash game sequence"""
         multiplier = 1.0
@@ -453,10 +459,17 @@ class Gambling(commands.Cog):
             multiplier += increment
             increment = max(0.01, increment * 0.99)  # Gradually slow down
             
+            # Update the view's current multiplier
+            view.current_multiplier = multiplier
+            
             # Update display
             embed = self._crash_embed(multiplier, bet, current_balance, False)
-            await view.message.edit(embed=embed)
-            
+            try:
+                await view.message.edit(embed=embed)
+            except discord.NotFound:
+                self.active_games.remove(ctx.author.id)
+                return
+                
             # Wait a bit
             await asyncio.sleep(0.5)
 
@@ -465,13 +478,14 @@ class Gambling(commands.Cog):
         view = discord.ui.View(timeout=30.0)
         view.cashed_out = False
         view.cashout_multiplier = 1.0
+        view.current_multiplier = 1.0  # Track current multiplier
         
         async def cashout_callback(interaction):
             if interaction.user.id != user_id:
                 return await interaction.response.send_message("❌ This isn't your game!", ephemeral=True)
                 
             view.cashed_out = True
-            view.cashout_multiplier = float(interaction.message.embeds[0].fields[0].value.split("x")[0])
+            view.cashout_multiplier = view.current_multiplier  # Use the tracked multiplier
             await interaction.response.defer()
         
         cashout_button = discord.ui.Button(label="Cash Out", style=discord.ButtonStyle.green)
@@ -525,6 +539,9 @@ class Gambling(commands.Cog):
             if not parsed_bet:
                 return await ctx.reply("❌ Invalid bet amount!")
                 
+            if parsed_bet <= 0:
+                return await ctx.reply("❌ Bet amount must be greater than 0! \n-# *(Do you have $0 in your wallet?)*")
+
             if parsed_bet > wallet:
                 return await ctx.reply("❌ You don't have enough money for that bet!")
                 
@@ -597,7 +614,10 @@ class Gambling(commands.Cog):
             
             if not parsed_bet:
                 return await ctx.reply("❌ Invalid bet amount!")
-                
+            
+            if parsed_bet <= 0:
+                return await ctx.reply("❌ Bet amount must be greater than 0! \n-# *(Do you have $0 in your wallet?)*")
+        
             if parsed_bet > wallet:
                 return await ctx.reply("❌ You don't have enough money for that bet!")
                 
@@ -796,6 +816,9 @@ class Gambling(commands.Cog):
             
             if not parsed_bet:
                 return await ctx.reply("❌ Invalid bet amount!")
+            
+            if parsed_bet <= 0:
+                return await ctx.reply("❌ Bet amount must be greater than 0! \n-# *(Do you have $0 in your wallet?)*")
                 
             if parsed_bet > wallet:
                 return await ctx.reply("❌ You don't have enough money for that bet!")
@@ -900,7 +923,8 @@ class Gambling(commands.Cog):
         """Parse a bet string into an amount"""
         if not bet:
             return None
-            
+        if wallet == 0:
+            return wallet
         bet = bet.lower()
         
         try:
